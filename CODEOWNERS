@@ -1,0 +1,11 @@
+# CODEOWNERS file
+# This file defines code ownership for the repository
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for all files
+* @pixie79
+
+# Specific owners for specific paths (if needed in future)
+# /frontend/ @frontend-team
+# /rust/ @backend-team
+# /.github/ @devops-team

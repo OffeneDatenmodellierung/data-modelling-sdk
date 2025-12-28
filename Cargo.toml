@@ -1,0 +1,82 @@
+[package]
+name = "data-modelling-sdk"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "data_modelling_sdk"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# Serialization (from workspace)
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml = "0.9"
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Async support
+async-trait.workspace = true
+tokio = { version = "1", features = ["fs"], optional = true }
+
+# UUID - use v5 (deterministic) instead of v4 (random) to avoid getrandom dependency
+uuid.workspace = true
+
+# Time
+chrono.workspace = true
+
+# HTTP client (for API backend)
+reqwest = { version = "0.12", features = ["json", "native-tls", "cookies"], default-features = false, optional = true }
+
+# SQL parsing
+sqlparser = "0.53"
+regex = "1"
+datafusion = { version = "45", default-features = false, features = [], optional = true }
+
+# Graph operations (for validation)
+petgraph = "0.6"
+
+# YAML processing
+yaml-rust = "0.4"
+
+# Logging
+tracing.workspace = true
+
+# Base64 encoding (for PNG export)
+base64 = "0.22"
+
+# Image processing (for PNG export)
+image = { version = "0.24", optional = true }
+imageproc = { version = "0.23", optional = true }
+
+# File system operations (for native backend)
+# std::fs is used directly, no extra dependency needed
+
+# WASM support (optional, feature-gated)
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["IdbDatabase", "IdbFactory", "IdbObjectStore", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbOpenDbRequest", "IdbVersionChangeEvent", "Window", "Storage"] }
+js-sys = { version = "0.3", optional = true }
+# Enable js feature for getrandom (required by transitive dependencies like ahash)
+getrandom = { version = "0.2", features = ["js"] }
+
+# Models are now defined in the SDK itself - no dependency on API
+# The API will convert between SDK models and API models as needed
+
+[features]
+default = ["api-backend"]
+api-backend = ["reqwest"]
+native-fs = ["tokio"]  # Enable tokio for native file system operations (required for FileSystemStorageBackend)
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "web-sys", "js-sys"]
+png-export = ["image", "imageproc"]
+databricks-dialect = ["datafusion"]  # Enable datafusion for Databricks SQL dialect support
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
