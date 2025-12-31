@@ -1,18 +1,43 @@
 //! JSON Schema exporter for generating JSON Schema from data models.
 
-use crate::models::{DataModel, Table};
-use serde_json::{json, Value};
 use super::{ExportError, ExportResult};
+use crate::models::{DataModel, Table};
+use serde_json::{Value, json};
 
 /// Exporter for JSON Schema format.
 pub struct JSONSchemaExporter;
 
 impl JSONSchemaExporter {
     /// Export tables to JSON Schema format (SDK interface).
+    ///
+    /// # Arguments
+    ///
+    /// * `tables` - Slice of tables to export
+    ///
+    /// # Returns
+    ///
+    /// An `ExportResult` containing JSON Schema with all tables in the `definitions` section.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::export::json_schema::JSONSchemaExporter;
+    /// use data_modelling_sdk::models::{Table, Column};
+    ///
+    /// let tables = vec![
+    ///     Table::new("User".to_string(), vec![Column::new("id".to_string(), "INTEGER".to_string())]),
+    /// ];
+    ///
+    /// let exporter = JSONSchemaExporter;
+    /// let result = exporter.export(&tables).unwrap();
+    /// assert_eq!(result.format, "json_schema");
+    /// assert!(result.content.contains("\"definitions\""));
+    /// ```
     pub fn export(&self, tables: &[Table]) -> Result<ExportResult, ExportError> {
         let schema = Self::export_model_from_tables(tables);
         Ok(ExportResult {
-            content: serde_json::to_string_pretty(&schema).map_err(|e| ExportError::SerializationError(e.to_string()))?,
+            content: serde_json::to_string_pretty(&schema)
+                .map_err(|e| ExportError::SerializationError(e.to_string()))?,
             format: "json_schema".to_string(),
         })
     }
@@ -24,13 +49,40 @@ impl JSONSchemaExporter {
             definitions.insert(table.name.clone(), schema);
         }
         let mut root = serde_json::Map::new();
-        root.insert("$schema".to_string(), serde_json::json!("http://json-schema.org/draft-07/schema#"));
+        root.insert(
+            "$schema".to_string(),
+            serde_json::json!("http://json-schema.org/draft-07/schema#"),
+        );
         root.insert("type".to_string(), serde_json::json!("object"));
         root.insert("definitions".to_string(), serde_json::json!(definitions));
         serde_json::json!(root)
     }
 
     /// Export a table to JSON Schema format.
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - The table to export
+    ///
+    /// # Returns
+    ///
+    /// A `serde_json::Value` representing the JSON Schema for the table.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::export::json_schema::JSONSchemaExporter;
+    /// use data_modelling_sdk::models::{Table, Column};
+    ///
+    /// let table = Table::new(
+    ///     "User".to_string(),
+    ///     vec![Column::new("id".to_string(), "INTEGER".to_string())],
+    /// );
+    ///
+    /// let schema = JSONSchemaExporter::export_table(&table);
+    /// assert_eq!(schema["title"], "User");
+    /// assert_eq!(schema["type"], "object");
+    /// ```
     pub fn export_table(table: &Table) -> Value {
         let mut properties = serde_json::Map::new();
 

@@ -1,15 +1,17 @@
 //! Table validation functionality
-//! 
+//!
 //! Validates tables for naming conflicts, pattern exclusivity, etc.
-//! 
-//! This module wraps validation logic from the parent crate.
-//! In a full migration, the validation logic would be moved here.
+//!
+//! This module implements SDK-native validation against SDK models.
 
-use anyhow::Result;
+use crate::models::Table;
 use uuid::Uuid;
 
-/// Result of table validation
+/// Result of table validation.
+///
+/// Contains any naming conflicts or pattern violations found during validation.
 #[derive(Debug)]
+#[must_use = "validation results should be checked for conflicts and violations"]
 pub struct TableValidationResult {
     /// Naming conflicts found
     pub naming_conflicts: Vec<NamingConflict>,
@@ -42,52 +44,68 @@ pub enum TableValidationError {
 }
 
 /// Table validator
+#[derive(Default)]
 pub struct TableValidator;
 
 impl TableValidator {
     /// Create a new table validator
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::validation::tables::TableValidator;
+    ///
+    /// let validator = TableValidator::new();
+    /// ```
     pub fn new() -> Self {
         Self
     }
 
     /// Detect naming conflicts between new tables and existing tables
-    /// 
-    /// This wraps ModelService::detect_naming_conflicts from the parent crate.
-    /// In a full migration, the logic would be moved here.
-    /// 
+    ///
     /// The logic checks for conflicts using unique keys:
     /// (database_type, name, catalog_name, schema_name)
+    ///
+    /// # Arguments
+    ///
+    /// * `existing_tables` - Tables that already exist
+    /// * `new_tables` - New tables to check for conflicts
+    ///
+    /// # Returns
+    ///
+    /// A vector of `NamingConflict` structs for each conflict found.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::validation::tables::TableValidator;
+    /// use data_modelling_sdk::models::{Table, Column};
+    ///
+    /// let validator = TableValidator::new();
+    /// let existing = vec![Table::new("users".to_string(), vec![])];
+    /// let new_tables = vec![Table::new("users".to_string(), vec![])];
+    ///
+    /// let conflicts = validator.detect_naming_conflicts(&existing, &new_tables);
+    /// assert_eq!(conflicts.len(), 1);
+    /// ```
     pub fn detect_naming_conflicts(
         &self,
-        existing_tables: &[TableData],
-        new_tables: &[TableData],
+        existing_tables: &[Table],
+        new_tables: &[Table],
     ) -> Vec<NamingConflict> {
-        // Placeholder - will delegate to parent crate logic
-        // TODO: Migrate detect_naming_conflicts logic from rust/src/api/services/model_service.rs
-        
         let mut conflicts = Vec::new();
-        
+
         // Build a map of existing tables by unique key
         let mut existing_map = std::collections::HashMap::new();
         for table in existing_tables {
-            let key = (
-                table.database_type.clone(),
-                table.name.clone(),
-                table.catalog_name.clone(),
-                table.schema_name.clone(),
-            );
+            let key = table.get_unique_key();
             existing_map.insert(key, table);
         }
-        
+
         // Check new tables against existing
         for new_table in new_tables {
-            let key = (
-                new_table.database_type.clone(),
-                new_table.name.clone(),
-                new_table.catalog_name.clone(),
-                new_table.schema_name.clone(),
-            );
-            
+            let key = new_table.get_unique_key();
+
             if let Some(existing) = existing_map.get(&key) {
                 conflicts.push(NamingConflict {
                     new_table_id: new_table.id,
@@ -97,35 +115,83 @@ impl TableValidator {
                 });
             }
         }
-        
+
         conflicts
     }
 
     /// Validate pattern exclusivity (SCD pattern and Data Vault classification are mutually exclusive)
-    pub fn validate_pattern_exclusivity(&self, table: &TableData) -> Result<(), PatternViolation> {
-        // Placeholder - will implement actual validation
-        // TODO: Migrate validate_pattern_exclusivity logic from rust/src/api/models/table.rs
-        
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - The table to validate
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if valid, `Err(PatternViolation)` if both SCD pattern and Data Vault classification are set.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::validation::tables::TableValidator;
+    /// use data_modelling_sdk::models::{Table, Column};
+    /// use data_modelling_sdk::models::enums::{SCDPattern, DataVaultClassification};
+    ///
+    /// let validator = TableValidator::new();
+    /// let mut table = Table::new("test".to_string(), vec![]);
+    /// table.scd_pattern = Some(SCDPattern::Type2);
+    /// table.data_vault_classification = Some(DataVaultClassification::Hub);
+    ///
+    /// let result = validator.validate_pattern_exclusivity(&table);
+    /// assert!(result.is_err());
+    /// ```
+    pub fn validate_pattern_exclusivity(
+        &self,
+        table: &Table,
+    ) -> std::result::Result<(), PatternViolation> {
         if table.scd_pattern.is_some() && table.data_vault_classification.is_some() {
             return Err(PatternViolation {
                 table_id: table.id,
                 table_name: table.name.clone(),
-                message: "SCD pattern and Data Vault classification are mutually exclusive".to_string(),
+                message: "SCD pattern and Data Vault classification are mutually exclusive"
+                    .to_string(),
             });
         }
-        
+
         Ok(())
     }
 }
 
-// Placeholder types - these would use actual model types
-#[derive(Debug, Clone)]
-pub struct TableData {
-    pub id: Uuid,
-    pub name: String,
-    pub database_type: Option<String>,
-    pub catalog_name: Option<String>,
-    pub schema_name: Option<String>,
-    pub scd_pattern: Option<String>,
-    pub data_vault_classification: Option<String>,
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::column::Column;
+    use crate::models::table::Table as SdkTable;
+
+    #[test]
+    fn detects_naming_conflicts_using_unique_key() {
+        let t1 = SdkTable::new(
+            "users".to_string(),
+            vec![Column::new("id".to_string(), "int".to_string())],
+        );
+        let t2 = SdkTable {
+            id: Uuid::new_v4(),
+            ..t1.clone()
+        };
+
+        let v = TableValidator::new().detect_naming_conflicts(&[t1], &[t2]);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].new_table_name, "users");
+    }
+
+    #[test]
+    fn enforces_pattern_exclusivity() {
+        let mut t = SdkTable::new("t".to_string(), vec![]);
+        t.scd_pattern = Some(crate::models::enums::SCDPattern::Type2);
+        t.data_vault_classification = Some(crate::models::enums::DataVaultClassification::Hub);
+
+        let err = TableValidator::new()
+            .validate_pattern_exclusivity(&t)
+            .unwrap_err();
+        assert!(err.message.contains("mutually exclusive"));
+    }
 }

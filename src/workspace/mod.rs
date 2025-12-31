@@ -7,12 +7,33 @@
 use serde::{Deserialize, Serialize};
 
 /// Workspace information
+///
+/// Represents a workspace (model) with its metadata and location.
+///
+/// # Example
+///
+/// ```rust
+/// use data_modelling_sdk::workspace::WorkspaceInfo;
+///
+/// let workspace = WorkspaceInfo {
+///     model_id: "my-model".to_string(),
+///     name: "My Model".to_string(),
+///     git_directory_path: Some("/path/to/git".to_string()),
+///     email: Some("user@example.com".to_string()),
+///     domain: Some("finance".to_string()),
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorkspaceInfo {
+    /// Unique identifier for the workspace/model
     pub model_id: String,
+    /// Display name of the workspace
     pub name: String,
+    /// Path to the Git repository directory (if using Git)
     pub git_directory_path: Option<String>,
+    /// Email of the workspace owner
     pub email: Option<String>,
+    /// Domain name within the workspace
     pub domain: Option<String>,
 }
 
@@ -29,9 +50,24 @@ impl Default for WorkspaceInfo {
 }
 
 /// Profile information (user profile with domains)
+///
+/// Represents a user profile with associated domains.
+///
+/// # Example
+///
+/// ```rust
+/// use data_modelling_sdk::workspace::ProfileInfo;
+///
+/// let profile = ProfileInfo {
+///     email: "user@example.com".to_string(),
+///     domains: vec!["finance".to_string(), "risk".to_string()],
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProfileInfo {
+    /// User email address
     pub email: String,
+    /// List of domain names associated with this profile
     pub domains: Vec<String>,
 }
 
@@ -86,4 +122,3 @@ mod tests {
         assert_eq!(profile, parsed);
     }
 }
-

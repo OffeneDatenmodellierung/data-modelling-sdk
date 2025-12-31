@@ -1,5 +1,5 @@
 //! Storage backend abstraction
-//! 
+//!
 //! Defines the StorageBackend trait and implementations for different storage systems:
 //! - FileSystemStorageBackend: Native file system (for native apps)
 //! - BrowserStorageBackend: Browser storage APIs (for WASM apps)
@@ -27,29 +27,29 @@ pub enum StorageError {
 }
 
 /// Trait for storage backends
-/// 
+///
 /// This trait abstracts file operations, directory operations, and model-specific operations
 /// across different storage systems (file system, browser storage, HTTP API).
 #[async_trait(?Send)]
 pub trait StorageBackend: Send + Sync {
     /// Read a file from storage
     async fn read_file(&self, path: &str) -> Result<Vec<u8>, StorageError>;
-    
+
     /// Write a file to storage
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<(), StorageError>;
-    
+
     /// List files in a directory
     async fn list_files(&self, dir: &str) -> Result<Vec<String>, StorageError>;
-    
+
     /// Check if a file exists
     async fn file_exists(&self, path: &str) -> Result<bool, StorageError>;
-    
+
     /// Delete a file
     async fn delete_file(&self, path: &str) -> Result<(), StorageError>;
-    
+
     /// Create a directory
     async fn create_dir(&self, path: &str) -> Result<(), StorageError>;
-    
+
     /// Check if a directory exists
     async fn dir_exists(&self, path: &str) -> Result<bool, StorageError>;
 }

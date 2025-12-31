@@ -66,6 +66,3 @@ pub enum RelationshipType {
     ForeignKey,
     EtlTransformation,
 }
-
-
-

@@ -46,6 +46,38 @@ let loader = ModelLoader::new(storage);
 let result = loader.load_model("workspace_path").await?;
 ```
 
+## Development
+
+### Pre-commit Hooks
+
+This project uses pre-commit hooks to ensure code quality. Install them with:
+
+```bash
+# Install pre-commit (if not already installed)
+pip install pre-commit
+
+# Install the git hooks
+pre-commit install
+
+# Run hooks manually on all files
+pre-commit run --all-files
+```
+
+The hooks will automatically run on `git commit` and check:
+- Rust formatting (`cargo fmt`)
+- Rust linting (`cargo clippy`)
+- Security audit (`cargo audit`)
+- File formatting (trailing whitespace, end of file, etc.)
+- YAML/TOML/JSON syntax
+
+### CI/CD
+
+GitHub Actions workflows automatically run on push and pull requests:
+- **Lint**: Format check, clippy, and security audit
+- **Test**: Unit and integration tests on Linux, macOS, and Windows
+- **Build**: Release build verification
+- **Publish**: Automatic publishing to crates.io on main branch (after all checks pass)
+
 ## Status
 
 The SDK structure is in place. The actual implementation of import/export/validation logic is being migrated incrementally from the parent crate. Currently, the SDK provides:

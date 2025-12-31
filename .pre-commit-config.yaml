@@ -1,0 +1,57 @@
+# Pre-commit hooks configuration
+# Install with: pre-commit install
+# Run manually with: pre-commit run --all-files
+
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Rust formatting and linting
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: bash -c 'cargo fmt --all -- --check'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: true
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: bash -c 'cargo clippy --all-targets --all-features -- -D warnings'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: true
+
+      - id: cargo-audit
+        name: cargo audit
+        entry: bash -c 'cargo audit'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: true
+        # Note: If cargo-audit is not installed, this will fail gracefully
+        # Install with: cargo install cargo-audit
+
+      - id: cargo-test
+        name: cargo test
+        entry: bash -c 'cargo test --all-features'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: true

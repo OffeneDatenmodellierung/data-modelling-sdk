@@ -5,71 +5,133 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Foreign key column mapping details
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ForeignKeyDetails {
+    /// Column name in the source table
     pub source_column: String,
+    /// Column name in the target table
     pub target_column: String,
 }
 
+/// ETL job metadata for data flow relationships
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ETLJobMetadata {
+    /// Name of the ETL job that creates this relationship
     pub job_name: String,
+    /// Optional notes about the ETL job
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Job execution frequency (e.g., "daily", "hourly")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frequency: Option<String>,
 }
 
+/// Connection point coordinates for relationship visualization
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConnectionPoint {
+    /// X coordinate
     pub x: f64,
+    /// Y coordinate
     pub y: f64,
 }
 
+/// Visual metadata for relationship rendering on canvas
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VisualMetadata {
+    /// Connection point identifier on source table
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_connection_point: Option<String>,
+    /// Connection point identifier on target table
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_connection_point: Option<String>,
+    /// Waypoints for routing the relationship line
     #[serde(default)]
     pub routing_waypoints: Vec<ConnectionPoint>,
+    /// Position for the relationship label
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label_position: Option<ConnectionPoint>,
 }
 
+/// Relationship model representing a connection between two tables
+///
+/// Relationships can represent foreign keys, data flows, dependencies, or ETL transformations.
+/// They connect a source table to a target table with optional metadata about cardinality,
+/// foreign key details, and ETL job information.
+///
+/// # Example
+///
+/// ```rust
+/// use data_modelling_sdk::models::Relationship;
+///
+/// let source_id = uuid::Uuid::new_v4();
+/// let target_id = uuid::Uuid::new_v4();
+/// let relationship = Relationship::new(source_id, target_id);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Relationship {
+    /// Unique identifier for the relationship (UUIDv4)
     pub id: Uuid,
+    /// ID of the source table
     pub source_table_id: Uuid,
+    /// ID of the target table
     pub target_table_id: Uuid,
+    /// Cardinality (OneToOne, OneToMany, ManyToMany)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cardinality: Option<Cardinality>,
+    /// Whether the source side is optional (nullable foreign key)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_optional: Option<bool>,
+    /// Whether the target side is optional
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_optional: Option<bool>,
+    /// Foreign key column mapping details
     #[serde(skip_serializing_if = "Option::is_none")]
     pub foreign_key_details: Option<ForeignKeyDetails>,
+    /// ETL job metadata for data flow relationships
     #[serde(skip_serializing_if = "Option::is_none")]
     pub etl_job_metadata: Option<ETLJobMetadata>,
+    /// Type of relationship (ForeignKey, DataFlow, Dependency, ETL)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub relationship_type: Option<RelationshipType>,
+    /// Optional notes about the relationship
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Visual metadata for canvas rendering
     #[serde(skip_serializing_if = "Option::is_none")]
     pub visual_metadata: Option<VisualMetadata>,
+    /// Draw.io edge ID for diagram integration
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drawio_edge_id: Option<String>,
+    /// Creation timestamp
     pub created_at: DateTime<Utc>,
+    /// Last update timestamp
     pub updated_at: DateTime<Utc>,
 }
 
 impl Relationship {
+    /// Create a new relationship between two tables
+    ///
+    /// # Arguments
+    ///
+    /// * `source_table_id` - UUID of the source table
+    /// * `target_table_id` - UUID of the target table
+    ///
+    /// # Returns
+    ///
+    /// A new `Relationship` instance with a generated UUIDv4 ID and current timestamps.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::models::Relationship;
+    ///
+    /// let source_id = uuid::Uuid::new_v4();
+    /// let target_id = uuid::Uuid::new_v4();
+    /// let rel = Relationship::new(source_id, target_id);
+    /// ```
     pub fn new(source_table_id: Uuid, target_table_id: Uuid) -> Self {
         let now = Utc::now();
-        // Use deterministic UUID v5 based on source and target table IDs
-        // This avoids requiring random number generation (getrandom/wasm_js)
         let id = Self::generate_id(source_table_id, target_table_id);
         Self {
             id,
@@ -89,21 +151,10 @@ impl Relationship {
         }
     }
 
-    /// Generate a deterministic UUID v5 for a relationship based on source and target table IDs
-    /// This avoids requiring random number generation (getrandom/wasm_js)
-    pub fn generate_id(source_table_id: Uuid, target_table_id: Uuid) -> Uuid {
-        // Create a deterministic string from the relationship endpoints
-        // Sort IDs to ensure same relationship gets same UUID regardless of direction
-        let (id1, id2) = if source_table_id < target_table_id {
-            (source_table_id, target_table_id)
-        } else {
-            (target_table_id, source_table_id)
-        };
-        let key = format!("{}:{}", id1, id2);
-        // Use UUID v5 (deterministic) with a namespace UUID for relationships
-        Uuid::new_v5(&Uuid::NAMESPACE_URL, key.as_bytes())
+    /// Generate a UUIDv4 for a new relationship id.
+    ///
+    /// Note: params are retained for backward-compatibility with previous deterministic-v5 API.
+    pub fn generate_id(_source_table_id: Uuid, _target_table_id: Uuid) -> Uuid {
+        Uuid::new_v4()
     }
 }
-
-
-

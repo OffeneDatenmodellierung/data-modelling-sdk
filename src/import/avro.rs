@@ -1,11 +1,18 @@
 //! AVRO schema parser for importing AVRO schemas into data models.
+//!
+//! # Validation
+//!
+//! All imported table and column names are validated for:
+//! - Valid identifier format
+//! - Maximum length limits
 
+use crate::import::{ImportError, ImportResult, TableData};
 use crate::models::{Column, Table};
-use crate::import::{ImportResult, ImportError, TableData};
+use crate::validation::input::{validate_column_name, validate_table_name};
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Parser for AVRO schema format.
 #[derive(Default)]
@@ -13,11 +20,45 @@ pub struct AvroImporter;
 
 impl AvroImporter {
     /// Create a new AVRO parser instance.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::import::avro::AvroImporter;
+    ///
+    /// let importer = AvroImporter::new();
+    /// ```
     pub fn new() -> Self {
         Self
     }
 
     /// Import AVRO schema content and create Table(s) (SDK interface).
+    ///
+    /// # Arguments
+    ///
+    /// * `avro_content` - AVRO schema as JSON string (can be a single record or array of records)
+    ///
+    /// # Returns
+    ///
+    /// An `ImportResult` containing extracted tables and any parse errors.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::import::avro::AvroImporter;
+    ///
+    /// let importer = AvroImporter::new();
+    /// let schema = r#"
+    /// {
+    ///   "type": "record",
+    ///   "name": "User",
+    ///   "fields": [
+    ///     {"name": "id", "type": "long"}
+    ///   ]
+    /// }
+    /// "#;
+    /// let result = importer.import(schema).unwrap();
+    /// ```
     pub fn import(&self, avro_content: &str) -> Result<ImportResult, ImportError> {
         match self.parse(avro_content) {
             Ok((tables, errors)) => {
@@ -26,15 +67,22 @@ impl AvroImporter {
                     sdk_tables.push(TableData {
                         table_index: idx,
                         name: Some(table.name.clone()),
-                        columns: table.columns.iter().map(|c| super::ColumnData {
-                            name: c.name.clone(),
-                            data_type: c.data_type.clone(),
-                            nullable: c.nullable,
-                            primary_key: c.primary_key,
-                        }).collect(),
+                        columns: table
+                            .columns
+                            .iter()
+                            .map(|c| super::ColumnData {
+                                name: c.name.clone(),
+                                data_type: c.data_type.clone(),
+                                nullable: c.nullable,
+                                primary_key: c.primary_key,
+                            })
+                            .collect(),
                     });
                 }
-                let sdk_errors: Vec<ImportError> = errors.iter().map(|e| ImportError::ParseError(e.message.clone())).collect();
+                let sdk_errors: Vec<ImportError> = errors
+                    .iter()
+                    .map(|e| ImportError::ParseError(e.message.clone()))
+                    .collect();
                 Ok(ImportResult {
                     tables: sdk_tables,
                     tables_requiring_name: Vec::new(),
@@ -61,9 +109,8 @@ impl AvroImporter {
         let mut tables = Vec::new();
 
         // AVRO can be a single record or an array of records
-        if schema.is_array() {
+        if let Some(schemas) = schema.as_array() {
             // Multiple schemas
-            let schemas = schema.as_array().unwrap();
             for (idx, schema_item) in schemas.iter().enumerate() {
                 match self.parse_schema(schema_item, &mut errors) {
                     Ok(table) => tables.push(table),
@@ -105,6 +152,11 @@ impl AvroImporter {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required field: name"))?
             .to_string();
+
+        // Validate table name
+        if let Err(e) = validate_table_name(&name) {
+            warn!("Table name validation warning for '{}': {}", name, e);
+        }
 
         // Extract namespace (optional)
         let namespace = schema_obj
@@ -188,6 +240,11 @@ impl AvroImporter {
             .ok_or_else(|| anyhow::anyhow!("Field missing name"))?
             .to_string();
 
+        // Validate column name
+        if let Err(e) = validate_column_name(&field_name) {
+            warn!("Column name validation warning for '{}': {}", field_name, e);
+        }
+
         let field_type = field_obj
             .get("type")
             .ok_or_else(|| anyhow::anyhow!("Field missing type"))?;
@@ -199,8 +256,7 @@ impl AvroImporter {
             .unwrap_or_default();
 
         // Handle union types (e.g., ["null", "string"] for nullable)
-        let (avro_type, nullable) = if field_type.is_array() {
-            let types = field_type.as_array().unwrap();
+        let (avro_type, nullable) = if let Some(types) = field_type.as_array() {
             if types.len() == 2 && types.iter().any(|t| t.as_str() == Some("null")) {
                 // Nullable type
                 let non_null_type = types
@@ -209,8 +265,13 @@ impl AvroImporter {
                     .ok_or_else(|| anyhow::anyhow!("Invalid union type"))?;
                 (non_null_type, true)
             } else {
-                // Complex union - treat as nullable string for now
-                (field_type, true)
+                // Complex union with multiple non-null types - use first non-null type
+                // and mark as nullable since union implies optionality
+                let first_non_null = types
+                    .iter()
+                    .find(|t| t.as_str() != Some("null"))
+                    .unwrap_or(field_type);
+                (first_non_null, true)
             }
         } else {
             (field_type, false)

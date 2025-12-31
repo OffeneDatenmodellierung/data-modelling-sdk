@@ -1,11 +1,18 @@
 //! JSON Schema parser for importing JSON Schema into data models.
+//!
+//! # Validation
+//!
+//! All imported table and column names are validated for:
+//! - Valid identifier format
+//! - Maximum length limits
 
-use crate::models::{Column, Table};
 use super::{ImportError, ImportResult, TableData};
+use crate::models::{Column, Table};
+use crate::validation::input::{validate_column_name, validate_data_type, validate_table_name};
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Parser for JSON Schema format.
 pub struct JSONSchemaImporter;
@@ -18,11 +25,46 @@ impl Default for JSONSchemaImporter {
 
 impl JSONSchemaImporter {
     /// Create a new JSON Schema parser instance.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::import::json_schema::JSONSchemaImporter;
+    ///
+    /// let importer = JSONSchemaImporter::new();
+    /// ```
     pub fn new() -> Self {
         Self
     }
 
     /// Import JSON Schema content and create Table(s) (SDK interface).
+    ///
+    /// # Arguments
+    ///
+    /// * `json_content` - JSON Schema string (can be a single schema or schema with definitions)
+    ///
+    /// # Returns
+    ///
+    /// An `ImportResult` containing extracted tables and any parse errors.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::import::json_schema::JSONSchemaImporter;
+    ///
+    /// let importer = JSONSchemaImporter::new();
+    /// let schema = r#"
+    /// {
+    ///   "type": "object",
+    ///   "properties": {
+    ///     "id": {"type": "integer"},
+    ///     "name": {"type": "string"}
+    ///   },
+    ///   "required": ["id"]
+    /// }
+    /// "#;
+    /// let result = importer.import(schema).unwrap();
+    /// ```
     pub fn import(&self, json_content: &str) -> Result<ImportResult, ImportError> {
         match self.parse(json_content) {
             Ok((tables, errors)) => {
@@ -31,15 +73,22 @@ impl JSONSchemaImporter {
                     sdk_tables.push(TableData {
                         table_index: idx,
                         name: Some(table.name.clone()),
-                        columns: table.columns.iter().map(|c| super::ColumnData {
-                            name: c.name.clone(),
-                            data_type: c.data_type.clone(),
-                            nullable: c.nullable,
-                            primary_key: c.primary_key,
-                        }).collect(),
+                        columns: table
+                            .columns
+                            .iter()
+                            .map(|c| super::ColumnData {
+                                name: c.name.clone(),
+                                data_type: c.data_type.clone(),
+                                nullable: c.nullable,
+                                primary_key: c.primary_key,
+                            })
+                            .collect(),
                     });
                 }
-                let sdk_errors: Vec<ImportError> = errors.iter().map(|e| ImportError::ParseError(e.message.clone())).collect();
+                let sdk_errors: Vec<ImportError> = errors
+                    .iter()
+                    .map(|e| ImportError::ParseError(e.message.clone()))
+                    .collect();
                 Ok(ImportResult {
                     tables: sdk_tables,
                     tables_requiring_name: Vec::new(),
@@ -119,6 +168,11 @@ impl JSONSchemaImporter {
                     .map(|s| s.to_string())
             })
             .ok_or_else(|| anyhow::anyhow!("Missing required field: title or name"))?;
+
+        // Validate table name
+        if let Err(e) = validate_table_name(&name) {
+            warn!("Table name validation warning for '{}': {}", name, e);
+        }
 
         // Extract description
         let description = schema_obj
@@ -203,6 +257,11 @@ impl JSONSchemaImporter {
         nullable: bool,
         errors: &mut Vec<ParserError>,
     ) -> Result<Vec<Column>> {
+        // Validate column name
+        if let Err(e) = validate_column_name(prop_name) {
+            warn!("Column name validation warning for '{}': {}", prop_name, e);
+        }
+
         let prop_obj = prop_schema
             .as_object()
             .ok_or_else(|| anyhow::anyhow!("Property schema must be an object"))?;
@@ -211,6 +270,12 @@ impl JSONSchemaImporter {
             .get("type")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Property missing type"))?;
+
+        // Validate data type
+        let mapped_type = self.map_json_type_to_sql(prop_type);
+        if let Err(e) = validate_data_type(&mapped_type) {
+            warn!("Data type validation warning for '{}': {}", mapped_type, e);
+        }
 
         let description = prop_obj
             .get("description")

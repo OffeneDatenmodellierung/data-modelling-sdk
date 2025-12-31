@@ -1,13 +1,44 @@
 //! SQL exporter for generating CREATE TABLE statements from data models.
+//!
+//! # Security
+//!
+//! All identifiers (table names, column names, schema names) are properly quoted
+//! and escaped to prevent SQL injection. Internal quote characters are escaped
+//! by doubling them according to SQL standards.
 
+use crate::export::{ExportError, ExportResult};
 use crate::models::{DataModel, Table};
-use crate::export::{ExportResult, ExportError};
 
 /// Exporter for SQL CREATE TABLE format.
 pub struct SQLExporter;
 
 impl SQLExporter {
     /// Export a table to SQL CREATE TABLE statement.
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - The table to export
+    /// * `dialect` - Optional SQL dialect ("postgres", "mysql", "sqlserver", etc.)
+    ///
+    /// # Returns
+    ///
+    /// A SQL CREATE TABLE statement as a string, with proper identifier quoting
+    /// and escaping based on the dialect.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::export::sql::SQLExporter;
+    /// use data_modelling_sdk::models::{Table, Column};
+    ///
+    /// let table = Table::new(
+    ///     "users".to_string(),
+    ///     vec![Column::new("id".to_string(), "INT".to_string())],
+    /// );
+    ///
+    /// let sql = SQLExporter::export_table(&table, Some("postgres"));
+    /// // Returns: CREATE TABLE "users" (\n  "id" INT\n);
+    /// ```
     pub fn export_table(table: &Table, dialect: Option<&str>) -> String {
         let dialect = dialect.unwrap_or("standard");
         let mut sql = String::new();
@@ -18,31 +49,32 @@ impl SQLExporter {
             Self::quote_identifier(&table.name, dialect)
         ));
 
-        // Add catalog and schema if specified
-        if let Some(ref catalog) = table.catalog_name {
-            sql = format!(
-                "CREATE TABLE {}.{}",
-                Self::quote_identifier(catalog, dialect),
-                Self::quote_identifier(&table.name, dialect)
-            );
-        }
-
-        if let Some(ref schema) = table.schema_name {
-            if table.catalog_name.is_none() {
-                sql = format!(
+        // Build fully-qualified table name based on catalog and schema
+        sql = match (&table.catalog_name, &table.schema_name) {
+            (Some(catalog), Some(schema)) => {
+                format!(
+                    "CREATE TABLE {}.{}.{}",
+                    Self::quote_identifier(catalog, dialect),
+                    Self::quote_identifier(schema, dialect),
+                    Self::quote_identifier(&table.name, dialect)
+                )
+            }
+            (Some(catalog), None) => {
+                format!(
+                    "CREATE TABLE {}.{}",
+                    Self::quote_identifier(catalog, dialect),
+                    Self::quote_identifier(&table.name, dialect)
+                )
+            }
+            (None, Some(schema)) => {
+                format!(
                     "CREATE TABLE {}.{}",
                     Self::quote_identifier(schema, dialect),
                     Self::quote_identifier(&table.name, dialect)
-                );
-            } else {
-                sql = format!(
-                    "CREATE TABLE {}.{}.{}",
-                    Self::quote_identifier(table.catalog_name.as_ref().unwrap(), dialect),
-                    Self::quote_identifier(schema, dialect),
-                    Self::quote_identifier(&table.name, dialect)
-                );
+                )
             }
-        }
+            (None, None) => sql, // Keep default "CREATE TABLE tablename"
+        };
 
         sql.push_str(" (\n");
 
@@ -118,7 +150,36 @@ impl SQLExporter {
     }
 
     /// Export tables to SQL CREATE TABLE statements (SDK interface).
-    pub fn export(&self, tables: &[Table], dialect: Option<&str>) -> Result<ExportResult, ExportError> {
+    ///
+    /// # Arguments
+    ///
+    /// * `tables` - Slice of tables to export
+    /// * `dialect` - Optional SQL dialect
+    ///
+    /// # Returns
+    ///
+    /// An `ExportResult` containing the SQL statements for all tables.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::export::sql::SQLExporter;
+    /// use data_modelling_sdk::models::{Table, Column};
+    ///
+    /// let tables = vec![
+    ///     Table::new("users".to_string(), vec![Column::new("id".to_string(), "INT".to_string())]),
+    ///     Table::new("orders".to_string(), vec![Column::new("id".to_string(), "INT".to_string())]),
+    /// ];
+    ///
+    /// let exporter = SQLExporter;
+    /// let result = exporter.export(&tables, Some("postgres")).unwrap();
+    /// assert_eq!(result.format, "sql");
+    /// ```
+    pub fn export(
+        &self,
+        tables: &[Table],
+        dialect: Option<&str>,
+    ) -> Result<ExportResult, ExportError> {
         let mut sql = String::new();
         for table in tables {
             sql.push_str(&Self::export_table(table, dialect));
@@ -156,13 +217,51 @@ impl SQLExporter {
         sql
     }
 
-    /// Quote identifier based on SQL dialect.
+    /// Quote and escape identifier based on SQL dialect.
+    ///
+    /// # Security
+    ///
+    /// This function properly escapes quote characters within the identifier
+    /// by doubling them, preventing SQL injection attacks.
+    ///
+    /// # Dialects
+    ///
+    /// - **PostgreSQL**: Uses double quotes (`"identifier"`)
+    /// - **MySQL**: Uses backticks (`` `identifier` ``)
+    /// - **SQL Server**: Uses brackets (`[identifier]`)
+    /// - **Standard SQL**: Uses double quotes
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use data_modelling_sdk::export::sql::SQLExporter;
+    ///
+    /// // PostgreSQL style
+    /// // let quoted = SQLExporter::quote_identifier("user-name", "postgres");
+    /// // Returns: "user-name"
+    ///
+    /// // MySQL style
+    /// // let quoted = SQLExporter::quote_identifier("user-name", "mysql");
+    /// // Returns: `user-name`
+    /// ```
     fn quote_identifier(identifier: &str, dialect: &str) -> String {
         match dialect {
-            "mysql" => format!("`{}`", identifier),
-            "postgres" | "postgresql" => format!("\"{}\"", identifier),
-            "sqlserver" | "mssql" => format!("[{}]", identifier),
-            _ => identifier.to_string(), // Standard SQL doesn't require quoting for simple identifiers
+            "mysql" => {
+                // MySQL uses backticks; escape internal backticks by doubling
+                format!("`{}`", identifier.replace('`', "``"))
+            }
+            "postgres" | "postgresql" => {
+                // PostgreSQL uses double quotes; escape by doubling
+                format!("\"{}\"", identifier.replace('"', "\"\""))
+            }
+            "sqlserver" | "mssql" => {
+                // SQL Server uses brackets; escape ] by doubling
+                format!("[{}]", identifier.replace(']', "]]"))
+            }
+            _ => {
+                // Standard SQL: use double quotes
+                format!("\"{}\"", identifier.replace('"', "\"\""))
+            }
         }
     }
 }

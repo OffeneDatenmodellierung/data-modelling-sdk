@@ -1,0 +1,315 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+# Default permissions for all jobs (can be overridden per job)
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # Linting and formatting check
+  lint:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Rust clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run cargo audit
+        uses: rustsec/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+        # Note: cargo-audit.toml in the repo root configures allowed advisories
+        # for unmaintained warnings from optional dependencies (imageproc, datafusion, yaml-rust)
+
+  # Unit and integration tests on Linux
+  test-linux:
+    name: Test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - name: Cache cargo build artifacts
+        uses: actions/cache@v3
+        with:
+          path: target/
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-
+
+      - name: Run tests
+        run: cargo test --all-features
+
+  # Unit and integration tests on macOS
+  test-macos:
+    name: Test (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Get Cargo.toml hash
+        id: cargo-hash
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            HASH=$(shasum -a 256 Cargo.toml | cut -d' ' -f1 | head -c 16)
+            echo "hash=$HASH" >> $GITHUB_OUTPUT
+          else
+            echo "hash=default" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ steps.cargo-hash.outputs.hash }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - name: Cache cargo build artifacts
+        uses: actions/cache@v3
+        with:
+          path: target/
+          key: ${{ runner.os }}-cargo-target-${{ steps.cargo-hash.outputs.hash }}-${{ hashFiles('**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-
+
+      - name: Run tests
+        run: cargo test --all-features
+
+  # Unit and integration tests on Windows
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - name: Cache cargo build artifacts
+        uses: actions/cache@v3
+        with:
+          path: target/
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-
+
+      - name: Run tests
+        run: cargo test --all-features
+        shell: cmd
+
+  # Build verification - only runs if tests pass
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+    needs: [test-linux, test-macos, test-windows]  # Only build if all tests pass
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - name: Cache cargo build artifacts
+        uses: actions/cache@v3
+        with:
+          path: target/
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-
+
+      - name: Build library
+        run: cargo build --release --all-features
+
+  # Publish to crates.io and create release tag
+  # This job runs only after all CI checks pass successfully
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: [lint, test-linux, test-macos, test-windows, build]
+    # Note: All checks must pass before publishing
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write  # Required to create and push git tags
+      issues: write    # Required to close referenced issues
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for git tag operations
+          token: ${{ secrets.GITHUB_TOKEN }}  # Required for pushing tags and closing issues
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Get version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Check if tag already exists
+        id: check-tag
+        run: |
+          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.version.outputs.version }} already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.version.outputs.version }} does not exist"
+          fi
+
+      - name: Create git tag
+        if: steps.check-tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+        # Note: GITHUB_TOKEN is automatically available when permissions are set above
+
+      - name: Extract referenced issues from commits
+        id: extract-issues
+        run: |
+          # Get commits since last tag (or all commits if no tag exists)
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"%s %b" --no-merges)
+          else
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s %b" --no-merges)
+          fi
+
+          # Extract issue numbers from commit messages
+          # Patterns: "closes #123", "fixes #456", "resolves #789", or just "#123"
+          ISSUES=$(echo "$COMMITS" | grep -oE '(closes|fixes|resolves|implements|addresses)?\s*#?[0-9]+' | grep -oE '[0-9]+' | sort -u | tr '\n' ' ' || echo "")
+
+          if [ -z "$ISSUES" ]; then
+            echo "No referenced issues found in commits"
+            echo "issues=" >> $GITHUB_OUTPUT
+          else
+            echo "Found referenced issues: $ISSUES"
+            echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Close referenced issues
+        if: steps.extract-issues.outputs.issues != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ISSUES="${{ steps.extract-issues.outputs.issues }}"
+
+          for issue in $ISSUES; do
+            echo "Checking issue #$issue..."
+
+            # Check if issue exists and is open
+            ISSUE_STATE=$(gh issue view $issue --repo ${{ github.repository }} --json state -q .state 2>/dev/null || echo "notfound")
+
+            if [ "$ISSUE_STATE" = "notfound" ]; then
+              echo "  Issue #$issue not found, skipping"
+              continue
+            elif [ "$ISSUE_STATE" = "closed" ]; then
+              echo "  Issue #$issue is already closed, skipping"
+              continue
+            elif [ "$ISSUE_STATE" = "open" ]; then
+              echo "  Closing issue #$issue..."
+              gh issue close $issue --repo ${{ github.repository }} --comment "Closed automatically as part of release v$VERSION. This issue was referenced in the release commits." || echo "  Failed to close issue #$issue"
+            fi
+          done
+
+      - name: Verify package contents
+        run: |
+          # List files that would be included in the package (doesn't create package)
+          cargo package --list
+
+      - name: Build crate package
+        run: |
+          # Create the package file (.crate)
+          cargo package
+
+      - name: Verify publish readiness (dry-run)
+        run: |
+          # Use cargo publish --dry-run to verify everything is ready for publishing
+          # This checks metadata, dependencies, and registry compatibility
+          # CARGO_REGISTRY_TOKEN is the recommended environment variable name per crates.io docs
+          cargo publish --dry-run --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish to crates.io
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}

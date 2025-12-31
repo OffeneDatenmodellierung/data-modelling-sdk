@@ -1,0 +1,373 @@
+# Data Modelling SDK
+
+## Overview
+
+The Data Modelling SDK is a Rust library that provides unified interfaces for data modeling operations across multiple platforms (native apps, WASM/web apps, and API backends). It enables importing from various formats (SQL, ODCS, JSON Schema, AVRO, Protobuf), exporting to multiple formats, model validation, and storage abstraction for different environments.
+
+**Repository**: https://github.com/pixie79/data-modelling-sdk
+**License**: MIT
+**Rust Edition**: 2024
+**Version**: 1.0.0
+
+## Architecture
+
+The SDK is designed with a modular architecture centered around:
+
+1. **Storage Backends**: Abstract storage operations (file system, browser storage, HTTP API)
+2. **Models**: Core data structures (Table, Column, Relationship, DataModel)
+3. **Import/Export**: Format converters for various data contract formats
+4. **Validation**: Table and relationship validation logic
+5. **Model Management**: Loading and saving models from storage backends
+
+## Directory Structure
+
+```
+data-modelling-sdk/
+├── src/
+│   ├── lib.rs                 # Main library entry point, re-exports public API
+│   ├── auth/                   # Authentication types (OAuth, session management)
+│   │   └── mod.rs
+│   ├── export/                 # Export functionality
+│   │   ├── mod.rs
+│   │   ├── avro.rs            # AVRO format exporter
+│   │   ├── json_schema.rs     # JSON Schema exporter
+│   │   ├── odcl.rs            # ODCL format exporter
+│   │   ├── odcs.rs            # ODCS v3.1.0 format exporter
+│   │   ├── png.rs             # PNG diagram exporter (feature-gated)
+│   │   ├── protobuf.rs        # Protobuf exporter
+│   │   └── sql.rs             # SQL DDL exporter
+│   ├── git/                    # Git operations (feature-gated)
+│   │   ├── mod.rs
+│   │   └── git_service.rs     # Git service for version control operations
+│   ├── import/                 # Import functionality
+│   │   ├── mod.rs
+│   │   ├── avro.rs            # AVRO format importer
+│   │   ├── json_schema.rs     # JSON Schema importer
+│   │   ├── odcs.rs            # ODCS v3.1.0 format importer (primary)
+│   │   ├── protobuf.rs        # Protobuf importer
+│   │   └── sql.rs             # SQL DDL importer
+│   ├── model/                  # Model loading/saving
+│   │   ├── mod.rs
+│   │   ├── api_loader.rs      # API-based model loader
+│   │   ├── loader.rs          # File-based model loader
+│   │   └── saver.rs           # Model saver
+│   ├── models/                 # Core data structures
+│   │   ├── mod.rs
+│   │   ├── column.rs          # Column and ForeignKey models
+│   │   ├── cross_domain.rs    # Cross-domain relationship models
+│   │   ├── data_model.rs      # DataModel container
+│   │   ├── enums.rs           # Enums (DatabaseType, MedallionLayer, etc.)
+│   │   ├── relationship.rs    # Relationship model
+│   │   └── table.rs           # Table model
+│   ├── storage/                # Storage backend abstraction
+│   │   ├── mod.rs             # StorageBackend trait
+│   │   ├── api.rs             # HTTP API backend (feature-gated)
+│   │   ├── browser.rs         # Browser storage backend (WASM, feature-gated)
+│   │   └── filesystem.rs      # File system backend (native, feature-gated)
+│   ├── validation/             # Validation logic
+│   │   ├── mod.rs
+│   │   ├── input.rs           # Input validation (table/column names, UUIDs)
+│   │   ├── relationships.rs   # Relationship validation (circular deps)
+│   │   └── tables.rs          # Table validation (naming conflicts)
+│   └── workspace/              # Workspace management types
+│       └── mod.rs             # WorkspaceInfo, ProfileInfo types
+├── tests/                      # Test suite
+│   ├── auth_tests.rs
+│   ├── export_tests.rs
+│   ├── git_tests.rs
+│   ├── import_tests.rs
+│   ├── integration_tests.rs
+│   ├── model_tests.rs
+│   ├── models_tests.rs
+│   ├── nested_structures_tests.rs
+│   ├── odcs_comprehensive_tests.rs
+│   ├── storage_tests.rs
+│   ├── validation_tests.rs
+│   └── workspace_tests.rs
+├── Cargo.toml                  # Package manifest
+├── cargo-audit.toml           # Security audit configuration
+├── .pre-commit-config.yaml    # Pre-commit hooks configuration
+└── README.md                   # User documentation
+```
+
+## Key Modules
+
+### Storage Backends (`src/storage/`)
+
+Abstracts file operations across different environments:
+
+- **`StorageBackend` trait**: Common interface for all storage backends
+- **`FileSystemStorageBackend`**: Native file system operations (requires `native-fs` feature)
+- **`BrowserStorageBackend`**: Browser IndexedDB/localStorage (WASM, requires `wasm` feature)
+- **`ApiStorageBackend`**: HTTP API backend (requires `api-backend` feature, default)
+
+### Models (`src/models/`)
+
+Core data structures:
+
+- **`Table`**: Represents a database table/data contract with columns, metadata, and relationships
+- **`Column`**: Column definition with data type, constraints, foreign keys
+- **`Relationship`**: Relationship between tables (source/target, type, metadata)
+- **`DataModel`**: Container for tables and relationships representing a workspace/domain
+- **`ForeignKey`**: Foreign key relationship details
+- **Enums**: `DatabaseType`, `MedallionLayer`, `SCDPattern`, `DataVaultClassification`, `ModelingLevel`, `Cardinality`, `RelationshipType`
+
+### Import (`src/import/`)
+
+Importers convert various formats to SDK `Table` models:
+
+- **`ODCSImporter`**: Primary importer for ODCS v3.1.0 format (also handles legacy ODCL)
+- **`SQLImporter`**: SQL DDL parser (CREATE TABLE statements)
+- **`JSONSchemaImporter`**: JSON Schema to Table conversion
+- **`AvroImporter`**: AVRO schema to Table conversion
+- **`ProtobufImporter`**: Protobuf .proto files to Table conversion
+
+### Export (`src/export/`)
+
+Exporters convert SDK `Table` models to various formats:
+
+- **`ODCSExporter`**: Exports to ODCS v3.1.0 format
+- **`SQLExporter`**: Generates SQL DDL (CREATE TABLE statements)
+- **`JSONSchemaExporter`**: Exports to JSON Schema format
+- **`AvroExporter`**: Exports to AVRO schema format
+- **`ProtobufExporter`**: Exports to Protobuf .proto format
+- **`PNGExporter`**: Generates PNG diagrams (requires `png-export` feature)
+
+### Model Management (`src/model/`)
+
+- **`ModelLoader`**: Loads models from storage backends (tables + relationships)
+- **`ModelSaver`**: Saves models to storage backends
+- **`ApiModelLoader`**: Loads models via HTTP API
+
+### Validation (`src/validation/`)
+
+- **`TableValidator`**: Validates table names, detects naming conflicts
+- **`RelationshipValidator`**: Validates relationships, detects circular dependencies
+- **`InputValidator`**: Validates table/column names, UUIDs, SQL identifiers
+
+### Git Operations (`src/git/`)
+
+- **`GitService`**: Git operations (status, commit, push, pull) - requires `git` feature
+
+## Features
+
+The SDK uses Cargo features to enable optional functionality:
+
+- **`default`**: Includes `api-backend` (HTTP API support)
+- **`api-backend`**: Enables `ApiStorageBackend` (reqwest, urlencoding)
+- **`native-fs`**: Enables `FileSystemStorageBackend` (tokio)
+- **`wasm`**: Enables `BrowserStorageBackend` (wasm-bindgen, web-sys)
+- **`png-export`**: Enables PNG diagram export (image, imageproc)
+- **`databricks-dialect`**: Enables Databricks SQL dialect support (datafusion)
+- **`git`**: Enables Git operations (git2)
+
+## Dependencies
+
+### Core Dependencies
+- `serde`, `serde_json`, `serde_yaml`: Serialization
+- `anyhow`, `thiserror`: Error handling
+- `async-trait`: Async trait support
+- `uuid`: UUID generation (v4 random, v5 deterministic)
+- `chrono`: Timestamps
+- `tracing`: Logging
+- `petgraph`: Graph operations for validation
+
+### Optional Dependencies
+- `tokio`: Async runtime (for `native-fs` feature)
+- `reqwest`: HTTP client (for `api-backend` feature)
+- `wasm-bindgen`, `web-sys`: WASM support (for `wasm` feature)
+- `git2`: Git operations (for `git` feature)
+- `image`, `imageproc`: Image processing (for `png-export` feature)
+- `datafusion`: SQL parsing (for `databricks-dialect` feature)
+- `sqlparser`: SQL parsing
+- `yaml-rust`: YAML processing
+
+## Usage Examples
+
+### File System Backend (Native Apps)
+
+```rust
+use data_modelling_sdk::storage::filesystem::FileSystemStorageBackend;
+use data_modelling_sdk::model::ModelLoader;
+
+let storage = FileSystemStorageBackend::new("/path/to/workspace");
+let loader = ModelLoader::new(storage);
+let result = loader.load_model("workspace_path").await?;
+```
+
+### Browser Storage Backend (WASM Apps)
+
+```rust
+use data_modelling_sdk::storage::browser::BrowserStorageBackend;
+use data_modelling_sdk::model::ModelLoader;
+
+let storage = BrowserStorageBackend::new("db_name", "store_name");
+let loader = ModelLoader::new(storage);
+let result = loader.load_model("workspace_path").await?;
+```
+
+### API Backend (Online Mode)
+
+```rust
+use data_modelling_sdk::storage::api::ApiStorageBackend;
+use data_modelling_sdk::model::ModelLoader;
+
+let storage = ApiStorageBackend::new("http://localhost:8081/api/v1", Some("session_id"));
+let loader = ModelLoader::new(storage);
+let result = loader.load_model("workspace_path").await?;
+```
+
+### Import/Export
+
+```rust
+use data_modelling_sdk::import::ODCSImporter;
+use data_modelling_sdk::export::ODCSExporter;
+
+// Import
+let mut importer = ODCSImporter::new();
+let result = importer.import(yaml_content)?;
+
+// Export
+let exporter = ODCSExporter::new();
+let yaml = exporter.export_table(&table)?;
+```
+
+### Validation
+
+```rust
+use data_modelling_sdk::validation::{TableValidator, RelationshipValidator};
+
+let table_validator = TableValidator::new();
+let result = table_validator.detect_naming_conflicts(&tables)?;
+
+let rel_validator = RelationshipValidator::new();
+let (has_cycle, cycle_path) = rel_validator.check_circular_dependency(&relationships, source_id, target_id)?;
+```
+
+## Testing
+
+The SDK includes comprehensive tests:
+
+- **Unit tests**: Individual module tests
+- **Integration tests**: End-to-end workflows
+- **Doctests**: Documentation examples
+
+Run tests:
+```bash
+# All tests
+cargo test --all-features
+
+# Specific test suite
+cargo test --test model_tests --features native-fs
+
+# With output
+cargo test --all-features -- --nocapture
+```
+
+## Development Workflow
+
+### Pre-commit Hooks
+
+The project uses pre-commit hooks for code quality:
+
+```bash
+# Install pre-commit
+pip install pre-commit
+
+# Install hooks
+pre-commit install
+
+# Run manually
+pre-commit run --all-files
+```
+
+Hooks check:
+- Rust formatting (`cargo fmt`)
+- Rust linting (`cargo clippy`)
+- Security audit (`cargo audit`)
+- File formatting (trailing whitespace, end of file)
+- YAML/TOML/JSON syntax
+
+### CI/CD
+
+GitHub Actions workflows:
+- **Lint**: Format check, clippy, security audit
+- **Test**: Unit and integration tests on Linux, macOS, Windows
+- **Build**: Release build verification
+- **Publish**: Automatic publishing to crates.io (manual trigger)
+
+### Building
+
+```bash
+# Development build
+cargo build
+
+# Release build
+cargo build --release
+
+# With specific features
+cargo build --features native-fs,git
+
+# All features
+cargo build --all-features
+```
+
+## Key Design Decisions
+
+1. **Storage Abstraction**: Uses trait-based storage backends to support multiple environments (native, WASM, API)
+2. **Feature Flags**: Optional functionality gated behind features to minimize dependencies
+3. **Async/Await**: Uses async traits for storage operations to support both native and WASM
+4. **Error Handling**: Uses `anyhow::Result` for convenience, `thiserror` for structured errors
+5. **UUID Strategy**: Uses UUIDv5 (deterministic) for model/table IDs to avoid random number generation requirements
+6. **ODCS Primary Format**: ODCS v3.1.0 is the primary format, with legacy ODCL support for backward compatibility
+
+## Common Patterns
+
+### Error Handling
+
+The SDK uses `anyhow::Result` for most operations:
+
+```rust
+use anyhow::Result;
+
+pub async fn load_model(&self, path: &str) -> Result<ModelLoadResult, StorageError> {
+    // ...
+}
+```
+
+### Storage Operations
+
+All storage operations are async and use the `StorageBackend` trait:
+
+```rust
+#[async_trait(?Send)]
+pub trait StorageBackend: Send + Sync {
+    async fn read_file(&self, path: &str) -> Result<Vec<u8>, StorageError>;
+    async fn write_file(&self, path: &str, content: &[u8]) -> Result<(), StorageError>;
+    // ...
+}
+```
+
+### Import/Export Pattern
+
+Importers convert external formats to SDK `Table` models, exporters convert SDK models to external formats:
+
+```rust
+pub trait Importer {
+    fn import(&mut self, content: &str) -> Result<ImportResult, ImportError>;
+}
+
+pub trait Exporter {
+    fn export_table(&self, table: &Table) -> Result<String, ExportError>;
+}
+```
+
+## Security
+
+- Security advisories are tracked via `cargo audit`
+- Configuration in `cargo-audit.toml` allows specific unmaintained warnings
+- Pre-commit hooks run security audits automatically
+
+## License
+
+MIT License - See LICENSE file for details.
