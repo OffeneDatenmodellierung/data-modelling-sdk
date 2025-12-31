@@ -27,9 +27,10 @@ use serde::{Deserialize, Serialize};
 /// // Local mode (offline)
 /// let local_mode = AuthMode::Local;
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum AuthMode {
     /// Not yet selected (desktop/mobile only)
+    #[default]
     None,
     /// Web platform - GitHub SSO required
     Web,
@@ -37,12 +38,6 @@ pub enum AuthMode {
     Local,
     /// Online mode - connects to remote API server
     Online { api_url: String },
-}
-
-impl Default for AuthMode {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// GitHub email information
