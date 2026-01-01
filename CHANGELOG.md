@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-12-31
+
+### Changed
+
+- **refactor(ci)**: Update GitHub workflows
+  - CI workflow now only runs on PR open/update events (not on main branch)
+  - Removed publish job from CI workflow
+  - Build/test only on Linux by default (macOS/Windows optional)
+  - Publish workflow runs on manual trigger or merge to main
+  - Publish workflow creates git tag from Cargo.toml version
+  - Publish workflow verifies version matches CHANGELOG.md
+
+- **fix(auth)**: Use derive Default for AuthMode enum
+  - Replace manual Default impl with derive macro and #[default] attribute
+  - Fixes clippy::derivable_impls warning
+
 ## [1.0.0] - 2024-12-19
 
 ### Added
