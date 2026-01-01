@@ -1,7 +1,7 @@
 //! Model loading functionality
-//! 
+//!
 //! Loads models from storage backends, handling YAML parsing and validation.
-//! 
+//!
 //! Supports both file-based loading (FileSystemStorageBackend, BrowserStorageBackend)
 //! and API-based loading (ApiStorageBackend).
 
@@ -25,30 +25,27 @@ impl<B: StorageBackend> ModelLoader<B> {
     }
 
     /// Load a model from storage
-    /// 
+    ///
     /// For file-based backends (FileSystemStorageBackend, BrowserStorageBackend):
     /// - Loads from `tables/` subdirectory with YAML files
     /// - Loads from `relationships.yaml` file
-    /// 
+    ///
     /// For API backend (ApiStorageBackend), use `load_model_from_api()` instead.
-    /// 
+    ///
     /// Returns the loaded model data and a list of orphaned relationships
     /// (relationships that reference non-existent tables).
-    pub async fn load_model(
-        &self,
-        workspace_path: &str,
-    ) -> Result<ModelLoadResult, StorageError> {
+    pub async fn load_model(&self, workspace_path: &str) -> Result<ModelLoadResult, StorageError> {
         // File-based loading implementation
         self.load_model_from_files(workspace_path).await
     }
-    
+
     /// Load model from file-based storage
     async fn load_model_from_files(
         &self,
         workspace_path: &str,
     ) -> Result<ModelLoadResult, StorageError> {
         let tables_dir = format!("{}/tables", workspace_path);
-        
+
         // Ensure tables directory exists
         if !self.storage.dir_exists(&tables_dir).await? {
             self.storage.create_dir(&tables_dir).await?;
@@ -57,7 +54,7 @@ impl<B: StorageBackend> ModelLoader<B> {
         // Load tables from individual YAML files
         let mut tables = Vec::new();
         let mut table_ids: HashMap<Uuid, String> = HashMap::new();
-        
+
         let files = self.storage.list_files(&tables_dir).await?;
         for file_name in files {
             if file_name.ends_with(".yaml") || file_name.ends_with(".yml") {
@@ -74,7 +71,11 @@ impl<B: StorageBackend> ModelLoader<B> {
             }
         }
 
-        info!("Loaded {} tables from workspace {}", tables.len(), workspace_path);
+        info!(
+            "Loaded {} tables from workspace {}",
+            tables.len(),
+            workspace_path
+        );
 
         // Load relationships from control file
         let relationships_file = format!("{}/relationships.yaml", workspace_path);
@@ -88,20 +89,27 @@ impl<B: StorageBackend> ModelLoader<B> {
                     for rel in loaded_rels {
                         let source_exists = table_ids.contains_key(&rel.source_table_id);
                         let target_exists = table_ids.contains_key(&rel.target_table_id);
-                        
+
                         if source_exists && target_exists {
                             relationships.push(rel.clone());
                         } else {
                             orphaned_relationships.push(rel.clone());
                             warn!(
                                 "Orphaned relationship {}: source={} (exists: {}), target={} (exists: {})",
-                                rel.id, rel.source_table_id, source_exists, rel.target_table_id, target_exists
+                                rel.id,
+                                rel.source_table_id,
+                                source_exists,
+                                rel.target_table_id,
+                                target_exists
                             );
                         }
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to load relationships from {}: {}", relationships_file, e);
+                    warn!(
+                        "Failed to load relationships from {}: {}",
+                        relationships_file, e
+                    );
                 }
             }
         }
@@ -121,6 +129,9 @@ impl<B: StorageBackend> ModelLoader<B> {
     }
 
     /// Load a table from a YAML file
+    ///
+    /// Uses ODCSImporter to fully parse the table structure, including all columns,
+    /// metadata, and nested properties. This ensures complete table data is loaded.
     async fn load_table_from_yaml(
         &self,
         yaml_path: &str,
@@ -130,33 +141,20 @@ impl<B: StorageBackend> ModelLoader<B> {
         let yaml_content = String::from_utf8(content)
             .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
 
-        // Parse YAML to extract table data
-        // In a full implementation, this would use the ODCSParser from the parent crate
-        // For now, we'll parse basic fields
-        let yaml_value: serde_yaml::Value = serde_yaml::from_str(&yaml_content)
-            .map_err(|e| StorageError::SerializationError(format!("Failed to parse YAML: {}", e)))?;
+        // Use ODCSImporter to fully parse the table structure
+        let mut importer = crate::import::odcs::ODCSImporter::new();
+        let (table, parse_errors) = importer.parse_table(&yaml_content).map_err(|e| {
+            StorageError::SerializationError(format!("Failed to parse ODCS YAML: {}", e))
+        })?;
 
-        let name = yaml_value
-            .get("name")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| StorageError::SerializationError("Missing 'name' field".to_string()))?;
-
-        // Parse existing UUID or generate deterministic one based on table name
-        let id = yaml_value
-            .get("id")
-            .and_then(|v| v.as_str())
-            .and_then(|s| Uuid::parse_str(s).ok())
-            .unwrap_or_else(|| {
-                // Extract database_type, catalog_name, schema_name for deterministic ID
-                let db_type = yaml_value
-                    .get("database_type")
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| serde_json::from_str::<crate::models::enums::DatabaseType>(&format!("\"{}\"", s)).ok());
-                let catalog = yaml_value.get("catalog_name").and_then(|v| v.as_str());
-                let schema = yaml_value.get("schema_name").and_then(|v| v.as_str());
-                crate::models::table::Table::generate_id(&name, db_type.as_ref(), catalog, schema)
-            });
+        // Log any parse warnings/errors but don't fail if table was successfully parsed
+        if !parse_errors.is_empty() {
+            warn!(
+                "Table '{}' parsed with {} warnings/errors",
+                table.name,
+                parse_errors.len()
+            );
+        }
 
         // Calculate relative path
         let relative_path = yaml_path
@@ -165,8 +163,8 @@ impl<B: StorageBackend> ModelLoader<B> {
             .unwrap_or_else(|| yaml_path.to_string());
 
         Ok(TableData {
-            id,
-            name,
+            id: table.id,
+            name: table.name,
             yaml_file_path: Some(relative_path),
             yaml_content,
         })
@@ -181,8 +179,9 @@ impl<B: StorageBackend> ModelLoader<B> {
         let yaml_content = String::from_utf8(content)
             .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
 
-        let data: serde_yaml::Value = serde_yaml::from_str(&yaml_content)
-            .map_err(|e| StorageError::SerializationError(format!("Failed to parse YAML: {}", e)))?;
+        let data: serde_yaml::Value = serde_yaml::from_str(&yaml_content).map_err(|e| {
+            StorageError::SerializationError(format!("Failed to parse YAML: {}", e))
+        })?;
 
         let mut relationships = Vec::new();
 
@@ -215,20 +214,29 @@ impl<B: StorageBackend> ModelLoader<B> {
             .get("source_table_id")
             .and_then(|v| v.as_str())
             .and_then(|s| Uuid::parse_str(s).ok())
-            .ok_or_else(|| StorageError::SerializationError("Missing source_table_id".to_string()))?;
+            .ok_or_else(|| {
+                StorageError::SerializationError("Missing source_table_id".to_string())
+            })?;
 
         let target_table_id = data
             .get("target_table_id")
             .and_then(|v| v.as_str())
             .and_then(|s| Uuid::parse_str(s).ok())
-            .ok_or_else(|| StorageError::SerializationError("Missing target_table_id".to_string()))?;
+            .ok_or_else(|| {
+                StorageError::SerializationError("Missing target_table_id".to_string())
+            })?;
 
         // Parse existing UUID or generate deterministic one based on source and target table IDs
         let id = data
             .get("id")
             .and_then(|v| v.as_str())
             .and_then(|s| Uuid::parse_str(s).ok())
-            .unwrap_or_else(|| crate::models::relationship::Relationship::generate_id(source_table_id, target_table_id));
+            .unwrap_or_else(|| {
+                crate::models::relationship::Relationship::generate_id(
+                    source_table_id,
+                    target_table_id,
+                )
+            });
 
         Ok(RelationshipData {
             id,

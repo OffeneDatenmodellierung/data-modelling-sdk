@@ -1,13 +1,71 @@
 //! Protobuf exporter for generating .proto files from data models.
+//!
+//! # Security
+//!
+//! All identifiers are sanitized to comply with Protobuf naming rules.
+//! Reserved words are prefixed with an underscore to avoid conflicts.
 
-use crate::models::{DataModel, Table};
 use super::{ExportError, ExportResult};
+use crate::models::{DataModel, Table};
+
+/// Protobuf reserved words that cannot be used as field names.
+const PROTOBUF_RESERVED: &[&str] = &[
+    "syntax",
+    "import",
+    "weak",
+    "public",
+    "package",
+    "option",
+    "message",
+    "enum",
+    "service",
+    "extend",
+    "extensions",
+    "reserved",
+    "to",
+    "max",
+    "repeated",
+    "optional",
+    "required",
+    "group",
+    "oneof",
+    "map",
+    "returns",
+    "rpc",
+    "stream",
+    "true",
+    "false",
+];
 
 /// Exporter for Protobuf format.
 pub struct ProtobufExporter;
 
 impl ProtobufExporter {
     /// Export tables to Protobuf format (SDK interface).
+    ///
+    /// # Arguments
+    ///
+    /// * `tables` - Slice of tables to export
+    ///
+    /// # Returns
+    ///
+    /// An `ExportResult` containing Protobuf `.proto` file content.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::export::protobuf::ProtobufExporter;
+    /// use data_modelling_sdk::models::{Table, Column};
+    ///
+    /// let tables = vec![
+    ///     Table::new("User".to_string(), vec![Column::new("id".to_string(), "INT64".to_string())]),
+    /// ];
+    ///
+    /// let exporter = ProtobufExporter;
+    /// let result = exporter.export(&tables).unwrap();
+    /// assert_eq!(result.format, "protobuf");
+    /// assert!(result.content.contains("syntax = \"proto3\""));
+    /// ```
     pub fn export(&self, tables: &[Table]) -> Result<ExportResult, ExportError> {
         let proto = Self::export_model_from_tables(tables);
         Ok(ExportResult {
@@ -29,10 +87,36 @@ impl ProtobufExporter {
     }
 
     /// Export a table to Protobuf message format.
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - The table to export
+    /// * `field_number` - Mutable reference to field number counter (incremented for each field)
+    ///
+    /// # Returns
+    ///
+    /// A Protobuf message definition as a string.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::export::protobuf::ProtobufExporter;
+    /// use data_modelling_sdk::models::{Table, Column};
+    ///
+    /// let table = Table::new(
+    ///     "User".to_string(),
+    ///     vec![Column::new("id".to_string(), "INT64".to_string())],
+    /// );
+    ///
+    /// let mut field_number = 0u32;
+    /// let proto = ProtobufExporter::export_table(&table, &mut field_number);
+    /// assert!(proto.contains("message User"));
+    /// ```
     pub fn export_table(table: &Table, field_number: &mut u32) -> String {
         let mut proto = String::new();
 
-        proto.push_str(&format!("message {} {{\n", table.name));
+        let message_name = Self::sanitize_identifier(&table.name);
+        proto.push_str(&format!("message {} {{\n", message_name));
 
         for column in &table.columns {
             *field_number += 1;
@@ -44,16 +128,21 @@ impl ProtobufExporter {
                 ""
             };
 
+            let field_name = Self::sanitize_identifier(&column.name);
+
             proto.push_str(&format!(
-                "  {} {} {} = {};",
-                if column.nullable { "optional" } else { "" },
+                "  {}{}{} {} = {};",
+                if column.nullable { "optional " } else { "" },
                 repeated,
                 proto_type,
+                field_name,
                 field_number
             ));
 
+            // Sanitize description for comments (remove newlines)
             if !column.description.is_empty() {
-                proto.push_str(&format!(" // {}", column.description));
+                let desc = column.description.replace('\n', " ").replace('\r', "");
+                proto.push_str(&format!(" // {}", desc));
             }
 
             proto.push('\n');
@@ -61,6 +150,39 @@ impl ProtobufExporter {
 
         proto.push_str("}\n");
         proto
+    }
+
+    /// Sanitize an identifier for use in Protobuf.
+    ///
+    /// - Replaces invalid characters with underscores
+    /// - Prefixes reserved words with underscore
+    /// - Ensures identifier starts with a letter or underscore
+    fn sanitize_identifier(name: &str) -> String {
+        // Replace dots (nested columns) and other invalid chars with underscores
+        let mut sanitized: String = name
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+
+        // Ensure starts with letter or underscore
+        if let Some(first) = sanitized.chars().next()
+            && first.is_numeric()
+        {
+            sanitized = format!("_{}", sanitized);
+        }
+
+        // Handle reserved words
+        if PROTOBUF_RESERVED.contains(&sanitized.to_lowercase().as_str()) {
+            sanitized = format!("_{}", sanitized);
+        }
+
+        sanitized
     }
 
     /// Export a data model to Protobuf format (legacy method for compatibility).
@@ -94,8 +216,8 @@ impl ProtobufExporter {
         let dt_lower = data_type.to_lowercase();
 
         match dt_lower.as_str() {
-            "int" | "integer" | "smallint" | "tinyint" => "int32".to_string(),
-            "bigint" => "int64".to_string(),
+            "int" | "integer" | "smallint" | "tinyint" | "int32" => "int32".to_string(),
+            "bigint" | "int64" | "long" => "int64".to_string(),
             "float" | "real" => "float".to_string(),
             "double" | "decimal" | "numeric" => "double".to_string(),
             "boolean" | "bool" => "bool".to_string(),
@@ -103,7 +225,6 @@ impl ProtobufExporter {
             "date" | "time" | "timestamp" | "datetime" => "string".to_string(), // Use string for dates
             "uuid" => "string".to_string(),
             _ => {
-                // Default to string for VARCHAR, TEXT, CHAR, etc.
                 // Default to string for VARCHAR, TEXT, CHAR, etc.
                 "string".to_string()
             }

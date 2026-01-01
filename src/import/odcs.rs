@@ -8,10 +8,10 @@
 //! - Simple ODCL format (name, columns) - LEGACY, converted to ODCS
 //! - Liquibase format
 
+use super::{ImportError, ImportResult, TableData};
 use crate::models::column::ForeignKey;
 use crate::models::enums::{DataVaultClassification, DatabaseType, MedallionLayer, SCDPattern};
 use crate::models::{Column, Table};
-use super::{ImportError, ImportResult, TableData};
 use anyhow::{Context, Result};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
@@ -26,6 +26,14 @@ pub struct ODCSImporter {
 
 impl ODCSImporter {
     /// Create a new ODCS parser instance.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::import::odcs::ODCSImporter;
+    ///
+    /// let mut importer = ODCSImporter::new();
+    /// ```
     pub fn new() -> Self {
         Self {
             current_yaml_data: None,
@@ -33,20 +41,58 @@ impl ODCSImporter {
     }
 
     /// Import ODCS/ODCL YAML content and create Table (SDK interface).
+    ///
+    /// Supports ODCS v3.1.0 (primary), legacy ODCL formats (converted to ODCS), and Liquibase formats.
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - ODCS/ODCL YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// An `ImportResult` containing the extracted table and any parse errors.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::import::odcs::ODCSImporter;
+    ///
+    /// let mut importer = ODCSImporter::new();
+    /// let yaml = r#"
+    /// apiVersion: v3.1.0
+    /// kind: DataContract
+    /// id: 550e8400-e29b-41d4-a716-446655440000
+    /// version: 1.0.0
+    /// name: users
+    /// schema:
+    ///   fields:
+    ///     - name: id
+    ///       type: bigint
+    /// "#;
+    /// let result = importer.import(yaml).unwrap();
+    /// assert_eq!(result.tables.len(), 1);
+    /// ```
     pub fn import(&mut self, yaml_content: &str) -> Result<ImportResult, ImportError> {
         match self.parse(yaml_content) {
             Ok((table, errors)) => {
                 let sdk_tables = vec![TableData {
                     table_index: 0,
                     name: Some(table.name.clone()),
-                    columns: table.columns.iter().map(|c| super::ColumnData {
-                        name: c.name.clone(),
-                        data_type: c.data_type.clone(),
-                        nullable: c.nullable,
-                        primary_key: c.primary_key,
-                    }).collect(),
+                    columns: table
+                        .columns
+                        .iter()
+                        .map(|c| super::ColumnData {
+                            name: c.name.clone(),
+                            data_type: c.data_type.clone(),
+                            nullable: c.nullable,
+                            primary_key: c.primary_key,
+                        })
+                        .collect(),
                 }];
-                let sdk_errors: Vec<ImportError> = errors.iter().map(|e| ImportError::ParseError(e.message.clone())).collect();
+                let sdk_errors: Vec<ImportError> = errors
+                    .iter()
+                    .map(|e| ImportError::ParseError(e.message.clone()))
+                    .collect();
                 Ok(ImportResult {
                     tables: sdk_tables,
                     tables_requiring_name: Vec::new(),
@@ -56,6 +102,20 @@ impl ODCSImporter {
             }
             Err(e) => Err(ImportError::ParseError(e.to_string())),
         }
+    }
+
+    /// Parse ODCS/ODCL YAML content and create Table (public method for native app use).
+    ///
+    /// This method returns the full Table object with all metadata, suitable for use in
+    /// native applications that need direct access to the parsed table structure.
+    /// For API use, prefer the `import()` method which returns ImportResult.
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (Table, list of errors/warnings).
+    /// Errors list is empty if parsing is successful.
+    pub fn parse_table(&mut self, yaml_content: &str) -> Result<(Table, Vec<ParserError>)> {
+        self.parse(yaml_content)
     }
 
     /// Parse ODCS/ODCL YAML content and create Table (internal method).
@@ -216,11 +276,11 @@ impl ODCSImporter {
 
         // Extract odcl_metadata
         let mut odcl_metadata = HashMap::new();
-        if let Some(metadata) = data.get("odcl_metadata") {
-            if let Some(obj) = metadata.as_object() {
-                for (key, value) in obj {
-                    odcl_metadata.insert(key.clone(), json_value_to_serde_value(value));
-                }
+        if let Some(metadata) = data.get("odcl_metadata")
+            && let Some(obj) = metadata.as_object()
+        {
+            for (key, value) in obj {
+                odcl_metadata.insert(key.clone(), json_value_to_serde_value(value));
             }
         }
 
@@ -402,18 +462,18 @@ impl ODCSImporter {
         // Check plural form first
         if let Some(arr) = data.get("medallion_layers").and_then(|v| v.as_array()) {
             for item in arr {
-                if let Some(s) = item.as_str() {
-                    if let Ok(layer) = parse_medallion_layer(s) {
-                        layers.push(layer);
-                    }
+                if let Some(s) = item.as_str()
+                    && let Ok(layer) = parse_medallion_layer(s)
+                {
+                    layers.push(layer);
                 }
             }
         }
         // Check singular form (backward compatibility)
-        else if let Some(s) = data.get("medallion_layer").and_then(|v| v.as_str()) {
-            if let Ok(layer) = parse_medallion_layer(s) {
-                layers.push(layer);
-            }
+        else if let Some(s) = data.get("medallion_layer").and_then(|v| v.as_str())
+            && let Ok(layer) = parse_medallion_layer(s)
+        {
+            layers.push(layer);
         }
 
         layers
@@ -470,58 +530,171 @@ impl ODCSImporter {
         }
 
         // Check for quality in metadata (ODCL v3 format)
-        if let Some(metadata) = data.get("metadata") {
-            if let Some(metadata_obj) = metadata.as_object() {
-                if let Some(quality_val) = metadata_obj.get("quality") {
-                    if let Some(arr) = quality_val.as_array() {
-                        // Array of quality rules
-                        for item in arr {
-                            if let Some(obj) = item.as_object() {
-                                let mut rule = HashMap::new();
-                                for (key, value) in obj {
-                                    rule.insert(key.clone(), json_value_to_serde_value(value));
-                                }
-                                quality_rules.push(rule);
-                            }
-                        }
-                    } else if let Some(obj) = quality_val.as_object() {
-                        // Single quality rule object
+        if let Some(metadata) = data.get("metadata")
+            && let Some(metadata_obj) = metadata.as_object()
+            && let Some(quality_val) = metadata_obj.get("quality")
+        {
+            if let Some(arr) = quality_val.as_array() {
+                // Array of quality rules
+                for item in arr {
+                    if let Some(obj) = item.as_object() {
                         let mut rule = HashMap::new();
                         for (key, value) in obj {
                             rule.insert(key.clone(), json_value_to_serde_value(value));
                         }
                         quality_rules.push(rule);
-                    } else if let Some(s) = quality_val.as_str() {
-                        // Simple string quality value
-                        let mut rule = HashMap::new();
-                        rule.insert("value".to_string(), Value::String(s.to_string()));
-                        quality_rules.push(rule);
                     }
                 }
+            } else if let Some(obj) = quality_val.as_object() {
+                // Single quality rule object
+                let mut rule = HashMap::new();
+                for (key, value) in obj {
+                    rule.insert(key.clone(), json_value_to_serde_value(value));
+                }
+                quality_rules.push(rule);
+            } else if let Some(s) = quality_val.as_str() {
+                // Simple string quality value
+                let mut rule = HashMap::new();
+                rule.insert("value".to_string(), Value::String(s.to_string()));
+                quality_rules.push(rule);
             }
         }
 
         // Check for tblproperties field (similar to SQL TBLPROPERTIES)
-        if let Some(tblprops) = data.get("tblproperties") {
-            if let Some(obj) = tblprops.as_object() {
-                for (key, value) in obj {
-                    let mut rule = HashMap::new();
-                    rule.insert("property".to_string(), Value::String(key.clone()));
-                    rule.insert("value".to_string(), json_value_to_serde_value(value));
-                    quality_rules.push(rule);
-                }
+        if let Some(tblprops) = data.get("tblproperties")
+            && let Some(obj) = tblprops.as_object()
+        {
+            for (key, value) in obj {
+                let mut rule = HashMap::new();
+                rule.insert("property".to_string(), Value::String(key.clone()));
+                rule.insert("value".to_string(), json_value_to_serde_value(value));
+                quality_rules.push(rule);
             }
         }
 
         quality_rules
     }
 
-    /// Parse Liquibase format (placeholder - full implementation needed).
-    fn parse_liquibase(&self, _data: &JsonValue) -> Result<(Table, Vec<ParserError>)> {
-        // TODO: Implement full Liquibase parsing
-        Err(anyhow::anyhow!(
-            "Liquibase format parsing not yet implemented"
-        ))
+    /// Parse Liquibase YAML changelog format.
+    ///
+    /// Extracts the first `createTable` change from a Liquibase changelog.
+    /// Supports both direct column definitions and nested column structures.
+    ///
+    /// # Supported Format
+    ///
+    fn parse_liquibase(&self, data: &JsonValue) -> Result<(Table, Vec<ParserError>)> {
+        // Supported Liquibase YAML changelog format:
+        // databaseChangeLog:
+        //   - changeSet:
+        //       - createTable:
+        //           tableName: my_table
+        //           columns:
+        //             - column:
+        //                 name: id
+        //                 type: int
+        //                 constraints:
+        //                   primaryKey: true
+        //                   nullable: false
+
+        let mut errors = Vec::new();
+
+        let changelog = data
+            .get("databaseChangeLog")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Liquibase YAML missing databaseChangeLog array"))?;
+
+        // Find first createTable change.
+        let mut table_name: Option<String> = None;
+        let mut columns: Vec<crate::models::column::Column> = Vec::new();
+
+        for entry in changelog {
+            // Entries are typically maps like { changeSet: [...] } or { changeSet: { changes: [...] } }
+            if let Some(change_set) = entry.get("changeSet") {
+                // Liquibase YAML can represent changeSet as map or list.
+                let changes = if let Some(obj) = change_set.as_object() {
+                    obj.get("changes")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default()
+                } else if let Some(arr) = change_set.as_array() {
+                    // Some variants encode changes directly as list entries inside changeSet.
+                    arr.clone()
+                } else {
+                    Vec::new()
+                };
+
+                for ch in changes {
+                    let create = ch.get("createTable").or_else(|| ch.get("create_table"));
+                    if let Some(create) = create {
+                        table_name = create
+                            .get("tableName")
+                            .or_else(|| create.get("table_name"))
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+
+                        // columns: [ { column: { ... } }, ... ]
+                        if let Some(cols) = create.get("columns").and_then(|v| v.as_array()) {
+                            for col_entry in cols {
+                                let col = col_entry.get("column").unwrap_or(col_entry);
+                                let name = col
+                                    .get("name")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let data_type = col
+                                    .get("type")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+
+                                if name.is_empty() {
+                                    errors.push(ParserError {
+                                        error_type: "validation_error".to_string(),
+                                        field: "columns.name".to_string(),
+                                        message: "Liquibase createTable column missing name"
+                                            .to_string(),
+                                    });
+                                    continue;
+                                }
+
+                                let mut column =
+                                    crate::models::column::Column::new(name, data_type);
+
+                                if let Some(constraints) =
+                                    col.get("constraints").and_then(|v| v.as_object())
+                                {
+                                    if let Some(pk) =
+                                        constraints.get("primaryKey").and_then(|v| v.as_bool())
+                                    {
+                                        column.primary_key = pk;
+                                    }
+                                    if let Some(nullable) =
+                                        constraints.get("nullable").and_then(|v| v.as_bool())
+                                    {
+                                        column.nullable = nullable;
+                                    }
+                                }
+
+                                columns.push(column);
+                            }
+                        }
+
+                        // parse_table() returns a single Table, so we parse the first createTable.
+                        // If multiple tables are needed, call parse_table() multiple times or use import().
+                        break;
+                    }
+                }
+            }
+            if table_name.is_some() {
+                break;
+            }
+        }
+
+        let table_name = table_name
+            .ok_or_else(|| anyhow::anyhow!("Liquibase changelog did not contain a createTable"))?;
+        let table = Table::new(table_name, columns);
+        // Preserve any errors collected.
+        Ok((table, errors))
     }
 
     /// Parse ODCS v3.0.x format.
@@ -675,13 +848,35 @@ impl ODCSImporter {
         let (medallion_layers, scd_pattern, data_vault_classification, mut tags) =
             self.extract_metadata_from_custom_properties(data);
 
+        // Extract sharedDomains from customProperties
+        let mut shared_domains: Vec<String> = Vec::new();
+        if let Some(custom_props) = data.get("customProperties").and_then(|v| v.as_array()) {
+            for prop in custom_props {
+                if let Some(prop_obj) = prop.as_object() {
+                    let prop_key = prop_obj
+                        .get("property")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if (prop_key == "sharedDomains" || prop_key == "shared_domains")
+                        && let Some(arr) = prop_obj.get("value").and_then(|v| v.as_array())
+                    {
+                        for item in arr {
+                            if let Some(s) = item.as_str() {
+                                shared_domains.push(s.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Extract tags from top-level tags field (if not already extracted from customProperties)
         if let Some(tags_arr) = data.get("tags").and_then(|v| v.as_array()) {
             for item in tags_arr {
-                if let Some(s) = item.as_str() {
-                    if !tags.contains(&s.to_string()) {
-                        tags.push(s.to_string());
-                    }
+                if let Some(s) = item.as_str()
+                    && !tags.contains(&s.to_string())
+                {
+                    tags.push(s.to_string());
                 }
             }
         }
@@ -795,6 +990,18 @@ impl ODCSImporter {
             );
         }
 
+        // Store sharedDomains in metadata (extracted from customProperties above)
+        if !shared_domains.is_empty() {
+            let shared_domains_json: Vec<serde_json::Value> = shared_domains
+                .iter()
+                .map(|d| serde_json::Value::String(d.clone()))
+                .collect();
+            odcl_metadata.insert(
+                "sharedDomains".to_string(),
+                serde_json::Value::Array(shared_domains_json),
+            );
+        }
+
         let table_uuid = self.extract_table_uuid(data);
 
         let table = Table {
@@ -835,21 +1042,28 @@ impl ODCSImporter {
         data: &JsonValue,
     ) -> Result<Vec<Column>> {
         // Reuse Data Contract field parsing logic (they're similar)
-        self.parse_data_contract_field(prop_name, prop_data, data)
+        let mut errors = Vec::new();
+        self.parse_data_contract_field(prop_name, prop_data, data, &mut errors)
     }
 
     /// Extract table UUID from ODCS `id` field (standard) or fallback to customProperties/odcl_metadata (backward compatibility).
     /// Returns the UUID if found, otherwise generates a new one.
     fn extract_table_uuid(&self, data: &JsonValue) -> uuid::Uuid {
         // First check the top-level `id` field (ODCS spec: "A unique identifier used to reduce the risk of dataset name collisions, such as a UUID.")
-        if let Some(id_val) = data.get("id") {
-            if let Some(id_str) = id_val.as_str() {
-                if let Ok(uuid) = uuid::Uuid::parse_str(id_str) {
-                    tracing::debug!("[ODCSImporter] Extracted UUID from top-level 'id' field: {}", uuid);
-                    return uuid;
-                } else {
-                    tracing::warn!("[ODCSImporter] Found 'id' field but failed to parse as UUID: {}", id_str);
-                }
+        if let Some(id_val) = data.get("id")
+            && let Some(id_str) = id_val.as_str()
+        {
+            if let Ok(uuid) = uuid::Uuid::parse_str(id_str) {
+                tracing::debug!(
+                    "[ODCSImporter] Extracted UUID from top-level 'id' field: {}",
+                    uuid
+                );
+                return uuid;
+            } else {
+                tracing::warn!(
+                    "[ODCSImporter] Found 'id' field but failed to parse as UUID: {}",
+                    id_str
+                );
             }
         }
 
@@ -861,40 +1075,40 @@ impl ODCSImporter {
                         .get("property")
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
-                    if prop_key == "tableUuid" {
-                        if let Some(uuid_str) = prop_obj
-                            .get("value")
-                            .and_then(|v| v.as_str())
-                        {
-                            if let Ok(uuid) = uuid::Uuid::parse_str(uuid_str) {
-                                tracing::debug!("[ODCSImporter] Extracted UUID from customProperties.tableUuid: {}", uuid);
-                                return uuid;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fallback: check odcl_metadata if present (legacy format)
-        if let Some(metadata) = data.get("odcl_metadata").and_then(|v| v.as_object()) {
-            if let Some(uuid_val) = metadata.get("tableUuid") {
-                if let Some(uuid_str) = uuid_val.as_str() {
-                    if let Ok(uuid) = uuid::Uuid::parse_str(uuid_str) {
-                        tracing::debug!("[ODCSImporter] Extracted UUID from odcl_metadata.tableUuid: {}", uuid);
+                    if prop_key == "tableUuid"
+                        && let Some(uuid_str) = prop_obj.get("value").and_then(|v| v.as_str())
+                        && let Ok(uuid) = uuid::Uuid::parse_str(uuid_str)
+                    {
+                        tracing::debug!(
+                            "[ODCSImporter] Extracted UUID from customProperties.tableUuid: {}",
+                            uuid
+                        );
                         return uuid;
                     }
                 }
             }
         }
 
+        // Fallback: check odcl_metadata if present (legacy format)
+        if let Some(metadata) = data.get("odcl_metadata").and_then(|v| v.as_object())
+            && let Some(uuid_val) = metadata.get("tableUuid")
+            && let Some(uuid_str) = uuid_val.as_str()
+            && let Ok(uuid) = uuid::Uuid::parse_str(uuid_str)
+        {
+            tracing::debug!(
+                "[ODCSImporter] Extracted UUID from odcl_metadata.tableUuid: {}",
+                uuid
+            );
+            return uuid;
+        }
+
         // Generate deterministic UUID v5 if not found (based on table name)
-        let table_name = data.get("name")
+        let table_name = data
+            .get("name")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
         let new_uuid = crate::models::table::Table::generate_id(
-            table_name,
-            None, // database_type not available here
+            table_name, None, // database_type not available here
             None, // catalog_name not available here
             None, // schema_name not available here
         );
@@ -934,10 +1148,10 @@ impl ODCSImporter {
                         "medallionLayers" | "medallion_layers" => {
                             if let Some(arr) = prop_value.and_then(|v| v.as_array()) {
                                 for item in arr {
-                                    if let Some(s) = item.as_str() {
-                                        if let Ok(layer) = parse_medallion_layer(s) {
-                                            medallion_layers.push(layer);
-                                        }
+                                    if let Some(s) = item.as_str()
+                                        && let Ok(layer) = parse_medallion_layer(s)
+                                    {
+                                        medallion_layers.push(layer);
                                     }
                                 }
                             } else if let Some(s) = prop_value.and_then(|v| v.as_str()) {
@@ -973,6 +1187,10 @@ impl ODCSImporter {
                                 }
                             }
                         }
+                        "sharedDomains" | "shared_domains" => {
+                            // sharedDomains will be stored in metadata by the caller
+                            // This match is here for completeness but sharedDomains is handled separately
+                        }
                         _ => {}
                     }
                 }
@@ -982,10 +1200,10 @@ impl ODCSImporter {
         // Also extract tags from top-level tags field
         if let Some(tags_arr) = data.get("tags").and_then(|v| v.as_array()) {
             for item in tags_arr {
-                if let Some(s) = item.as_str() {
-                    if !tags.contains(&s.to_string()) {
-                        tags.push(s.to_string());
-                    }
+                if let Some(s) = item.as_str()
+                    && !tags.contains(&s.to_string())
+                {
+                    tags.push(s.to_string());
                 }
             }
         }
@@ -1001,13 +1219,13 @@ impl ODCSImporter {
     /// Extract database type from servers in ODCS v3.0.x format.
     fn extract_database_type_from_odcl_v3_servers(&self, data: &JsonValue) -> Option<DatabaseType> {
         // ODCS v3.0.x: servers is an array of Server objects
-        if let Some(servers_arr) = data.get("servers").and_then(|v| v.as_array()) {
-            if let Some(server_obj) = servers_arr.first().and_then(|v| v.as_object()) {
-                return server_obj
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| self.parse_database_type(s));
-            }
+        if let Some(servers_arr) = data.get("servers").and_then(|v| v.as_array())
+            && let Some(server_obj) = servers_arr.first().and_then(|v| v.as_object())
+        {
+            return server_obj
+                .get("type")
+                .and_then(|v| v.as_str())
+                .and_then(|s| self.parse_database_type(s));
         }
         None
     }
@@ -1022,7 +1240,8 @@ impl ODCSImporter {
             .and_then(|v| v.as_object())
             .ok_or_else(|| anyhow::anyhow!("Data Contract YAML missing 'models' field"))?;
 
-        // For now, parse the first model
+        // parse_table() returns a single Table, so we parse the first model.
+        // If multiple models are needed, call parse_table() multiple times or use import().
         let (model_name, model_data) = models
             .iter()
             .next()
@@ -1080,7 +1299,7 @@ impl ODCSImporter {
         let mut columns = Vec::new();
         for (field_name, field_data) in fields {
             if let Some(field_obj) = field_data.as_object() {
-                match self.parse_data_contract_field(field_name, field_obj, data) {
+                match self.parse_data_contract_field(field_name, field_obj, data, &mut errors) {
                     Ok(mut cols) => columns.append(&mut cols),
                     Err(e) => {
                         errors.push(ParserError {
@@ -1210,6 +1429,28 @@ impl ODCSImporter {
         // Extract catalog and schema from customProperties
         let (catalog_name, schema_name) = self.extract_catalog_schema(data);
 
+        // Extract sharedDomains from customProperties
+        let mut shared_domains: Vec<String> = Vec::new();
+        if let Some(custom_props) = data.get("customProperties").and_then(|v| v.as_array()) {
+            for prop in custom_props {
+                if let Some(prop_obj) = prop.as_object() {
+                    let prop_key = prop_obj
+                        .get("property")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if (prop_key == "sharedDomains" || prop_key == "shared_domains")
+                        && let Some(arr) = prop_obj.get("value").and_then(|v| v.as_array())
+                    {
+                        for item in arr {
+                            if let Some(s) = item.as_str() {
+                                shared_domains.push(s.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Extract tags from top-level tags field (Data Contract format)
         let mut tags = Vec::new();
         if let Some(tags_arr) = data.get("tags").and_then(|v| v.as_array()) {
@@ -1222,6 +1463,18 @@ impl ODCSImporter {
 
         // Extract quality rules
         let quality_rules = self.extract_quality_rules(data);
+
+        // Store sharedDomains in metadata
+        if !shared_domains.is_empty() {
+            let shared_domains_json: Vec<serde_json::Value> = shared_domains
+                .iter()
+                .map(|d| serde_json::Value::String(d.clone()))
+                .collect();
+            odcl_metadata.insert(
+                "sharedDomains".to_string(),
+                serde_json::Value::Array(shared_domains_json),
+            );
+        }
 
         let table_uuid = self.extract_table_uuid(data);
 
@@ -1255,12 +1508,208 @@ impl ODCSImporter {
         Ok((table, errors))
     }
 
+    /// Expand a nested column from a schema definition, creating columns with dot notation.
+    ///
+    /// This helper function recursively expands nested structures (OBJECT/STRUCT types)
+    /// into flat columns with dot notation (e.g., "address.street", "address.city").
+    #[allow(clippy::only_used_in_recursion)]
+    fn expand_nested_column(
+        &self,
+        column_name: &str,
+        schema: &JsonValue,
+        nullable: bool,
+        columns: &mut Vec<Column>,
+        errors: &mut Vec<ParserError>,
+    ) {
+        let schema_obj = match schema.as_object() {
+            Some(obj) => obj,
+            None => {
+                errors.push(ParserError {
+                    error_type: "parse_error".to_string(),
+                    field: column_name.to_string(),
+                    message: "Nested schema must be an object".to_string(),
+                });
+                return;
+            }
+        };
+
+        let schema_type = schema_obj
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("object");
+
+        match schema_type {
+            "object" | "struct" => {
+                // Check if it has nested properties
+                if let Some(properties) = schema_obj.get("properties").and_then(|v| v.as_object()) {
+                    let nested_required: Vec<String> = schema_obj
+                        .get("required")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    for (nested_name, nested_schema) in properties {
+                        let nested_nullable = !nested_required.contains(nested_name);
+                        self.expand_nested_column(
+                            &format!("{}.{}", column_name, nested_name),
+                            nested_schema,
+                            nullable || nested_nullable,
+                            columns,
+                            errors,
+                        );
+                    }
+                } else {
+                    // Object without properties - create as OBJECT type
+                    let description = schema_obj
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    columns.push(Column {
+                        name: column_name.to_string(),
+                        data_type: "OBJECT".to_string(),
+                        nullable,
+                        primary_key: false,
+                        secondary_key: false,
+                        composite_key: None,
+                        foreign_key: None,
+                        constraints: Vec::new(),
+                        description,
+                        quality: Vec::new(),
+                        enum_values: Vec::new(),
+                        errors: Vec::new(),
+                        column_order: 0,
+                    });
+                }
+            }
+            "array" => {
+                // Handle array types
+                let items = schema_obj.get("items").unwrap_or(schema);
+                let items_type = items
+                    .as_object()
+                    .and_then(|obj| obj.get("type").and_then(|v| v.as_str()))
+                    .unwrap_or("string");
+
+                if items_type == "object" || items_type == "struct" {
+                    // Array of objects - expand nested structure
+                    let description = schema_obj
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    columns.push(Column {
+                        name: column_name.to_string(),
+                        data_type: "ARRAY<OBJECT>".to_string(),
+                        nullable,
+                        primary_key: false,
+                        secondary_key: false,
+                        composite_key: None,
+                        foreign_key: None,
+                        constraints: Vec::new(),
+                        description,
+                        quality: Vec::new(),
+                        enum_values: Vec::new(),
+                        errors: Vec::new(),
+                        column_order: 0,
+                    });
+                    // Also expand nested properties with array prefix
+                    if let Some(properties) = items
+                        .as_object()
+                        .and_then(|obj| obj.get("properties").and_then(|v| v.as_object()))
+                    {
+                        let nested_required: Vec<String> = items
+                            .as_object()
+                            .and_then(|obj| obj.get("required").and_then(|v| v.as_array()))
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
+                        for (nested_name, nested_schema) in properties {
+                            let nested_nullable = !nested_required.contains(nested_name);
+                            self.expand_nested_column(
+                                &format!("{}.{}", column_name, nested_name),
+                                nested_schema,
+                                nullable || nested_nullable,
+                                columns,
+                                errors,
+                            );
+                        }
+                    }
+                } else {
+                    // Array of primitives
+                    let data_type = format!("ARRAY<{}>", items_type.to_uppercase());
+                    let description = schema_obj
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    columns.push(Column {
+                        name: column_name.to_string(),
+                        data_type,
+                        nullable,
+                        primary_key: false,
+                        secondary_key: false,
+                        composite_key: None,
+                        foreign_key: None,
+                        constraints: Vec::new(),
+                        description,
+                        quality: Vec::new(),
+                        enum_values: Vec::new(),
+                        errors: Vec::new(),
+                        column_order: 0,
+                    });
+                }
+            }
+            _ => {
+                // Simple type
+                let data_type = schema_type.to_uppercase();
+                let description = schema_obj
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let enum_values = schema_obj
+                    .get("enum")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                columns.push(Column {
+                    name: column_name.to_string(),
+                    data_type,
+                    nullable,
+                    primary_key: false,
+                    secondary_key: false,
+                    composite_key: None,
+                    foreign_key: None,
+                    constraints: Vec::new(),
+                    description,
+                    quality: Vec::new(),
+                    enum_values,
+                    errors: Vec::new(),
+                    column_order: 0,
+                });
+            }
+        }
+    }
+
     /// Parse a single field from Data Contract format.
     fn parse_data_contract_field(
         &self,
         field_name: &str,
         field_data: &serde_json::Map<String, JsonValue>,
         data: &JsonValue,
+        errors: &mut Vec<ParserError>,
     ) -> Result<Vec<Column>> {
         let mut columns = Vec::new();
 
@@ -1349,28 +1798,67 @@ impl ODCSImporter {
                     || definition.get("fields").is_some();
 
                 if has_nested {
-                    // Expand STRUCT from definition (simplified - full implementation needed)
-                    // For now, create parent column as OBJECT
-                    columns.push(Column {
-                        name: field_name.to_string(),
-                        data_type: "OBJECT".to_string(),
-                        nullable: !required,
-                        primary_key: false,
-                        secondary_key: false,
-                        composite_key: None,
-                        foreign_key: None,
-                        constraints: Vec::new(),
-                        description: field_data
-                            .get("description")
-                            .or_else(|| definition.get("description"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                        errors: Vec::new(),
-                        quality: quality_rules.clone(),
-                        enum_values: Vec::new(),
-                        column_order: 0,
-                    });
+                    // Expand STRUCT from definition into nested columns with dot notation
+                    if let Some(properties) =
+                        definition.get("properties").and_then(|v| v.as_object())
+                    {
+                        // Recursively expand nested properties
+                        let nested_required: Vec<String> = definition
+                            .get("required")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
+                        for (nested_name, nested_schema) in properties {
+                            let nested_required_field = nested_required.contains(nested_name);
+                            self.expand_nested_column(
+                                &format!("{}.{}", field_name, nested_name),
+                                nested_schema,
+                                !nested_required_field,
+                                &mut columns,
+                                errors,
+                            );
+                        }
+                    } else if let Some(fields) =
+                        definition.get("fields").and_then(|v| v.as_object())
+                    {
+                        // Handle fields format (ODCL style)
+                        for (nested_name, nested_schema) in fields {
+                            self.expand_nested_column(
+                                &format!("{}.{}", field_name, nested_name),
+                                nested_schema,
+                                true, // Assume nullable if not specified
+                                &mut columns,
+                                errors,
+                            );
+                        }
+                    } else {
+                        // Fallback: create parent column as OBJECT if we can't expand
+                        columns.push(Column {
+                            name: field_name.to_string(),
+                            data_type: "OBJECT".to_string(),
+                            nullable: !required,
+                            primary_key: false,
+                            secondary_key: false,
+                            composite_key: None,
+                            foreign_key: None,
+                            constraints: Vec::new(),
+                            description: field_data
+                                .get("description")
+                                .or_else(|| definition.get("description"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            errors: Vec::new(),
+                            quality: quality_rules.clone(),
+                            enum_values: Vec::new(),
+                            column_order: 0,
+                        });
+                    }
                 } else {
                     // Simple type from definition
                     let def_type = definition
@@ -1540,7 +2028,7 @@ impl ODCSImporter {
                             .get("properties")
                             .and_then(|v| v.as_object())
                             .or_else(|| items_obj.get("fields").and_then(|v| v.as_object()));
-                        
+
                         if let Some(fields_obj) = nested_fields_obj {
                             for (nested_field_name, nested_field_data) in fields_obj {
                                 if let Some(nested_field_obj) = nested_field_data.as_object() {
@@ -1552,10 +2040,12 @@ impl ODCSImporter {
                                     // Recursively parse nested fields with array prefix
                                     let nested_col_name =
                                         format!("{}.{}", field_name, nested_field_name);
+                                    let mut local_errors = Vec::new();
                                     match self.parse_data_contract_field(
                                         &nested_col_name,
                                         nested_field_obj,
                                         data,
+                                        &mut local_errors,
                                     ) {
                                         Ok(mut nested_cols) => {
                                             // If nested field is itself an OBJECT/STRUCT, it will return multiple columns
@@ -1678,10 +2168,11 @@ impl ODCSImporter {
             .get("properties")
             .and_then(|v| v.as_object())
             .or_else(|| field_data.get("fields").and_then(|v| v.as_object()));
-        
-        if field_type == "OBJECT" && nested_fields_obj.is_some() {
+
+        if field_type == "OBJECT"
+            && let Some(fields_obj) = nested_fields_obj
+        {
             // Inline nested object - create parent column as OBJECT and extract nested fields
-            let fields_obj = nested_fields_obj.unwrap();
 
             // Create parent column
             columns.push(Column {
@@ -1863,13 +2354,13 @@ impl ODCSImporter {
         // Data Contract format: servers can be object or array
         if let Some(servers_obj) = data.get("servers").and_then(|v| v.as_object()) {
             // Object format: { "server_name": { "type": "..." } }
-            if let Some((_, server_data)) = servers_obj.iter().next() {
-                if let Some(server_obj) = server_data.as_object() {
-                    return server_obj
-                        .get("type")
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| self.parse_database_type(s));
-                }
+            if let Some((_, server_data)) = servers_obj.iter().next()
+                && let Some(server_obj) = server_data.as_object()
+            {
+                return server_obj
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| self.parse_database_type(s));
             }
         } else if let Some(servers_arr) = data.get("servers").and_then(|v| v.as_array()) {
             // Array format: [ { "server": "...", "type": "..." } ]
@@ -2068,10 +2559,10 @@ impl ODCSImporter {
                 ',' if !in_string && depth == 0 => {
                     // End of current field
                     let trimmed = current_field.trim();
-                    if !trimmed.is_empty() {
-                        if let Some((name, type_part)) = self.parse_field_definition(trimmed) {
-                            fields.push((name, type_part));
-                        }
+                    if !trimmed.is_empty()
+                        && let Some((name, type_part)) = self.parse_field_definition(trimmed)
+                    {
+                        fields.push((name, type_part));
                     }
                     current_field.clear();
                 }
@@ -2083,10 +2574,10 @@ impl ODCSImporter {
 
         // Handle last field
         let trimmed = current_field.trim();
-        if !trimmed.is_empty() {
-            if let Some((name, type_part)) = self.parse_field_definition(trimmed) {
-                fields.push((name, type_part));
-            }
+        if !trimmed.is_empty()
+            && let Some((name, type_part)) = self.parse_field_definition(trimmed)
+        {
+            fields.push((name, type_part));
         }
 
         Ok(fields)
@@ -2157,7 +2648,7 @@ impl Default for ODCSImporter {
     }
 }
 
-/// Parser error information.
+/// Parser error structure for detailed error reporting.
 #[derive(Debug, Clone)]
 pub struct ParserError {
     pub error_type: String,
@@ -2187,27 +2678,27 @@ fn normalize_data_type(data_type: &str) -> String {
 
     // Handle STRUCT<...>, ARRAY<...>, MAP<...> preserving inner content
     if upper.starts_with("STRUCT") {
-        if let Some(start) = data_type.find('<') {
-            if let Some(end) = data_type.rfind('>') {
-                let inner = &data_type[start + 1..end];
-                return format!("STRUCT<{}>", inner);
-            }
+        if let Some(start) = data_type.find('<')
+            && let Some(end) = data_type.rfind('>')
+        {
+            let inner = &data_type[start + 1..end];
+            return format!("STRUCT<{}>", inner);
         }
         return format!("STRUCT{}", &data_type[6..]);
     } else if upper.starts_with("ARRAY") {
-        if let Some(start) = data_type.find('<') {
-            if let Some(end) = data_type.rfind('>') {
-                let inner = &data_type[start + 1..end];
-                return format!("ARRAY<{}>", inner);
-            }
+        if let Some(start) = data_type.find('<')
+            && let Some(end) = data_type.rfind('>')
+        {
+            let inner = &data_type[start + 1..end];
+            return format!("ARRAY<{}>", inner);
         }
         return format!("ARRAY{}", &data_type[5..]);
     } else if upper.starts_with("MAP") {
-        if let Some(start) = data_type.find('<') {
-            if let Some(end) = data_type.rfind('>') {
-                let inner = &data_type[start + 1..end];
-                return format!("MAP<{}>", inner);
-            }
+        if let Some(start) = data_type.find('<')
+            && let Some(end) = data_type.rfind('>')
+        {
+            let inner = &data_type[start + 1..end];
+            return format!("MAP<{}>", inner);
         }
         return format!("MAP{}", &data_type[3..]);
     }

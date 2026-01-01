@@ -1,0 +1,21 @@
+# Cargo audit configuration
+# This file allows specific advisories that are acceptable for this project
+
+# Allow unmaintained warnings for transitive dependencies
+# These are acceptable because:
+# 1. They come from optional feature-gated dependencies (imageproc, datafusion)
+# 2. They are unmaintained warnings, not security vulnerabilities
+# 3. The crates are still functional and widely used
+
+[advisories]
+# custom_derive - transitive via imageproc (png-export feature)
+# This is an unmaintained warning, not a security issue
+allow = [
+    "RUSTSEC-2025-0058",  # custom_derive unmaintained
+    "RUSTSEC-2024-0436",  # paste unmaintained (via datafusion and imageproc)
+    "RUSTSEC-2021-0140",  # rusttype unmaintained (via imageproc)
+    "RUSTSEC-2024-0320",  # yaml-rust unmaintained (direct dependency)
+]
+
+# Only deny actual security vulnerabilities, not unmaintained warnings
+deny = []

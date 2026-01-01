@@ -245,7 +245,7 @@ impl ODCLExporter {
 
         // Build properties from columns
         let mut properties = serde_yaml::Mapping::new();
-        
+
         // Helper function to build nested properties structure
         fn build_nested_properties(
             parent_name: &str,
@@ -263,19 +263,22 @@ impl ODCLExporter {
             }
 
             let mut nested_props = serde_yaml::Mapping::new();
-            
+
             // Group nested columns by their immediate child name (first level only)
             let mut child_map: std::collections::HashMap<String, Vec<&crate::models::Column>> =
                 std::collections::HashMap::new();
-            
+
             for nested_col in &nested_columns {
-                let relative_name = nested_col.name.strip_prefix(&parent_prefix).unwrap();
+                // Safety: skip columns that don't start with the expected prefix
+                let Some(relative_name) = nested_col.name.strip_prefix(&parent_prefix) else {
+                    continue;
+                };
                 if let Some(dot_pos) = relative_name.find('.') {
                     let child_name = &relative_name[..dot_pos];
-                    child_map.entry(child_name.to_string()).or_insert_with(Vec::new).push(nested_col);
+                    child_map.entry(child_name.to_string()).or_default().push(nested_col);
                 } else {
                     // Direct child - add to map
-                    child_map.entry(relative_name.to_string()).or_insert_with(Vec::new).push(nested_col);
+                    child_map.entry(relative_name.to_string()).or_default().push(nested_col);
                 }
             }
 
@@ -283,25 +286,27 @@ impl ODCLExporter {
             for (child_name, child_cols) in child_map {
                 // Find the direct child column (no dots in relative name)
                 let direct_child = child_cols.iter().find(|col| {
-                    let rel_name = col.name.strip_prefix(&parent_prefix).unwrap();
-                    !rel_name.contains('.')
+                    col.name.strip_prefix(&parent_prefix)
+                        .map(|rel_name| !rel_name.contains('.'))
+                        .unwrap_or(false)
                 });
 
                 if let Some(child_col) = direct_child {
                     let mut child_prop = serde_yaml::Mapping::new();
-                    
+
                     // Check if this child has nested children
                     let child_has_nested = child_cols.iter().any(|col| {
-                        let rel = col.name.strip_prefix(&parent_prefix).unwrap();
-                        rel.starts_with(&format!("{}.", child_name)) && rel != child_name
+                        col.name.strip_prefix(&parent_prefix)
+                            .map(|rel| rel.starts_with(&format!("{}.", child_name)) && rel != child_name)
+                            .unwrap_or(false)
                     });
 
                     // Handle ARRAY<OBJECT> or ARRAY<STRUCT> types
                     let data_type_upper = child_col.data_type.to_uppercase();
-                    let is_array_object = data_type_upper.starts_with("ARRAY<") 
+                    let is_array_object = data_type_upper.starts_with("ARRAY<")
                         && (data_type_upper.contains("OBJECT") || data_type_upper.contains("STRUCT"));
-                    let is_struct_or_object = data_type_upper == "STRUCT" 
-                        || data_type_upper == "OBJECT" 
+                    let is_struct_or_object = data_type_upper == "STRUCT"
+                        || data_type_upper == "OBJECT"
                         || data_type_upper.starts_with("STRUCT<");
 
                     // Try to build nested properties first (regardless of type)
@@ -313,13 +318,13 @@ impl ODCLExporter {
                             serde_yaml::Value::String("type".to_string()),
                             serde_yaml::Value::String("array".to_string()),
                         );
-                        
+
                         let mut items = serde_yaml::Mapping::new();
                         items.insert(
                             serde_yaml::Value::String("type".to_string()),
                             serde_yaml::Value::String("object".to_string()),
                         );
-                        
+
                         // Add nested properties if they exist
                         if let Some(nested_props) = nested_props_map {
                             items.insert(
@@ -327,7 +332,7 @@ impl ODCLExporter {
                                 serde_yaml::Value::Mapping(nested_props),
                             );
                         }
-                        
+
                         child_prop.insert(
                             serde_yaml::Value::String("items".to_string()),
                             serde_yaml::Value::Mapping(items),
@@ -338,7 +343,7 @@ impl ODCLExporter {
                             serde_yaml::Value::String("type".to_string()),
                             serde_yaml::Value::String("object".to_string()),
                         );
-                        
+
                         // Add nested properties if they exist
                         if let Some(nested_props) = nested_props_map {
                             child_prop.insert(
@@ -454,7 +459,7 @@ impl ODCLExporter {
             }
 
             let mut prop = serde_yaml::Mapping::new();
-            
+
             // Check if this column has nested columns
             let has_nested = table.columns.iter().any(|col| {
                 col.name.starts_with(&format!("{}.", column.name)) && col.name != column.name
@@ -462,30 +467,30 @@ impl ODCLExporter {
 
             // Determine the type - handle ARRAY<OBJECT>, STRUCT, OBJECT, etc.
             let data_type_upper = column.data_type.to_uppercase();
-            let is_array_object = data_type_upper.starts_with("ARRAY<") 
+            let is_array_object = data_type_upper.starts_with("ARRAY<")
                 && (data_type_upper.contains("OBJECT") || data_type_upper.contains("STRUCT"));
-            let is_struct_or_object = data_type_upper == "STRUCT" 
-                || data_type_upper == "OBJECT" 
+            let is_struct_or_object = data_type_upper == "STRUCT"
+                || data_type_upper == "OBJECT"
                 || data_type_upper.starts_with("STRUCT<");
 
             // Always check for nested properties if nested columns exist
             if has_nested {
                 // Try to build nested properties first
                 let nested_props = build_nested_properties(&column.name, &table.columns, &Self::json_to_yaml_value);
-                
+
                 if is_array_object {
                     // ARRAY<OBJECT> with nested fields
                     prop.insert(
                         serde_yaml::Value::String("type".to_string()),
                         serde_yaml::Value::String("array".to_string()),
                     );
-                    
+
                     let mut items = serde_yaml::Mapping::new();
                     items.insert(
                         serde_yaml::Value::String("type".to_string()),
                         serde_yaml::Value::String("object".to_string()),
                     );
-                    
+
                     // Add nested properties if they exist
                     if let Some(nested_props_map) = nested_props {
                         items.insert(
@@ -493,7 +498,7 @@ impl ODCLExporter {
                             serde_yaml::Value::Mapping(nested_props_map),
                         );
                     }
-                    
+
                     prop.insert(
                         serde_yaml::Value::String("items".to_string()),
                         serde_yaml::Value::Mapping(items),
@@ -504,7 +509,7 @@ impl ODCLExporter {
                         serde_yaml::Value::String("type".to_string()),
                         serde_yaml::Value::String("object".to_string()),
                     );
-                    
+
                     // Add nested properties if they exist
                     if let Some(nested_props_map) = nested_props {
                         prop.insert(

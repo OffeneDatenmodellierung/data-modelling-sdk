@@ -1,5 +1,5 @@
 //! Export functionality
-//! 
+//!
 //! Provides exporters for various formats:
 //! - SQL
 //! - JSON Schema
@@ -8,18 +8,21 @@
 //! - ODCS (Open Data Contract Standard) v3.1.0
 //! - PNG
 
-pub mod sql;
-pub mod json_schema;
 pub mod avro;
-pub mod protobuf;
+pub mod json_schema;
 pub mod odcs;
 #[cfg(feature = "png-export")]
 pub mod png;
+pub mod protobuf;
+pub mod sql;
 
 // anyhow::Result not currently used in this module
 
-/// Result of an export operation
+/// Result of an export operation.
+///
+/// Contains the exported content and format identifier.
 #[derive(Debug)]
+#[must_use = "export results contain the exported content and should be used"]
 pub struct ExportResult {
     /// Exported content (as string - binary formats will be base64 encoded)
     pub content: String,
@@ -47,10 +50,10 @@ impl From<Box<dyn std::error::Error>> for ExportError {
 }
 
 // Re-export for convenience
-pub use sql::SQLExporter;
-pub use json_schema::JSONSchemaExporter;
 pub use avro::AvroExporter;
-pub use protobuf::ProtobufExporter;
+pub use json_schema::JSONSchemaExporter;
 pub use odcs::ODCSExporter;
 #[cfg(feature = "png-export")]
 pub use png::PNGExporter;
+pub use protobuf::ProtobufExporter;
+pub use sql::SQLExporter;

@@ -1,18 +1,44 @@
 //! AVRO schema exporter for generating AVRO schemas from data models.
 
-use crate::models::{DataModel, Table};
-use serde_json::{json, Value};
 use super::{ExportError, ExportResult};
+use crate::models::{DataModel, Table};
+use serde_json::{Value, json};
 
 /// Exporter for AVRO schema format.
 pub struct AvroExporter;
 
 impl AvroExporter {
     /// Export tables to AVRO schema format (SDK interface).
+    ///
+    /// # Arguments
+    ///
+    /// * `tables` - Slice of tables to export
+    ///
+    /// # Returns
+    ///
+    /// An `ExportResult` containing AVRO schema(s) as JSON.
+    /// If a single table is provided, returns a single schema object.
+    /// If multiple tables are provided, returns an array of schemas.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::export::avro::AvroExporter;
+    /// use data_modelling_sdk::models::{Table, Column};
+    ///
+    /// let tables = vec![
+    ///     Table::new("User".to_string(), vec![Column::new("id".to_string(), "INT64".to_string())]),
+    /// ];
+    ///
+    /// let exporter = AvroExporter;
+    /// let result = exporter.export(&tables).unwrap();
+    /// assert_eq!(result.format, "avro");
+    /// ```
     pub fn export(&self, tables: &[Table]) -> Result<ExportResult, ExportError> {
         let schema = Self::export_model_from_tables(tables);
         Ok(ExportResult {
-            content: serde_json::to_string_pretty(&schema).map_err(|e| ExportError::SerializationError(e.to_string()))?,
+            content: serde_json::to_string_pretty(&schema)
+                .map_err(|e| ExportError::SerializationError(e.to_string()))?,
             format: "avro".to_string(),
         })
     }
@@ -21,12 +47,36 @@ impl AvroExporter {
         if tables.len() == 1 {
             Self::export_table(&tables[0])
         } else {
-            let schemas: Vec<serde_json::Value> = tables.iter().map(|t| Self::export_table(t)).collect();
+            let schemas: Vec<serde_json::Value> = tables.iter().map(Self::export_table).collect();
             serde_json::json!(schemas)
         }
     }
 
     /// Export a table to AVRO schema format.
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - The table to export
+    ///
+    /// # Returns
+    ///
+    /// A `serde_json::Value` representing the AVRO schema for the table.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_sdk::export::avro::AvroExporter;
+    /// use data_modelling_sdk::models::{Table, Column};
+    ///
+    /// let table = Table::new(
+    ///     "User".to_string(),
+    ///     vec![Column::new("id".to_string(), "INT64".to_string())],
+    /// );
+    ///
+    /// let schema = AvroExporter::export_table(&table);
+    /// assert_eq!(schema["type"], "record");
+    /// assert_eq!(schema["name"], "User");
+    /// ```
     pub fn export_table(table: &Table) -> Value {
         let mut fields = Vec::new();
 
