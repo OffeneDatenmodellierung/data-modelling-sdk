@@ -1,5 +1,6 @@
 //! DataModel for the SDK
 
+use super::enums::InfrastructureType;
 use super::relationship::Relationship;
 use super::table::Table;
 use chrono::{DateTime, Utc};
@@ -215,5 +216,159 @@ impl DataModel {
             .iter()
             .filter(|r| r.source_table_id == table_id || r.target_table_id == table_id)
             .collect()
+    }
+
+    /// Filter Data Flow nodes (tables) by owner
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner name to filter by (case-sensitive exact match)
+    ///
+    /// # Returns
+    ///
+    /// A vector of references to tables matching the owner.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use data_modelling_sdk::models::{DataModel, Table, Column};
+    /// # let mut model = DataModel::new("test".to_string(), "/path".to_string(), "control.yaml".to_string());
+    /// # let mut table = Table::new("test_table".to_string(), vec![Column::new("id".to_string(), "INT".to_string())]);
+    /// # table.owner = Some("Data Engineering Team".to_string());
+    /// # model.tables.push(table);
+    /// let owned_nodes = model.filter_nodes_by_owner("Data Engineering Team");
+    /// ```
+    pub fn filter_nodes_by_owner(&self, owner: &str) -> Vec<&Table> {
+        self.tables
+            .iter()
+            .filter(|t| t.owner.as_deref() == Some(owner))
+            .collect()
+    }
+
+    /// Filter Data Flow relationships by owner
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The owner name to filter by (case-sensitive exact match)
+    ///
+    /// # Returns
+    ///
+    /// A vector of references to relationships matching the owner.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use data_modelling_sdk::models::{DataModel, Relationship};
+    /// # use uuid::Uuid;
+    /// # let mut model = DataModel::new("test".to_string(), "/path".to_string(), "control.yaml".to_string());
+    /// # let mut rel = Relationship::new(Uuid::new_v4(), Uuid::new_v4());
+    /// # rel.owner = Some("Data Engineering Team".to_string());
+    /// # model.relationships.push(rel);
+    /// let owned_relationships = model.filter_relationships_by_owner("Data Engineering Team");
+    /// ```
+    pub fn filter_relationships_by_owner(&self, owner: &str) -> Vec<&Relationship> {
+        self.relationships
+            .iter()
+            .filter(|r| r.owner.as_deref() == Some(owner))
+            .collect()
+    }
+
+    /// Filter Data Flow nodes (tables) by infrastructure type
+    ///
+    /// # Arguments
+    ///
+    /// * `infra_type` - The infrastructure type to filter by
+    ///
+    /// # Returns
+    ///
+    /// A vector of references to tables matching the infrastructure type.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use data_modelling_sdk::models::{DataModel, Table, Column, InfrastructureType};
+    /// # let mut model = DataModel::new("test".to_string(), "/path".to_string(), "control.yaml".to_string());
+    /// # let mut table = Table::new("test_table".to_string(), vec![Column::new("id".to_string(), "INT".to_string())]);
+    /// # table.infrastructure_type = Some(InfrastructureType::Kafka);
+    /// # model.tables.push(table);
+    /// let kafka_nodes = model.filter_nodes_by_infrastructure_type(InfrastructureType::Kafka);
+    /// ```
+    pub fn filter_nodes_by_infrastructure_type(
+        &self,
+        infra_type: InfrastructureType,
+    ) -> Vec<&Table> {
+        self.tables
+            .iter()
+            .filter(|t| t.infrastructure_type == Some(infra_type))
+            .collect()
+    }
+
+    /// Filter Data Flow relationships by infrastructure type
+    ///
+    /// # Arguments
+    ///
+    /// * `infra_type` - The infrastructure type to filter by
+    ///
+    /// # Returns
+    ///
+    /// A vector of references to relationships matching the infrastructure type.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use data_modelling_sdk::models::{DataModel, Relationship, InfrastructureType};
+    /// # use uuid::Uuid;
+    /// # let mut model = DataModel::new("test".to_string(), "/path".to_string(), "control.yaml".to_string());
+    /// # let mut rel = Relationship::new(Uuid::new_v4(), Uuid::new_v4());
+    /// # rel.infrastructure_type = Some(InfrastructureType::Kafka);
+    /// # model.relationships.push(rel);
+    /// let kafka_relationships = model.filter_relationships_by_infrastructure_type(InfrastructureType::Kafka);
+    /// ```
+    pub fn filter_relationships_by_infrastructure_type(
+        &self,
+        infra_type: InfrastructureType,
+    ) -> Vec<&Relationship> {
+        self.relationships
+            .iter()
+            .filter(|r| r.infrastructure_type == Some(infra_type))
+            .collect()
+    }
+
+    /// Filter Data Flow nodes and relationships by tag
+    ///
+    /// # Arguments
+    ///
+    /// * `tag` - The tag to filter by
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing vectors of references to tables and relationships containing the tag.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use data_modelling_sdk::models::{DataModel, Table, Column};
+    /// # let mut model = DataModel::new("test".to_string(), "/path".to_string(), "control.yaml".to_string());
+    /// # let mut table = Table::new("test_table".to_string(), vec![Column::new("id".to_string(), "INT".to_string())]);
+    /// # table.tags.push("production".to_string());
+    /// # model.tables.push(table);
+    /// let (tagged_nodes, tagged_relationships) = model.filter_by_tags("production");
+    /// ```
+    pub fn filter_by_tags(&self, tag: &str) -> (Vec<&Table>, Vec<&Relationship>) {
+        let tagged_tables: Vec<&Table> = self
+            .tables
+            .iter()
+            .filter(|t| t.tags.contains(&tag.to_string()))
+            .collect();
+        let tagged_relationships: Vec<&Relationship> = self
+            .relationships
+            .iter()
+            .filter(|_r| {
+                // Relationships don't have tags field, so we return empty for now
+                // This maintains the API contract but relationships don't support tags yet
+                false
+            })
+            .collect();
+        (tagged_tables, tagged_relationships)
     }
 }

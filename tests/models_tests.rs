@@ -4,13 +4,15 @@ use data_modelling_sdk::models::cross_domain::{
     CrossDomainConfig, CrossDomainRelationshipRef, CrossDomainTableRef,
 };
 use data_modelling_sdk::models::enums::{
-    Cardinality, DataVaultClassification, DatabaseType, MedallionLayer, ModelingLevel,
-    RelationshipType, SCDPattern,
+    Cardinality, DataVaultClassification, DatabaseType, InfrastructureType, MedallionLayer,
+    ModelingLevel, RelationshipType, SCDPattern,
 };
 use data_modelling_sdk::models::relationship::{
     ConnectionPoint, ETLJobMetadata, ForeignKeyDetails, VisualMetadata,
 };
-use data_modelling_sdk::models::{Column, DataModel, ForeignKey, Position, Relationship, Table};
+use data_modelling_sdk::models::{
+    Column, ContactDetails, DataModel, ForeignKey, Position, Relationship, SlaProperty, Table,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -851,5 +853,345 @@ mod relationship_structs_tests {
         let json = serde_json::to_string(&fk).unwrap();
         let parsed: ForeignKeyDetails = serde_json::from_str(&json).unwrap();
         assert_eq!(fk, parsed);
+    }
+}
+
+mod metadata_tests {
+    use super::*;
+
+    #[test]
+    fn test_table_with_owner_metadata() {
+        let mut table = Table::new(
+            "test_table".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table.owner = Some("Data Engineering Team".to_string());
+        assert_eq!(table.owner, Some("Data Engineering Team".to_string()));
+    }
+
+    #[test]
+    fn test_table_with_sla_metadata() {
+        let mut table = Table::new(
+            "test_table".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        let sla = vec![SlaProperty {
+            property: "latency".to_string(),
+            value: json!(4),
+            unit: "hours".to_string(),
+            description: Some("Data must be available within 4 hours".to_string()),
+            element: None,
+            driver: Some("operational".to_string()),
+            scheduler: None,
+            schedule: None,
+        }];
+        table.sla = Some(sla.clone());
+        assert_eq!(table.sla, Some(sla));
+    }
+
+    #[test]
+    fn test_table_with_contact_details_metadata() {
+        let mut table = Table::new(
+            "test_table".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        let contact = ContactDetails {
+            email: Some("team@example.com".to_string()),
+            phone: Some("+1-555-0123".to_string()),
+            name: Some("Data Team".to_string()),
+            role: Some("Data Owner".to_string()),
+            other: None,
+        };
+        table.contact_details = Some(contact.clone());
+        assert_eq!(table.contact_details, Some(contact));
+    }
+
+    #[test]
+    fn test_table_with_infrastructure_type_metadata() {
+        let mut table = Table::new(
+            "test_table".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table.infrastructure_type = Some(InfrastructureType::Kafka);
+        assert_eq!(table.infrastructure_type, Some(InfrastructureType::Kafka));
+    }
+
+    #[test]
+    fn test_table_with_notes_metadata() {
+        let mut table = Table::new(
+            "test_table".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table.notes = Some("This is a test table".to_string());
+        assert_eq!(table.notes, Some("This is a test table".to_string()));
+    }
+
+    #[test]
+    fn test_relationship_with_owner_metadata() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let mut relationship = Relationship::new(source_id, target_id);
+        relationship.owner = Some("Data Engineering Team".to_string());
+        assert_eq!(
+            relationship.owner,
+            Some("Data Engineering Team".to_string())
+        );
+    }
+
+    #[test]
+    fn test_relationship_with_sla_metadata() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let mut relationship = Relationship::new(source_id, target_id);
+        let sla = vec![SlaProperty {
+            property: "latency".to_string(),
+            value: json!(2),
+            unit: "hours".to_string(),
+            description: Some("Data flow must complete within 2 hours".to_string()),
+            element: None,
+            driver: Some("operational".to_string()),
+            scheduler: None,
+            schedule: None,
+        }];
+        relationship.sla = Some(sla.clone());
+        assert_eq!(relationship.sla, Some(sla));
+    }
+
+    #[test]
+    fn test_relationship_with_contact_details_metadata() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let mut relationship = Relationship::new(source_id, target_id);
+        let contact = ContactDetails {
+            email: Some("team@example.com".to_string()),
+            phone: None,
+            name: Some("Data Team".to_string()),
+            role: Some("Data Owner".to_string()),
+            other: None,
+        };
+        relationship.contact_details = Some(contact.clone());
+        assert_eq!(relationship.contact_details, Some(contact));
+    }
+
+    #[test]
+    fn test_relationship_with_infrastructure_type_metadata() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let mut relationship = Relationship::new(source_id, target_id);
+        relationship.infrastructure_type = Some(InfrastructureType::Kafka);
+        assert_eq!(
+            relationship.infrastructure_type,
+            Some(InfrastructureType::Kafka)
+        );
+    }
+
+    #[test]
+    fn test_table_metadata_serialization() {
+        let mut table = Table::new(
+            "test_table".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table.owner = Some("Team".to_string());
+        table.infrastructure_type = Some(InfrastructureType::PostgreSQL);
+        table.notes = Some("Test notes".to_string());
+
+        let json = serde_json::to_string(&table).unwrap();
+        let parsed: Table = serde_json::from_str(&json).unwrap();
+        assert_eq!(table.owner, parsed.owner);
+        assert_eq!(table.infrastructure_type, parsed.infrastructure_type);
+        assert_eq!(table.notes, parsed.notes);
+    }
+
+    #[test]
+    fn test_relationship_metadata_serialization() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let mut relationship = Relationship::new(source_id, target_id);
+        relationship.owner = Some("Team".to_string());
+        relationship.infrastructure_type = Some(InfrastructureType::Kafka);
+        relationship.notes = Some("Test notes".to_string());
+
+        let json = serde_json::to_string(&relationship).unwrap();
+        let parsed: Relationship = serde_json::from_str(&json).unwrap();
+        assert_eq!(relationship.owner, parsed.owner);
+        assert_eq!(relationship.infrastructure_type, parsed.infrastructure_type);
+        assert_eq!(relationship.notes, parsed.notes);
+    }
+
+    #[test]
+    fn test_table_metadata_update() {
+        let mut table = Table::new(
+            "test_table".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table.owner = Some("Team A".to_string());
+        assert_eq!(table.owner, Some("Team A".to_string()));
+
+        // Update owner
+        table.owner = Some("Team B".to_string());
+        assert_eq!(table.owner, Some("Team B".to_string()));
+    }
+
+    #[test]
+    fn test_relationship_metadata_update() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let mut relationship = Relationship::new(source_id, target_id);
+        relationship.owner = Some("Team A".to_string());
+        assert_eq!(relationship.owner, Some("Team A".to_string()));
+
+        // Update owner
+        relationship.owner = Some("Team B".to_string());
+        assert_eq!(relationship.owner, Some("Team B".to_string()));
+    }
+
+    #[test]
+    fn test_backward_compatibility_table_without_metadata() {
+        // Test that tables without metadata deserialize correctly
+        let table = Table::new(
+            "test_table".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        let json = serde_json::to_string(&table).unwrap();
+        let parsed: Table = serde_json::from_str(&json).unwrap();
+        assert_eq!(table.owner, parsed.owner);
+        assert_eq!(table.sla, parsed.sla);
+        assert_eq!(table.contact_details, parsed.contact_details);
+        assert_eq!(table.infrastructure_type, parsed.infrastructure_type);
+        assert_eq!(table.notes, parsed.notes);
+    }
+
+    #[test]
+    fn test_backward_compatibility_relationship_without_metadata() {
+        // Test that relationships without metadata deserialize correctly
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let relationship = Relationship::new(source_id, target_id);
+        let json = serde_json::to_string(&relationship).unwrap();
+        let parsed: Relationship = serde_json::from_str(&json).unwrap();
+        assert_eq!(relationship.owner, parsed.owner);
+        assert_eq!(relationship.sla, parsed.sla);
+        assert_eq!(relationship.contact_details, parsed.contact_details);
+        assert_eq!(relationship.infrastructure_type, parsed.infrastructure_type);
+    }
+}
+
+mod filter_tests {
+    use super::*;
+
+    #[test]
+    fn test_filter_nodes_by_owner() {
+        let mut model = DataModel::new(
+            "test".to_string(),
+            "/path".to_string(),
+            "control.yaml".to_string(),
+        );
+        let mut table1 = Table::new(
+            "table1".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table1.owner = Some("Team A".to_string());
+        let mut table2 = Table::new(
+            "table2".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table2.owner = Some("Team B".to_string());
+        model.tables.push(table1);
+        model.tables.push(table2);
+
+        let owned = model.filter_nodes_by_owner("Team A");
+        assert_eq!(owned.len(), 1);
+        assert_eq!(owned[0].name, "table1");
+    }
+
+    #[test]
+    fn test_filter_relationships_by_owner() {
+        let mut model = DataModel::new(
+            "test".to_string(),
+            "/path".to_string(),
+            "control.yaml".to_string(),
+        );
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let mut rel1 = Relationship::new(source_id, target_id);
+        rel1.owner = Some("Team A".to_string());
+        let mut rel2 = Relationship::new(Uuid::new_v4(), Uuid::new_v4());
+        rel2.owner = Some("Team B".to_string());
+        model.relationships.push(rel1);
+        model.relationships.push(rel2);
+
+        let owned = model.filter_relationships_by_owner("Team A");
+        assert_eq!(owned.len(), 1);
+    }
+
+    #[test]
+    fn test_filter_nodes_by_infrastructure_type() {
+        let mut model = DataModel::new(
+            "test".to_string(),
+            "/path".to_string(),
+            "control.yaml".to_string(),
+        );
+        let mut table1 = Table::new(
+            "table1".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table1.infrastructure_type = Some(InfrastructureType::Kafka);
+        let mut table2 = Table::new(
+            "table2".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table2.infrastructure_type = Some(InfrastructureType::PostgreSQL);
+        model.tables.push(table1);
+        model.tables.push(table2);
+
+        let kafka_nodes = model.filter_nodes_by_infrastructure_type(InfrastructureType::Kafka);
+        assert_eq!(kafka_nodes.len(), 1);
+        assert_eq!(kafka_nodes[0].name, "table1");
+    }
+
+    #[test]
+    fn test_filter_relationships_by_infrastructure_type() {
+        let mut model = DataModel::new(
+            "test".to_string(),
+            "/path".to_string(),
+            "control.yaml".to_string(),
+        );
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let mut rel1 = Relationship::new(source_id, target_id);
+        rel1.infrastructure_type = Some(InfrastructureType::Kafka);
+        let mut rel2 = Relationship::new(Uuid::new_v4(), Uuid::new_v4());
+        rel2.infrastructure_type = Some(InfrastructureType::PostgreSQL);
+        model.relationships.push(rel1);
+        model.relationships.push(rel2);
+
+        let kafka_rels =
+            model.filter_relationships_by_infrastructure_type(InfrastructureType::Kafka);
+        assert_eq!(kafka_rels.len(), 1);
+    }
+
+    #[test]
+    fn test_filter_by_tags() {
+        let mut model = DataModel::new(
+            "test".to_string(),
+            "/path".to_string(),
+            "control.yaml".to_string(),
+        );
+        let mut table1 = Table::new(
+            "table1".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table1.tags.push("production".to_string());
+        let mut table2 = Table::new(
+            "table2".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+        table2.tags.push("staging".to_string());
+        model.tables.push(table1);
+        model.tables.push(table2);
+
+        let (tagged_nodes, _tagged_relationships) = model.filter_by_tags("production");
+        assert_eq!(tagged_nodes.len(), 1);
+        assert_eq!(tagged_nodes[0].name, "table1");
     }
 }

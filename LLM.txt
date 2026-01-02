@@ -7,7 +7,7 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/pixie79/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 1.0.0
+**Version**: 1.2.0
 
 ## Architecture
 
@@ -32,6 +32,7 @@ data-modelling-sdk/
 │   │   ├── avro.rs            # AVRO format exporter
 │   │   ├── json_schema.rs     # JSON Schema exporter
 │   │   ├── odcl.rs            # ODCL format exporter
+│   │   ├── dataflow.rs        # Data Flow format exporter (lightweight, separate from ODCS)
 │   │   ├── odcs.rs            # ODCS v3.1.0 format exporter
 │   │   ├── png.rs             # PNG diagram exporter (feature-gated)
 │   │   ├── protobuf.rs        # Protobuf exporter
@@ -42,6 +43,7 @@ data-modelling-sdk/
 │   ├── import/                 # Import functionality
 │   │   ├── mod.rs
 │   │   ├── avro.rs            # AVRO format importer
+│   │   ├── dataflow.rs        # Data Flow format importer (lightweight, separate from ODCS)
 │   │   ├── json_schema.rs     # JSON Schema importer
 │   │   ├── odcs.rs            # ODCS v3.1.0 format importer (primary)
 │   │   ├── protobuf.rs        # Protobuf importer
@@ -105,18 +107,21 @@ Abstracts file operations across different environments:
 
 Core data structures:
 
-- **`Table`**: Represents a database table/data contract with columns, metadata, and relationships
+- **`Table`**: Represents a database table/data contract with columns, metadata, and relationships. Also used as Data Flow nodes with enhanced metadata (owner, SLA, contact_details, infrastructure_type, notes)
 - **`Column`**: Column definition with data type, constraints, foreign keys
-- **`Relationship`**: Relationship between tables (source/target, type, metadata)
-- **`DataModel`**: Container for tables and relationships representing a workspace/domain
+- **`Relationship`**: Relationship between tables (source/target, type, metadata). Also used as Data Flow relationships with enhanced metadata (owner, SLA, contact_details, infrastructure_type, notes)
+- **`DataModel`**: Container for tables and relationships representing a workspace/domain. Includes filter methods for Data Flow nodes and relationships
 - **`ForeignKey`**: Foreign key relationship details
-- **Enums**: `DatabaseType`, `MedallionLayer`, `SCDPattern`, `DataVaultClassification`, `ModelingLevel`, `Cardinality`, `RelationshipType`
+- **`SlaProperty`**: SLA property structure (property, value, unit, element, driver, description, scheduler, schedule)
+- **`ContactDetails`**: Contact details structure (email, phone, name, role, other)
+- **Enums**: `DatabaseType`, `MedallionLayer`, `SCDPattern`, `DataVaultClassification`, `ModelingLevel`, `Cardinality`, `RelationshipType`, `InfrastructureType` (70+ infrastructure types)
 
 ### Import (`src/import/`)
 
 Importers convert various formats to SDK `Table` models:
 
-- **`ODCSImporter`**: Primary importer for ODCS v3.1.0 format (also handles legacy ODCL)
+- **`ODCSImporter`**: Primary importer for ODCS v3.1.0 format (also handles legacy ODCL) - for Data Models (tables)
+- **`DataFlowImporter`**: Lightweight importer for Data Flow format YAML (nodes and relationships) - separate from ODCS
 - **`SQLImporter`**: SQL DDL parser (CREATE TABLE statements)
 - **`JSONSchemaImporter`**: JSON Schema to Table conversion
 - **`AvroImporter`**: AVRO schema to Table conversion
@@ -126,7 +131,8 @@ Importers convert various formats to SDK `Table` models:
 
 Exporters convert SDK `Table` models to various formats:
 
-- **`ODCSExporter`**: Exports to ODCS v3.1.0 format
+- **`ODCSExporter`**: Exports to ODCS v3.1.0 format - for Data Models (tables)
+- **`DataFlowExporter`**: Lightweight exporter for Data Flow format YAML (nodes and relationships) - separate from ODCS
 - **`SQLExporter`**: Generates SQL DDL (CREATE TABLE statements)
 - **`JSONSchemaExporter`**: Exports to JSON Schema format
 - **`AvroExporter`**: Exports to AVRO schema format
@@ -144,6 +150,7 @@ Exporters convert SDK `Table` models to various formats:
 - **`TableValidator`**: Validates table names, detects naming conflicts
 - **`RelationshipValidator`**: Validates relationships, detects circular dependencies
 - **`InputValidator`**: Validates table/column names, UUIDs, SQL identifiers
+- **`DataModel` filter methods**: `filter_nodes_by_owner()`, `filter_relationships_by_owner()`, `filter_nodes_by_infrastructure_type()`, `filter_relationships_by_infrastructure_type()`, `filter_by_tags()`
 
 ### Git Operations (`src/git/`)
 

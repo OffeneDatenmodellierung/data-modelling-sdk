@@ -8,6 +8,7 @@
 //! - Protobuf
 
 pub mod avro;
+pub mod dataflow;
 pub mod json_schema;
 pub mod odcs;
 pub mod protobuf;

@@ -32,11 +32,11 @@ pub use storage::{StorageBackend, StorageError};
 pub use export::PNGExporter;
 pub use export::{
     AvroExporter, ExportError, ExportResult, JSONSchemaExporter, ODCSExporter, ProtobufExporter,
-    SQLExporter,
+    SQLExporter, dataflow::DataFlowExporter,
 };
 pub use import::{
     AvroImporter, ImportError, ImportResult, JSONSchemaImporter, ODCSImporter, ProtobufImporter,
-    SQLImporter,
+    SQLImporter, dataflow::DataFlowImporter,
 };
 #[cfg(feature = "api-backend")]
 pub use model::ApiModelLoader;
@@ -48,7 +48,7 @@ pub use validation::{
 
 // Re-export models
 pub use models::enums::*;
-pub use models::{Column, DataModel, ForeignKey, Relationship, Table};
+pub use models::{Column, ContactDetails, DataModel, ForeignKey, Relationship, SlaProperty, Table};
 
 // Re-export auth types
 pub use auth::{
@@ -288,6 +288,158 @@ mod wasm {
             Ok(result) => Ok(result.content),
             Err(err) => Err(export_error_to_js(err)),
         }
+    }
+
+    /// Import Data Flow format YAML content (lightweight format for Data Flow nodes and relationships).
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - Data Flow format YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing DataModel with nodes and relationships, or JsValue error
+    #[wasm_bindgen]
+    pub fn import_from_dataflow(yaml_content: &str) -> Result<String, JsValue> {
+        let importer = crate::import::dataflow::DataFlowImporter::new();
+        match importer.import(yaml_content) {
+            Ok(model) => serde_json::to_string(&model)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
+            Err(err) => Err(import_error_to_js(err)),
+        }
+    }
+
+    /// Export a data model to Data Flow format YAML (lightweight format for Data Flow nodes and relationships).
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing workspace/data model structure
+    ///
+    /// # Returns
+    ///
+    /// Data Flow format YAML string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_to_dataflow(workspace_json: &str) -> Result<String, JsValue> {
+        let model = deserialize_workspace(workspace_json)?;
+        let exporter = crate::export::dataflow::DataFlowExporter::new();
+        Ok(exporter.export_model(&model))
+    }
+
+    /// Filter Data Flow nodes (tables) by owner.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing workspace/data model structure
+    /// * `owner` - Owner name to filter by (case-sensitive exact match)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing array of matching tables, or JsValue error
+    #[wasm_bindgen]
+    pub fn filter_nodes_by_owner(workspace_json: &str, owner: &str) -> Result<String, JsValue> {
+        let model = deserialize_workspace(workspace_json)?;
+        let filtered = model.filter_nodes_by_owner(owner);
+        serde_json::to_string(&filtered)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Filter Data Flow relationships by owner.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing workspace/data model structure
+    /// * `owner` - Owner name to filter by (case-sensitive exact match)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing array of matching relationships, or JsValue error
+    #[wasm_bindgen]
+    pub fn filter_relationships_by_owner(
+        workspace_json: &str,
+        owner: &str,
+    ) -> Result<String, JsValue> {
+        let model = deserialize_workspace(workspace_json)?;
+        let filtered = model.filter_relationships_by_owner(owner);
+        serde_json::to_string(&filtered)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Filter Data Flow nodes (tables) by infrastructure type.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing workspace/data model structure
+    /// * `infrastructure_type` - Infrastructure type string (e.g., "Kafka", "PostgreSQL")
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing array of matching tables, or JsValue error
+    #[wasm_bindgen]
+    pub fn filter_nodes_by_infrastructure_type(
+        workspace_json: &str,
+        infrastructure_type: &str,
+    ) -> Result<String, JsValue> {
+        let model = deserialize_workspace(workspace_json)?;
+        let infra_type: crate::models::enums::InfrastructureType =
+            serde_json::from_str(&format!("\"{}\"", infrastructure_type)).map_err(|e| {
+                JsValue::from_str(&format!(
+                    "Invalid infrastructure type '{}': {}",
+                    infrastructure_type, e
+                ))
+            })?;
+        let filtered = model.filter_nodes_by_infrastructure_type(infra_type);
+        serde_json::to_string(&filtered)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Filter Data Flow relationships by infrastructure type.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing workspace/data model structure
+    /// * `infrastructure_type` - Infrastructure type string (e.g., "Kafka", "PostgreSQL")
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing array of matching relationships, or JsValue error
+    #[wasm_bindgen]
+    pub fn filter_relationships_by_infrastructure_type(
+        workspace_json: &str,
+        infrastructure_type: &str,
+    ) -> Result<String, JsValue> {
+        let model = deserialize_workspace(workspace_json)?;
+        let infra_type: crate::models::enums::InfrastructureType =
+            serde_json::from_str(&format!("\"{}\"", infrastructure_type)).map_err(|e| {
+                JsValue::from_str(&format!(
+                    "Invalid infrastructure type '{}': {}",
+                    infrastructure_type, e
+                ))
+            })?;
+        let filtered = model.filter_relationships_by_infrastructure_type(infra_type);
+        serde_json::to_string(&filtered)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Filter Data Flow nodes and relationships by tag.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing workspace/data model structure
+    /// * `tag` - Tag to filter by
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing object with `nodes` and `relationships` arrays, or JsValue error
+    #[wasm_bindgen]
+    pub fn filter_by_tags(workspace_json: &str, tag: &str) -> Result<String, JsValue> {
+        let model = deserialize_workspace(workspace_json)?;
+        let (nodes, relationships) = model.filter_by_tags(tag);
+        let result = serde_json::json!({
+            "nodes": nodes,
+            "relationships": relationships
+        });
+        serde_json::to_string(&result)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
     }
 
     // ============================================================================

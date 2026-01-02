@@ -17,4 +17,4 @@ pub use enums::*;
 pub use relationship::{
     ConnectionPoint, ETLJobMetadata, ForeignKeyDetails, Relationship, VisualMetadata,
 };
-pub use table::{Position, Table};
+pub use table::{ContactDetails, Position, SlaProperty, Table};

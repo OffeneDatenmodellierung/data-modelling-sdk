@@ -1,8 +1,8 @@
 //! Import module tests
 
 use data_modelling_sdk::import::{
-    avro::AvroImporter, json_schema::JSONSchemaImporter, protobuf::ProtobufImporter,
-    sql::SQLImporter,
+    avro::AvroImporter, dataflow::DataFlowImporter, json_schema::JSONSchemaImporter,
+    protobuf::ProtobufImporter, sql::SQLImporter,
 };
 
 mod sql_import_tests {
@@ -356,5 +356,76 @@ mod protobuf_import_tests {
         let items_col = &result.tables[0].columns[0];
         // Repeated fields should be marked as nullable
         assert!(items_col.nullable);
+    }
+}
+
+mod dataflow_import_tests {
+    use super::*;
+    use data_modelling_sdk::models::InfrastructureType;
+
+    #[test]
+    fn test_import_node_with_metadata() {
+        let importer = DataFlowImporter::new();
+        let yaml = r#"
+nodes:
+  - name: user_events
+    metadata:
+      owner: "Data Engineering Team"
+      infrastructure_type: "Kafka"
+      notes: "User interaction events"
+      sla:
+        - property: latency
+          value: 4
+          unit: hours
+          description: "Data must be available within 4 hours"
+"#;
+        let model = importer.import(yaml).unwrap();
+        assert_eq!(model.tables.len(), 1);
+        let table = &model.tables[0];
+        assert_eq!(table.name, "user_events");
+        assert_eq!(table.owner, Some("Data Engineering Team".to_string()));
+        assert_eq!(table.infrastructure_type, Some(InfrastructureType::Kafka));
+        assert_eq!(table.notes, Some("User interaction events".to_string()));
+        assert!(table.sla.is_some());
+    }
+
+    #[test]
+    fn test_import_relationship_with_metadata() {
+        let importer = DataFlowImporter::new();
+        let source_id = uuid::Uuid::new_v4();
+        let target_id = uuid::Uuid::new_v4();
+        let yaml = format!(
+            r#"
+relationships:
+  - source_node_id: "{}"
+    target_node_id: "{}"
+    metadata:
+      owner: "Data Engineering Team"
+      infrastructure_type: "Kafka"
+      notes: "ETL pipeline"
+"#,
+            source_id, target_id
+        );
+        let model = importer.import(&yaml).unwrap();
+        assert_eq!(model.relationships.len(), 1);
+        let rel = &model.relationships[0];
+        assert_eq!(rel.owner, Some("Data Engineering Team".to_string()));
+        assert_eq!(rel.infrastructure_type, Some(InfrastructureType::Kafka));
+        assert_eq!(rel.notes, Some("ETL pipeline".to_string()));
+    }
+
+    #[test]
+    fn test_import_without_metadata() {
+        let importer = DataFlowImporter::new();
+        let yaml = r#"
+nodes:
+  - name: test_table
+"#;
+        let model = importer.import(yaml).unwrap();
+        assert_eq!(model.tables.len(), 1);
+        let table = &model.tables[0];
+        assert_eq!(table.name, "test_table");
+        assert_eq!(table.owner, None);
+        assert_eq!(table.infrastructure_type, None);
     }
 }

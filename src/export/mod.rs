@@ -9,6 +9,7 @@
 //! - PNG
 
 pub mod avro;
+pub mod dataflow;
 pub mod json_schema;
 pub mod odcs;
 #[cfg(feature = "png-export")]

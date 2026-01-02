@@ -2,10 +2,12 @@
 
 use super::column::Column;
 use super::enums::{
-    DataVaultClassification, DatabaseType, MedallionLayer, ModelingLevel, SCDPattern,
+    DataVaultClassification, DatabaseType, InfrastructureType, MedallionLayer, ModelingLevel,
+    SCDPattern,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -16,6 +18,57 @@ pub struct Position {
     pub x: f64,
     /// Y coordinate
     pub y: f64,
+}
+
+/// SLA (Service Level Agreement) property following ODCS-inspired structure
+///
+/// Represents a single SLA property for Data Flow nodes and relationships.
+/// Uses a lightweight format inspired by ODCS servicelevels but separate from ODCS.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SlaProperty {
+    /// SLA attribute name (e.g., "latency", "availability", "throughput")
+    pub property: String,
+    /// Metric value (flexible type to support numbers, strings, etc.)
+    pub value: serde_json::Value,
+    /// Measurement unit (e.g., "hours", "percent", "requests_per_second")
+    pub unit: String,
+    /// Optional: Data elements this SLA applies to
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element: Option<String>,
+    /// Optional: Importance driver (e.g., "regulatory", "analytics", "operational")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub driver: Option<String>,
+    /// Optional: Description of the SLA
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Optional: Scheduler type for monitoring
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduler: Option<String>,
+    /// Optional: Schedule expression (e.g., cron format)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>,
+}
+
+/// Contact details for Data Flow node/relationship owners/responsible parties
+///
+/// Structured contact information for operational and governance purposes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ContactDetails {
+    /// Email address
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    /// Phone number
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
+    /// Contact name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Role or title
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    /// Other contact methods or additional information
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub other: Option<String>,
 }
 
 /// Table model representing a database table or data contract
@@ -36,6 +89,38 @@ pub struct Position {
 ///         Column::new("name".to_string(), "VARCHAR(100)".to_string()),
 ///     ],
 /// );
+/// ```
+///
+/// # Example with Metadata (Data Flow Node)
+///
+/// ```rust
+/// use data_modelling_sdk::models::{Table, Column, InfrastructureType, ContactDetails, SlaProperty};
+/// use serde_json::json;
+///
+/// let mut table = Table::new(
+///     "user_events".to_string(),
+///     vec![Column::new("id".to_string(), "UUID".to_string())],
+/// );
+/// table.owner = Some("Data Engineering Team".to_string());
+/// table.infrastructure_type = Some(InfrastructureType::Kafka);
+/// table.contact_details = Some(ContactDetails {
+///     email: Some("team@example.com".to_string()),
+///     phone: None,
+///     name: Some("Data Team".to_string()),
+///     role: Some("Data Owner".to_string()),
+///     other: None,
+/// });
+/// table.sla = Some(vec![SlaProperty {
+///     property: "latency".to_string(),
+///     value: json!(4),
+///     unit: "hours".to_string(),
+///     description: Some("Data must be available within 4 hours".to_string()),
+///     element: None,
+///     driver: Some("operational".to_string()),
+///     scheduler: None,
+///     schedule: None,
+/// }]);
+/// table.notes = Some("User interaction events from web application".to_string());
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Table {
@@ -72,6 +157,21 @@ pub struct Table {
     /// ODCL/ODCS metadata (legacy format support)
     #[serde(default)]
     pub odcl_metadata: HashMap<String, serde_json::Value>,
+    /// Owner information (person, team, or organization name) for Data Flow nodes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    /// SLA (Service Level Agreement) information (ODCS-inspired but lightweight format)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sla: Option<Vec<SlaProperty>>,
+    /// Contact details for responsible parties
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contact_details: Option<ContactDetails>,
+    /// Infrastructure type (hosting platform, service, or tool) for Data Flow nodes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub infrastructure_type: Option<InfrastructureType>,
+    /// Additional notes and context for Data Flow nodes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
     /// Canvas position for visual representation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub position: Option<Position>,
@@ -132,6 +232,11 @@ impl Table {
             modeling_level: None,
             tags: Vec::new(),
             odcl_metadata: HashMap::new(),
+            owner: None,
+            sla: None,
+            contact_details: None,
+            infrastructure_type: None,
+            notes: None,
             position: None,
             yaml_file_path: None,
             drawio_cell_id: None,

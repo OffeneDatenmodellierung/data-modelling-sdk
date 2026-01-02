@@ -3,6 +3,8 @@
 Auto-generated from all feature plans. Last updated: 2026-01-02
 
 ## Active Technologies
+- Rust 2024 edition (current project standard) + serde, serde_json, serde_yaml, uuid, chrono (existing SDK dependencies) (002-table-metadata)
+- N/A (metadata stored in Table struct, persisted via existing storage backends) (002-table-metadata)
 
 - Rust 1.75+ (edition 2024) + wasm-bindgen 0.2, wasm-bindgen-futures 0.4, serde 1.0, serde_json 1.0, serde_yaml 0.9 (001-wasm-exports)
 
@@ -22,6 +24,7 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 1.75+ (edition 2024): Follow standard conventions
 
 ## Recent Changes
+- 002-table-metadata: Added Rust 2024 edition (current project standard) + serde, serde_json, serde_yaml, uuid, chrono (existing SDK dependencies)
 
 - 001-wasm-exports: Added Rust 1.75+ (edition 2024) + wasm-bindgen 0.2, wasm-bindgen-futures 0.4, serde 1.0, serde_json 1.0, serde_yaml 0.9
 

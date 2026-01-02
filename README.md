@@ -90,16 +90,27 @@ console.log('Exported YAML:', exportedYaml);
 ```
 
 **Available WASM Functions**:
+
+**Import/Export**:
 - `parseOdcsYaml(yamlContent: string): string` - Parse ODCS YAML to workspace structure
 - `exportToOdcsYaml(workspaceJson: string): string` - Export workspace to ODCS YAML
 - `importFromSql(sqlContent: string, dialect: string): string` - Import from SQL
 - `importFromAvro(avroContent: string): string` - Import from AVRO schema
 - `importFromJsonSchema(jsonSchemaContent: string): string` - Import from JSON Schema
 - `importFromProtobuf(protobufContent: string): string` - Import from Protobuf
+- `importFromDataflow(yamlContent: string): string` - Import Data Flow format YAML (lightweight format for nodes/relationships)
 - `exportToSql(workspaceJson: string, dialect: string): string` - Export to SQL
 - `exportToAvro(workspaceJson: string): string` - Export to AVRO schema
 - `exportToJsonSchema(workspaceJson: string): string` - Export to JSON Schema
 - `exportToProtobuf(workspaceJson: string): string` - Export to Protobuf
+- `exportToDataflow(workspaceJson: string): string` - Export to Data Flow format YAML (lightweight format for nodes/relationships)
+
+**Filtering**:
+- `filterNodesByOwner(workspaceJson: string, owner: string): string` - Filter Data Flow nodes by owner
+- `filterRelationshipsByOwner(workspaceJson: string, owner: string): string` - Filter Data Flow relationships by owner
+- `filterNodesByInfrastructureType(workspaceJson: string, infrastructureType: string): string` - Filter Data Flow nodes by infrastructure type
+- `filterRelationshipsByInfrastructureType(workspaceJson: string, infrastructureType: string): string` - Filter Data Flow relationships by infrastructure type
+- `filterByTags(workspaceJson: string, tag: string): string` - Filter nodes and relationships by tag
 
 ## Development
 

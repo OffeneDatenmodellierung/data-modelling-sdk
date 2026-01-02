@@ -1,6 +1,7 @@
 //! Relationship model for the SDK
 
-use super::enums::{Cardinality, RelationshipType};
+use super::enums::{Cardinality, InfrastructureType, RelationshipType};
+use super::table::{ContactDetails, SlaProperty};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -68,6 +69,38 @@ pub struct VisualMetadata {
 /// let target_id = uuid::Uuid::new_v4();
 /// let relationship = Relationship::new(source_id, target_id);
 /// ```
+///
+/// # Example with Metadata (Data Flow Relationship)
+///
+/// ```rust
+/// use data_modelling_sdk::models::{Relationship, InfrastructureType, ContactDetails, SlaProperty};
+/// use serde_json::json;
+/// use uuid::Uuid;
+///
+/// let source_id = Uuid::new_v4();
+/// let target_id = Uuid::new_v4();
+/// let mut relationship = Relationship::new(source_id, target_id);
+/// relationship.owner = Some("Data Engineering Team".to_string());
+/// relationship.infrastructure_type = Some(InfrastructureType::Kafka);
+/// relationship.contact_details = Some(ContactDetails {
+///     email: Some("team@example.com".to_string()),
+///     phone: None,
+///     name: Some("Data Team".to_string()),
+///     role: Some("Data Owner".to_string()),
+///     other: None,
+/// });
+/// relationship.sla = Some(vec![SlaProperty {
+///     property: "latency".to_string(),
+///     value: json!(2),
+///     unit: "hours".to_string(),
+///     description: Some("Data flow must complete within 2 hours".to_string()),
+///     element: None,
+///     driver: Some("operational".to_string()),
+///     scheduler: None,
+///     schedule: None,
+/// }]);
+/// relationship.notes = Some("ETL pipeline from source to target".to_string());
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Relationship {
     /// Unique identifier for the relationship (UUIDv4)
@@ -97,6 +130,18 @@ pub struct Relationship {
     /// Optional notes about the relationship
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Owner information (person, team, or organization name) for Data Flow relationships
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    /// SLA (Service Level Agreement) information (ODCS-inspired but lightweight format)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sla: Option<Vec<SlaProperty>>,
+    /// Contact details for responsible parties
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contact_details: Option<ContactDetails>,
+    /// Infrastructure type (hosting platform, service, or tool) for Data Flow relationships
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub infrastructure_type: Option<InfrastructureType>,
     /// Visual metadata for canvas rendering
     #[serde(skip_serializing_if = "Option::is_none")]
     pub visual_metadata: Option<VisualMetadata>,
@@ -144,6 +189,10 @@ impl Relationship {
             etl_job_metadata: None,
             relationship_type: None,
             notes: None,
+            owner: None,
+            sla: None,
+            contact_details: None,
+            infrastructure_type: None,
             visual_metadata: None,
             drawio_edge_id: None,
             created_at: now,
