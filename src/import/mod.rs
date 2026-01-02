@@ -18,7 +18,7 @@ pub mod sql;
 /// Result of an import operation.
 ///
 /// Contains extracted tables and any errors/warnings from the import process.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[must_use = "import results should be processed or errors checked"]
 pub struct ImportResult {
     /// Tables extracted from the import
@@ -32,7 +32,7 @@ pub struct ImportResult {
 }
 
 /// Error during import
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, serde::Serialize, serde::Deserialize)]
 pub enum ImportError {
     #[error("Parse error: {0}")]
     ParseError(String),
@@ -43,7 +43,7 @@ pub enum ImportError {
 }
 
 /// Table data from import
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TableData {
     pub table_index: usize,
     pub name: Option<String>,
@@ -52,7 +52,7 @@ pub struct TableData {
 }
 
 /// Column data from import
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ColumnData {
     pub name: String,
     pub data_type: String,
@@ -68,7 +68,7 @@ pub use protobuf::ProtobufImporter;
 pub use sql::SQLImporter;
 
 /// Table requiring name input (for SQL imports)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TableRequiringName {
     pub table_index: usize,
     pub suggested_name: Option<String>,

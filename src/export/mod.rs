@@ -21,7 +21,7 @@ pub mod sql;
 /// Result of an export operation.
 ///
 /// Contains the exported content and format identifier.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[must_use = "export results contain the exported content and should be used"]
 pub struct ExportResult {
     /// Exported content (as string - binary formats will be base64 encoded)
@@ -31,7 +31,7 @@ pub struct ExportResult {
 }
 
 /// Error during export
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, serde::Serialize, serde::Deserialize)]
 pub enum ExportError {
     #[error("Serialization error: {0}")]
     SerializationError(String),

@@ -7,11 +7,11 @@
 
 use crate::storage::{StorageBackend, StorageError};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::collections::HashMap;
 use tracing::{info, warn};
 use uuid::Uuid;
-// Serialize/Deserialize not currently used
 
 /// Model loader that uses a storage backend
 pub struct ModelLoader<B: StorageBackend> {
@@ -247,7 +247,7 @@ impl<B: StorageBackend> ModelLoader<B> {
 }
 
 /// Result of loading a model
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ModelLoadResult {
     pub tables: Vec<TableData>,
     pub relationships: Vec<RelationshipData>,
@@ -255,7 +255,7 @@ pub struct ModelLoadResult {
 }
 
 /// Table data loaded from storage
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableData {
     pub id: Uuid,
     pub name: String,
@@ -264,7 +264,7 @@ pub struct TableData {
 }
 
 /// Relationship data loaded from storage
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelationshipData {
     pub id: Uuid,
     pub source_table_id: Uuid,

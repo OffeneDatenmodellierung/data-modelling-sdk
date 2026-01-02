@@ -46,6 +46,61 @@ let loader = ModelLoader::new(storage);
 let result = loader.load_model("workspace_path").await?;
 ```
 
+### WASM Bindings (Browser/Offline Mode)
+
+The SDK exposes WASM bindings for parsing and export operations, enabling offline functionality in web applications.
+
+**Build the WASM module**:
+```bash
+wasm-pack build --target web --out-dir pkg --features wasm
+```
+
+**Use in JavaScript/TypeScript**:
+```javascript
+import init, { parseOdcsYaml, exportToOdcsYaml } from './pkg/data_modelling_sdk.js';
+
+// Initialize the module
+await init();
+
+// Parse ODCS YAML
+const yaml = `apiVersion: v3.1.0
+kind: DataContract
+name: users
+schema:
+  fields:
+    - name: id
+      type: bigint`;
+
+const resultJson = parseOdcsYaml(yaml);
+const result = JSON.parse(resultJson);
+console.log('Parsed tables:', result.tables);
+
+// Export to ODCS YAML
+const workspace = {
+  tables: [{
+    id: "550e8400-e29b-41d4-a716-446655440000",
+    name: "users",
+    columns: [{ name: "id", data_type: "bigint", nullable: false, primary_key: true }]
+  }],
+  relationships: []
+};
+
+const exportedYaml = exportToOdcsYaml(JSON.stringify(workspace));
+console.log('Exported YAML:', exportedYaml);
+```
+
+**Available WASM Functions**:
+- `parseOdcsYaml(yamlContent: string): string` - Parse ODCS YAML to workspace structure
+- `exportToOdcsYaml(workspaceJson: string): string` - Export workspace to ODCS YAML
+- `importFromSql(sqlContent: string, dialect: string): string` - Import from SQL
+- `importFromAvro(avroContent: string): string` - Import from AVRO schema
+- `importFromJsonSchema(jsonSchemaContent: string): string` - Import from JSON Schema
+- `importFromProtobuf(protobufContent: string): string` - Import from Protobuf
+- `exportToSql(workspaceJson: string, dialect: string): string` - Export to SQL
+- `exportToAvro(workspaceJson: string): string` - Export to AVRO schema
+- `exportToJsonSchema(workspaceJson: string): string` - Export to JSON Schema
+- `exportToProtobuf(workspaceJson: string): string` - Export to Protobuf
+
 ## Development
 
 ### Pre-commit Hooks

@@ -7,12 +7,13 @@
 use crate::models::Relationship;
 use anyhow::Result;
 use petgraph::{Directed, Graph};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Result of relationship validation.
 ///
 /// Contains any circular dependencies or self-references found during validation.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 #[must_use = "validation results should be checked for circular dependencies and self-references"]
 pub struct RelationshipValidationResult {
     /// Circular dependencies found
@@ -22,21 +23,21 @@ pub struct RelationshipValidationResult {
 }
 
 /// Circular dependency detected
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CircularDependency {
     pub relationship_id: Uuid,
     pub cycle_path: Vec<Uuid>,
 }
 
 /// Self-reference detected
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelfReference {
     pub relationship_id: Uuid,
     pub table_id: Uuid,
 }
 
 /// Error during relationship validation
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Serialize, Deserialize)]
 pub enum RelationshipValidationError {
     #[error("Validation error: {0}")]
     ValidationError(String),

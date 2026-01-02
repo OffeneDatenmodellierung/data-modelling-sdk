@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-01-02
+
+### Added
+
+- **feat(wasm)**: Add comprehensive WASM bindings for validation, export, and model management
+  - Add WASM bindings for input validation functions (`validate_table_name`, `validate_column_name`, `validate_uuid`, `validate_data_type`, `validate_description`)
+  - Add WASM bindings for sanitization functions (`sanitize_sql_identifier`, `sanitize_description`)
+  - Add WASM bindings for table validation (`detect_naming_conflicts`, `validate_pattern_exclusivity`)
+  - Add WASM bindings for relationship validation (`check_circular_dependency`, `validate_no_self_reference`)
+  - Add WASM binding for PNG export (`export_to_png`) - feature-gated behind `png-export`
+  - Add async WASM bindings for model loading/saving (`load_model`, `save_model`) using browser storage backend
+  - Add `Serialize`/`Deserialize` to validation result types for WASM interop
+  - Add `Serialize`/`Deserialize` to `ModelLoadResult` and related types for WASM interop
+
+### Changed
+
+- **refactor(wasm)**: Extend WASM module with 14 new binding functions
+  - All validation functions return JSON strings with structured results
+  - Model loading/saving functions use `js_sys::Promise` for async operations
+  - Error handling converts Rust errors to JavaScript-compatible errors
+
 ## [1.0.2] - 2025-12-31
 
 ### Fixed

@@ -12,6 +12,7 @@
 //! - Buffer overflows via excessively long inputs
 //! - Unicode normalization attacks
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -28,7 +29,7 @@ pub const MAX_IDENTIFIER_LENGTH: usize = 255;
 pub const MAX_DESCRIPTION_LENGTH: usize = 10000;
 
 /// Errors that can occur during input validation.
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Error, Serialize, Deserialize)]
 pub enum ValidationError {
     /// Input is empty when a value is required
     #[error("{0} cannot be empty")]

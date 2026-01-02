@@ -5,12 +5,13 @@
 //! This module implements SDK-native validation against SDK models.
 
 use crate::models::Table;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Result of table validation.
 ///
 /// Contains any naming conflicts or pattern violations found during validation.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 #[must_use = "validation results should be checked for conflicts and violations"]
 pub struct TableValidationResult {
     /// Naming conflicts found
@@ -20,7 +21,7 @@ pub struct TableValidationResult {
 }
 
 /// Naming conflict between two tables
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NamingConflict {
     pub new_table_id: Uuid,
     pub new_table_name: String,
@@ -29,7 +30,7 @@ pub struct NamingConflict {
 }
 
 /// Pattern exclusivity violation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PatternViolation {
     pub table_id: Uuid,
     pub table_name: String,
@@ -37,7 +38,7 @@ pub struct PatternViolation {
 }
 
 /// Error during table validation
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Serialize, Deserialize)]
 pub enum TableValidationError {
     #[error("Validation error: {0}")]
     ValidationError(String),
