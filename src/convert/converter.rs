@@ -20,6 +20,14 @@ pub enum ConversionError {
     UnsupportedFormat(String),
     #[error("Auto-detection failed: {0}")]
     AutoDetectionFailed(String),
+    #[error("OpenAPI to ODCS conversion error: {0}")]
+    OpenAPIToODCSError(String),
+    #[error("OpenAPI component not found: {0}")]
+    OpenAPIComponentNotFound(String),
+    #[error("OpenAPI schema invalid: {0}")]
+    OpenAPISchemaInvalid(String),
+    #[error("Nested object conversion failed: {0}")]
+    NestedObjectConversionFailed(String),
 }
 
 /// Convert any import format to ODCS v3.1.0 YAML format.

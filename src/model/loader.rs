@@ -14,7 +14,19 @@
 //!     - `{name}.cads.yaml` - CADS asset files
 //!   - `tables/` - Legacy: tables not in any domain (backward compatibility)
 
+#[cfg(feature = "bpmn")]
+use crate::import::bpmn::BPMNImporter;
+#[cfg(feature = "dmn")]
+use crate::import::dmn::DMNImporter;
+#[cfg(feature = "openapi")]
+use crate::import::openapi::OpenAPIImporter;
 use crate::import::{cads::CADSImporter, odcs::ODCSImporter, odps::ODPSImporter};
+#[cfg(feature = "bpmn")]
+use crate::models::bpmn::BPMNModel;
+#[cfg(feature = "dmn")]
+use crate::models::dmn::DMNModel;
+#[cfg(feature = "openapi")]
+use crate::models::openapi::{OpenAPIFormat, OpenAPIModel};
 use crate::models::{cads::CADSAsset, domain::Domain, odps::ODPSDataProduct, table::Table};
 use crate::storage::{StorageBackend, StorageError};
 use anyhow::Result;
@@ -544,6 +556,293 @@ impl<B: StorageBackend> ModelLoader<B> {
 
         Ok(assets)
     }
+
+    /// Load all BPMN models from a domain directory
+    #[cfg(feature = "bpmn")]
+    pub async fn load_bpmn_models(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+    ) -> Result<Vec<BPMNModel>, StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+
+        if !self.storage.dir_exists(&domain_dir).await? {
+            return Ok(Vec::new());
+        }
+
+        let mut models = Vec::new();
+        let files = self.storage.list_files(&domain_dir).await?;
+
+        for file_name in files {
+            if file_name.ends_with(".bpmn.xml") {
+                let file_path = format!("{}/{}", domain_dir, file_name);
+                match self.load_bpmn_model(&domain_dir, &file_name).await {
+                    Ok(model) => models.push(model),
+                    Err(e) => {
+                        warn!("Failed to load BPMN model from {}: {}", file_path, e);
+                    }
+                }
+            }
+        }
+
+        Ok(models)
+    }
+
+    /// Load a specific BPMN model by name from a domain directory
+    #[cfg(feature = "bpmn")]
+    pub async fn load_bpmn_model(
+        &self,
+        domain_dir: &str,
+        file_name: &str,
+    ) -> Result<BPMNModel, StorageError> {
+        let file_path = format!("{}/{}", domain_dir, file_name);
+        let content = self.storage.read_file(&file_path).await?;
+        let xml_content = String::from_utf8(content)
+            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
+
+        // Extract model name from filename (remove .bpmn.xml extension)
+        let model_name = file_name
+            .strip_suffix(".bpmn.xml")
+            .unwrap_or(file_name)
+            .to_string();
+
+        // Parse domain ID from domain directory name (assuming it's a UUID)
+        // For now, we'll use a placeholder - in practice, this should come from the domain.yaml
+        let domain_id = Uuid::new_v4(); // TODO: Extract from domain.yaml
+
+        // Import using BPMNImporter
+        let mut importer = BPMNImporter::new();
+        let model = importer
+            .import(&xml_content, domain_id, Some(&model_name))
+            .map_err(|e| {
+                StorageError::SerializationError(format!("Failed to import BPMN model: {}", e))
+            })?;
+
+        Ok(model)
+    }
+
+    /// Load BPMN XML content from a domain directory
+    #[cfg(feature = "bpmn")]
+    pub async fn load_bpmn_xml(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+        model_name: &str,
+    ) -> Result<String, StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let sanitized_model_name = sanitize_filename(model_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+        let file_path = format!("{}/{}.bpmn.xml", domain_dir, sanitized_model_name);
+
+        let content = self.storage.read_file(&file_path).await?;
+        String::from_utf8(content)
+            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))
+    }
+
+    /// Load all DMN models from a domain directory
+    #[cfg(feature = "dmn")]
+    pub async fn load_dmn_models(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+    ) -> Result<Vec<DMNModel>, StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+
+        if !self.storage.dir_exists(&domain_dir).await? {
+            return Ok(Vec::new());
+        }
+
+        let mut models = Vec::new();
+        let files = self.storage.list_files(&domain_dir).await?;
+
+        for file_name in files {
+            if file_name.ends_with(".dmn.xml") {
+                let file_path = format!("{}/{}", domain_dir, file_name);
+                match self.load_dmn_model(&domain_dir, &file_name).await {
+                    Ok(model) => models.push(model),
+                    Err(e) => {
+                        warn!("Failed to load DMN model from {}: {}", file_path, e);
+                    }
+                }
+            }
+        }
+
+        Ok(models)
+    }
+
+    /// Load a specific DMN model by name from a domain directory
+    #[cfg(feature = "dmn")]
+    pub async fn load_dmn_model(
+        &self,
+        domain_dir: &str,
+        file_name: &str,
+    ) -> Result<DMNModel, StorageError> {
+        let file_path = format!("{}/{}", domain_dir, file_name);
+        let content = self.storage.read_file(&file_path).await?;
+        let xml_content = String::from_utf8(content)
+            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
+
+        // Extract model name from filename (remove .dmn.xml extension)
+        let model_name = file_name
+            .strip_suffix(".dmn.xml")
+            .unwrap_or(file_name)
+            .to_string();
+
+        // Parse domain ID from domain directory name (assuming it's a UUID)
+        // For now, we'll use a placeholder - in practice, this should come from the domain.yaml
+        let domain_id = Uuid::new_v4(); // TODO: Extract from domain.yaml
+
+        // Import using DMNImporter
+        let mut importer = DMNImporter::new();
+        let model = importer
+            .import(&xml_content, domain_id, Some(&model_name))
+            .map_err(|e| {
+                StorageError::SerializationError(format!("Failed to import DMN model: {}", e))
+            })?;
+
+        Ok(model)
+    }
+
+    /// Load DMN XML content from a domain directory
+    #[cfg(feature = "dmn")]
+    pub async fn load_dmn_xml(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+        model_name: &str,
+    ) -> Result<String, StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let sanitized_model_name = sanitize_filename(model_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+        let file_path = format!("{}/{}.dmn.xml", domain_dir, sanitized_model_name);
+
+        let content = self.storage.read_file(&file_path).await?;
+        String::from_utf8(content)
+            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))
+    }
+
+    /// Load all OpenAPI specifications from a domain directory
+    #[cfg(feature = "openapi")]
+    pub async fn load_openapi_models(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+    ) -> Result<Vec<OpenAPIModel>, StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+
+        if !self.storage.dir_exists(&domain_dir).await? {
+            return Ok(Vec::new());
+        }
+
+        let mut models = Vec::new();
+        let files = self.storage.list_files(&domain_dir).await?;
+
+        for file_name in files {
+            if file_name.ends_with(".openapi.yaml")
+                || file_name.ends_with(".openapi.yml")
+                || file_name.ends_with(".openapi.json")
+            {
+                let file_path = format!("{}/{}", domain_dir, file_name);
+                match self.load_openapi_model(&domain_dir, &file_name).await {
+                    Ok(model) => models.push(model),
+                    Err(e) => {
+                        warn!("Failed to load OpenAPI spec from {}: {}", file_path, e);
+                    }
+                }
+            }
+        }
+
+        Ok(models)
+    }
+
+    /// Load a specific OpenAPI model by name from a domain directory
+    #[cfg(feature = "openapi")]
+    pub async fn load_openapi_model(
+        &self,
+        domain_dir: &str,
+        file_name: &str,
+    ) -> Result<OpenAPIModel, StorageError> {
+        let file_path = format!("{}/{}", domain_dir, file_name);
+        let content = self.storage.read_file(&file_path).await?;
+        let spec_content = String::from_utf8(content)
+            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
+
+        // Format is detected by OpenAPIImporter, no need to detect here
+
+        // Extract API name from filename (remove .openapi.yaml/.openapi.json extension)
+        let api_name = file_name
+            .strip_suffix(".openapi.yaml")
+            .or_else(|| file_name.strip_suffix(".openapi.yml"))
+            .or_else(|| file_name.strip_suffix(".openapi.json"))
+            .unwrap_or(file_name)
+            .to_string();
+
+        // Parse domain ID from domain directory name (assuming it's a UUID)
+        // For now, we'll use a placeholder - in practice, this should come from the domain.yaml
+        let domain_id = Uuid::new_v4(); // TODO: Extract from domain.yaml
+
+        // Import using OpenAPIImporter
+        let mut importer = OpenAPIImporter::new();
+        let model = importer
+            .import(&spec_content, domain_id, Some(&api_name))
+            .map_err(|e| {
+                StorageError::SerializationError(format!("Failed to import OpenAPI spec: {}", e))
+            })?;
+
+        Ok(model)
+    }
+
+    /// Load OpenAPI content from a domain directory
+    #[cfg(feature = "openapi")]
+    pub async fn load_openapi_content(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+        api_name: &str,
+        format: Option<OpenAPIFormat>,
+    ) -> Result<String, StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let sanitized_api_name = sanitize_filename(api_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+
+        // Try to find the file with the requested format, or any format
+        let extensions: Vec<&str> = if let Some(fmt) = format {
+            match fmt {
+                OpenAPIFormat::Yaml => vec!["yaml", "yml"],
+                OpenAPIFormat::Json => vec!["json"],
+            }
+        } else {
+            vec!["yaml", "yml", "json"]
+        };
+
+        for ext in extensions {
+            let file_path = format!("{}/{}.openapi.{}", domain_dir, sanitized_api_name, ext);
+            if self.storage.file_exists(&file_path).await? {
+                let content = self.storage.read_file(&file_path).await?;
+                return String::from_utf8(content).map_err(|e| {
+                    StorageError::SerializationError(format!("Invalid UTF-8: {}", e))
+                });
+            }
+        }
+
+        Err(StorageError::IoError(format!(
+            "OpenAPI spec '{}.openapi.{{yaml,json}}' not found in domain '{}'",
+            api_name, domain_name
+        )))
+    }
+}
+
+/// Sanitize a filename by removing invalid characters
+fn sanitize_filename(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            _ => c,
+        })
+        .collect()
 }
 
 /// Result of loading a model

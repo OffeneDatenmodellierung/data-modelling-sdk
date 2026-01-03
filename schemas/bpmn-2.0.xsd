@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  BPMN 2.0 XSD Schema
+
+  This file should contain the official BPMN 2.0 XSD schema from OMG.
+  For now, this is a placeholder. The actual schema should be downloaded from:
+  https://www.omg.org/spec/BPMN/2.0/
+
+  Or from the BPMN MIWG test suite:
+  https://github.com/process-analytics/bpmn-miwg-test-suite
+
+  TODO: Download and replace with official schema
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <!-- Placeholder - replace with official BPMN 2.0 XSD -->
+</xs:schema>

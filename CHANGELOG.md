@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-01-03
+
+### Added
+
+- **feat(bpmn)**: BPMN 2.0 model support
+  - `BPMNImporter` for importing BPMN XML files with validation
+  - `BPMNExporter` for exporting BPMN models in native XML format
+  - `BPMNModel` struct for representing BPMN models
+  - WASM bindings: `importBpmnModel()`, `exportBpmnModel()`
+  - Storage integration: Models saved to `{domain_name}/{model_name}.bpmn.xml`
+  - CADS asset references: CADS assets can reference BPMN models via `bpmn_models` field
+
+- **feat(dmn)**: DMN 1.3 model support
+  - `DMNImporter` for importing DMN XML files with validation
+  - `DMNExporter` for exporting DMN models in native XML format
+  - `DMNModel` struct for representing DMN models
+  - WASM bindings: `importDmnModel()`, `exportDmnModel()`
+  - Storage integration: Models saved to `{domain_name}/{model_name}.dmn.xml`
+  - CADS asset references: CADS assets can reference DMN models via `dmn_models` field
+
+- **feat(openapi)**: OpenAPI 3.1.1 specification support
+  - `OpenAPIImporter` for importing OpenAPI YAML/JSON files with validation
+  - `OpenAPIExporter` for exporting OpenAPI specs with YAML ↔ JSON conversion
+  - `OpenAPIModel` struct for representing OpenAPI specifications
+  - WASM bindings: `importOpenapiSpec()`, `exportOpenapiSpec()`
+  - Storage integration: Specs saved to `{domain_name}/{api_name}.openapi.yaml` or `.openapi.json`
+  - CADS asset references: CADS assets can reference OpenAPI specs via `openapi_specs` field
+
+- **feat(converter)**: OpenAPI to ODCS converter
+  - `OpenAPIToODCSConverter` for converting OpenAPI schema components to ODCS tables
+  - Type mapping: OpenAPI types (string, integer, number, boolean) mapped to ODCS types
+  - Constraint preservation: minLength, maxLength, pattern, minimum, maximum, enum converted to ODCS quality rules
+  - Format support: date, date-time, email, uri, uuid, password formats handled
+  - WASM bindings: `convertOpenapiToOdcs()`, `analyzeOpenapiConversion()`
+  - Conversion reports with warnings and field mappings
+
+- **feat(cads)**: Extended CADS asset references
+  - `CADSDMNModel` struct for DMN model references
+  - `CADSOpenAPISpec` struct for OpenAPI spec references
+  - `CADSDMNFormat` and `CADSOpenAPIFormat` enums
+  - CADS importer/exporter support for `dmn_models` and `openapi_specs` fields
+
+- **feat(schemas)**: Schema reference files
+  - BPMN 2.0 XSD schema placeholder in `schemas/bpmn-2.0.xsd`
+  - DMN 1.3 XSD schema placeholder in `schemas/dmn-1.3.xsd`
+  - OpenAPI 3.1.1 JSON Schema placeholder in `schemas/openapi-3.1.1.json`
+
+### Changed
+
+- **refactor(features)**: Feature flags for optional formats
+  - `bpmn` feature flag for BPMN support (requires `quick-xml`)
+  - `dmn` feature flag for DMN support (requires `quick-xml`)
+  - `openapi` feature flag for OpenAPI support (uses existing `jsonschema`)
+
 ## [1.4.0] - 2026-01-03
 
 ### Added

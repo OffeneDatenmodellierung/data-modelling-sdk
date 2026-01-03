@@ -9,8 +9,12 @@ This guide provides an overview of the different schemas supported by the Data M
 3. [ODPS (Open Data Product Standard)](#odps-open-data-product-standard)
 4. [CADS (Compute Asset Description Specification)](#cads-compute-asset-description-specification)
 5. [Business Domain Schema](#business-domain-schema)
-6. [Other Formats](#other-formats)
-7. [Universal Converter](#universal-converter)
+6. [BPMN (Business Process Model and Notation)](#bpmn-business-process-model-and-notation)
+7. [DMN (Decision Model and Notation)](#dmn-decision-model-and-notation)
+8. [OpenAPI](#openapi)
+9. [Other Formats](#other-formats)
+10. [Universal Converter](#universal-converter)
+11. [OpenAPI to ODCS Converter](#openapi-to-odcs-converter)
 
 ---
 
@@ -301,6 +305,154 @@ let result = importer.import(protobuf_content)?;
 let exporter = ProtobufExporter;
 let proto = exporter.export(&tables)?;
 ```
+
+---
+
+## BPMN (Business Process Model and Notation)
+
+**Version**: 2.0
+**Purpose**: Business process models
+**Status**: Full support (requires `bpmn` feature)
+**Storage**: Native XML format
+
+### Overview
+
+BPMN 2.0 is a standard for modeling business processes. The SDK stores BPMN models in their native XML format within domain directories, allowing CADS assets to reference process models.
+
+### Key Features
+
+- **Native XML Storage**: BPMN models are stored as-is in XML format
+- **Domain Organization**: Models are stored within domain directories (`{domain_name}/{model_name}.bpmn.xml`)
+- **CADS Integration**: CADS assets can reference BPMN models via `bpmn_models` field
+- **Validation**: XML well-formedness checks and basic validation
+- **Metadata Extraction**: Model name and metadata extracted from XML
+
+### Usage
+
+```rust
+#[cfg(feature = "bpmn")]
+use data_modelling_sdk::import::bpmn::BPMNImporter;
+#[cfg(feature = "bpmn")]
+use data_modelling_sdk::export::bpmn::BPMNExporter;
+use uuid::Uuid;
+
+// Import BPMN XML
+let mut importer = BPMNImporter::new();
+let model = importer.import(domain_id, xml_content, Some("process-name"))?;
+
+// Export BPMN XML
+let exporter = BPMNExporter::new();
+let xml = exporter.export(&model, &storage_backend).await?;
+```
+
+### When to Use
+
+- Documenting business processes
+- Linking processes to compute assets (CADS)
+- Process automation and workflow documentation
+- Business process analysis
+
+---
+
+## DMN (Decision Model and Notation)
+
+**Version**: 1.3
+**Purpose**: Decision models
+**Status**: Full support (requires `dmn` feature)
+**Storage**: Native XML format
+
+### Overview
+
+DMN 1.3 is a standard for modeling business decisions. The SDK stores DMN models in their native XML format within domain directories, allowing CADS assets to reference decision models.
+
+### Key Features
+
+- **Native XML Storage**: DMN models are stored as-is in XML format
+- **Domain Organization**: Models are stored within domain directories (`{domain_name}/{model_name}.dmn.xml`)
+- **CADS Integration**: CADS assets can reference DMN models via `dmn_models` field
+- **Validation**: XML well-formedness checks and basic validation
+- **Metadata Extraction**: Model name and metadata extracted from XML
+
+### Usage
+
+```rust
+#[cfg(feature = "dmn")]
+use data_modelling_sdk::import::dmn::DMNImporter;
+#[cfg(feature = "dmn")]
+use data_modelling_sdk::export::dmn::DMNExporter;
+use uuid::Uuid;
+
+// Import DMN XML
+let mut importer = DMNImporter::new();
+let model = importer.import(xml_content, domain_id, Some("decision-name"))?;
+
+// Export DMN XML
+let exporter = DMNExporter::new();
+let xml = exporter.export(&model, &storage_backend).await?;
+```
+
+### When to Use
+
+- Documenting business decisions
+- Linking decisions to compute assets (CADS)
+- Decision automation and rule documentation
+- Business rule analysis
+
+---
+
+## OpenAPI
+
+**Version**: 3.1.1
+**Purpose**: API specifications
+**Status**: Full support (requires `openapi` feature)
+**Storage**: Native YAML or JSON format
+
+### Overview
+
+OpenAPI 3.1.1 is a standard for describing REST APIs. The SDK stores OpenAPI specifications in their native YAML or JSON format within domain directories, allowing CADS assets to reference API specifications. Additionally, OpenAPI schema components can be converted to ODCS table definitions.
+
+### Key Features
+
+- **Native Format Storage**: OpenAPI specs are stored as-is in YAML or JSON format
+- **Domain Organization**: Specs are stored within domain directories (`{domain_name}/{api_name}.openapi.yaml` or `.openapi.json`)
+- **CADS Integration**: CADS assets can reference OpenAPI specs via `openapi_specs` field
+- **Format Conversion**: YAML ↔ JSON conversion supported
+- **ODCS Conversion**: Schema components can be converted to ODCS tables
+- **Validation**: JSON Schema validation against OpenAPI 3.1.1 specification
+
+### Usage
+
+```rust
+#[cfg(feature = "openapi")]
+use data_modelling_sdk::import::openapi::OpenAPIImporter;
+#[cfg(feature = "openapi")]
+use data_modelling_sdk::export::openapi::OpenAPIExporter;
+#[cfg(feature = "openapi")]
+use data_modelling_sdk::models::openapi::OpenAPIFormat;
+#[cfg(feature = "openapi")]
+use data_modelling_sdk::convert::openapi_to_odcs::OpenAPIToODCSConverter;
+use uuid::Uuid;
+
+// Import OpenAPI spec
+let mut importer = OpenAPIImporter::new();
+let model = importer.import(domain_id, yaml_content, Some("api-name"))?;
+
+// Export OpenAPI spec (with format conversion)
+let exporter = OpenAPIExporter::new();
+let json_content = exporter.export(&model, &storage_backend, Some(OpenAPIFormat::Json)).await?;
+
+// Convert OpenAPI component to ODCS table
+let converter = OpenAPIToODCSConverter::new();
+let table = converter.convert_component(openapi_content, "User", Some("users"))?;
+```
+
+### When to Use
+
+- Documenting REST APIs
+- Linking APIs to compute assets (CADS)
+- Converting API schemas to data contracts (ODCS)
+- API-first development workflows
+- API documentation and governance
 
 ---
 

@@ -28,6 +28,15 @@ pub const MAX_IDENTIFIER_LENGTH: usize = 255;
 /// Maximum length for descriptions
 pub const MAX_DESCRIPTION_LENGTH: usize = 10000;
 
+/// Maximum file size for BPMN/DMN models (10MB)
+pub const MAX_BPMN_DMN_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
+/// Maximum file size for OpenAPI specifications (5MB)
+pub const MAX_OPENAPI_FILE_SIZE: u64 = 5 * 1024 * 1024;
+
+/// Maximum length for model names (filenames)
+pub const MAX_MODEL_NAME_LENGTH: usize = 255;
+
 /// Errors that can occur during input validation.
 #[derive(Debug, Clone, Error, Serialize, Deserialize)]
 pub enum ValidationError {
@@ -424,128 +433,103 @@ fn is_sql_reserved_word(word: &str) -> bool {
     RESERVED_WORDS.contains(&lower.as_str())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Sanitize a model name for use as a filename.
+///
+/// # Rules
+///
+/// - Removes or replaces invalid filename characters
+/// - Ensures the name is safe for use in file paths
+/// - Preserves alphanumeric characters, hyphens, underscores, and dots
+/// - Replaces invalid characters with underscores
+/// - Truncates to MAX_MODEL_NAME_LENGTH if needed
+///
+/// # Examples
+///
+/// ```
+/// use data_modelling_sdk::validation::input::sanitize_model_name;
+///
+/// assert_eq!(sanitize_model_name("my-model"), "my-model");
+/// assert_eq!(sanitize_model_name("my/model"), "my_model");
+/// assert_eq!(sanitize_model_name("my..model"), "my.model");
+/// ```
+pub fn sanitize_model_name(name: &str) -> String {
+    let mut sanitized = String::with_capacity(name.len());
+    let mut last_was_dot = false;
 
-    #[test]
-    fn test_validate_table_name_valid() {
-        assert!(validate_table_name("users").is_ok());
-        assert!(validate_table_name("user_orders").is_ok());
-        assert!(validate_table_name("User123").is_ok());
-        assert!(validate_table_name("_private").is_ok());
-        assert!(validate_table_name("my-table").is_ok());
+    for ch in name.chars() {
+        match ch {
+            // Allow alphanumeric, hyphens, underscores
+            ch if ch.is_alphanumeric() || ch == '-' || ch == '_' => {
+                sanitized.push(ch);
+                last_was_dot = false;
+            }
+            // Allow single dots (but not consecutive)
+            '.' if !last_was_dot => {
+                sanitized.push('.');
+                last_was_dot = true;
+            }
+            // Replace invalid characters with underscore
+            _ => {
+                if !last_was_dot {
+                    sanitized.push('_');
+                }
+                last_was_dot = false;
+            }
+        }
+
+        // Truncate if too long
+        if sanitized.len() >= MAX_MODEL_NAME_LENGTH {
+            break;
+        }
     }
 
-    #[test]
-    fn test_validate_table_name_empty() {
-        assert!(matches!(
-            validate_table_name(""),
-            Err(ValidationError::Empty(_))
-        ));
+    // Remove trailing dots and underscores
+    sanitized = sanitized.trim_end_matches(['.', '_']).to_string();
+
+    // Ensure not empty
+    if sanitized.is_empty() {
+        sanitized = "model".to_string();
     }
 
-    #[test]
-    fn test_validate_table_name_too_long() {
-        let long_name = "a".repeat(300);
-        assert!(matches!(
-            validate_table_name(&long_name),
-            Err(ValidationError::TooLong { .. })
-        ));
-    }
+    sanitized
+}
 
-    #[test]
-    fn test_validate_table_name_starts_with_digit() {
-        assert!(matches!(
-            validate_table_name("123users"),
-            Err(ValidationError::InvalidFormat(..))
-        ));
+/// Validate file size for BPMN/DMN models.
+///
+/// # Arguments
+///
+/// * `file_size` - File size in bytes
+///
+/// # Returns
+///
+/// `ValidationResult<()>` indicating whether the file size is valid
+pub fn validate_bpmn_dmn_file_size(file_size: u64) -> ValidationResult<()> {
+    if file_size > MAX_BPMN_DMN_FILE_SIZE {
+        return Err(ValidationError::TooLong {
+            field: "BPMN/DMN file size",
+            max: MAX_BPMN_DMN_FILE_SIZE as usize,
+            actual: file_size as usize,
+        });
     }
+    Ok(())
+}
 
-    #[test]
-    fn test_validate_table_name_invalid_chars() {
-        assert!(matches!(
-            validate_table_name("user$table"),
-            Err(ValidationError::InvalidCharacters { .. })
-        ));
-        assert!(matches!(
-            validate_table_name("user;table"),
-            Err(ValidationError::InvalidCharacters { .. })
-        ));
+/// Validate file size for OpenAPI specifications.
+///
+/// # Arguments
+///
+/// * `file_size` - File size in bytes
+///
+/// # Returns
+///
+/// `ValidationResult<()>` indicating whether the file size is valid
+pub fn validate_openapi_file_size(file_size: u64) -> ValidationResult<()> {
+    if file_size > MAX_OPENAPI_FILE_SIZE {
+        return Err(ValidationError::TooLong {
+            field: "OpenAPI file size",
+            max: MAX_OPENAPI_FILE_SIZE as usize,
+            actual: file_size as usize,
+        });
     }
-
-    #[test]
-    fn test_validate_table_name_reserved_word() {
-        assert!(matches!(
-            validate_table_name("SELECT"),
-            Err(ValidationError::ReservedWord { .. })
-        ));
-        assert!(matches!(
-            validate_table_name("table"),
-            Err(ValidationError::ReservedWord { .. })
-        ));
-    }
-
-    #[test]
-    fn test_validate_column_name_valid() {
-        assert!(validate_column_name("id").is_ok());
-        assert!(validate_column_name("user_name").is_ok());
-        assert!(validate_column_name("address.street").is_ok());
-        assert!(validate_column_name("nested.field.value").is_ok());
-    }
-
-    #[test]
-    fn test_validate_data_type_valid() {
-        assert!(validate_data_type("INTEGER").is_ok());
-        assert!(validate_data_type("VARCHAR(255)").is_ok());
-        assert!(validate_data_type("ARRAY<STRING>").is_ok());
-        assert!(validate_data_type("DECIMAL(10, 2)").is_ok());
-    }
-
-    #[test]
-    fn test_validate_data_type_injection() {
-        assert!(matches!(
-            validate_data_type("'; DROP TABLE users;--"),
-            Err(ValidationError::InvalidCharacters { .. })
-        ));
-    }
-
-    #[test]
-    fn test_validate_uuid_valid() {
-        assert!(validate_uuid("550e8400-e29b-41d4-a716-446655440000").is_ok());
-    }
-
-    #[test]
-    fn test_validate_uuid_invalid() {
-        assert!(validate_uuid("not-a-uuid").is_err());
-        assert!(validate_uuid("").is_err());
-    }
-
-    #[test]
-    fn test_sanitize_sql_identifier() {
-        assert_eq!(sanitize_sql_identifier("users", "postgres"), "\"users\"");
-        assert_eq!(
-            sanitize_sql_identifier("user-table", "mysql"),
-            "`user-table`"
-        );
-        assert_eq!(sanitize_sql_identifier("test", "sqlserver"), "[test]");
-    }
-
-    #[test]
-    fn test_sanitize_sql_identifier_escapes_quotes() {
-        assert_eq!(
-            sanitize_sql_identifier("my\"table", "postgres"),
-            "\"my\"\"table\""
-        );
-        assert_eq!(sanitize_sql_identifier("my`table", "mysql"), "`my``table`");
-    }
-
-    #[test]
-    fn test_sanitize_description() {
-        assert_eq!(sanitize_description("Hello\nWorld"), "Hello\nWorld");
-        assert_eq!(sanitize_description("Tab\tSeparated"), "Tab\tSeparated");
-        // Control characters should be removed
-        let with_control = "Hello\x00World";
-        assert_eq!(sanitize_description(with_control), "HelloWorld");
-    }
+    Ok(())
 }

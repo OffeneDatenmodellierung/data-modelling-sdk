@@ -12,6 +12,12 @@
 //!   - `tables/` - Legacy: tables not in any domain (backward compatibility)
 
 use crate::export::{cads::CADSExporter, odcs::ODCSExporter, odps::ODPSExporter};
+#[cfg(feature = "bpmn")]
+use crate::models::bpmn::BPMNModel;
+#[cfg(feature = "dmn")]
+use crate::models::dmn::DMNModel;
+#[cfg(feature = "openapi")]
+use crate::models::openapi::{OpenAPIFormat, OpenAPIModel};
 use crate::models::{cads::CADSAsset, domain::Domain, odps::ODPSDataProduct, table::Table};
 use crate::storage::{StorageBackend, StorageError};
 use anyhow::Result;
@@ -256,6 +262,100 @@ impl<B: StorageBackend> ModelSaver<B> {
             .await?;
 
         info!("Saved CADS asset '{}' to {}", asset.name, asset_file_path);
+        Ok(())
+    }
+
+    /// Save a BPMN model to a domain directory
+    ///
+    /// Saves the model as `{model_name}.bpmn.xml` in the specified domain directory.
+    #[cfg(feature = "bpmn")]
+    pub async fn save_bpmn_model(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+        model: &BPMNModel,
+        xml_content: &str,
+    ) -> Result<(), StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+
+        // Ensure domain directory exists
+        if !self.storage.dir_exists(&domain_dir).await? {
+            self.storage.create_dir(&domain_dir).await?;
+        }
+
+        let sanitized_model_name = sanitize_filename(&model.name);
+        let model_file_path = format!("{}/{}.bpmn.xml", domain_dir, sanitized_model_name);
+        self.storage
+            .write_file(&model_file_path, xml_content.as_bytes())
+            .await?;
+
+        info!("Saved BPMN model '{}' to {}", model.name, model_file_path);
+        Ok(())
+    }
+
+    /// Save a DMN model to a domain directory
+    ///
+    /// Saves the model as `{model_name}.dmn.xml` in the specified domain directory.
+    #[cfg(feature = "dmn")]
+    pub async fn save_dmn_model(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+        model: &DMNModel,
+        xml_content: &str,
+    ) -> Result<(), StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+
+        // Ensure domain directory exists
+        if !self.storage.dir_exists(&domain_dir).await? {
+            self.storage.create_dir(&domain_dir).await?;
+        }
+
+        let sanitized_model_name = sanitize_filename(&model.name);
+        let model_file_path = format!("{}/{}.dmn.xml", domain_dir, sanitized_model_name);
+        self.storage
+            .write_file(&model_file_path, xml_content.as_bytes())
+            .await?;
+
+        info!("Saved DMN model '{}' to {}", model.name, model_file_path);
+        Ok(())
+    }
+
+    /// Save an OpenAPI specification to a domain directory
+    ///
+    /// Saves the specification as `{api_name}.openapi.yaml` or `.openapi.json` in the specified domain directory.
+    #[cfg(feature = "openapi")]
+    pub async fn save_openapi_model(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+        model: &OpenAPIModel,
+        content: &str,
+    ) -> Result<(), StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+
+        // Ensure domain directory exists
+        if !self.storage.dir_exists(&domain_dir).await? {
+            self.storage.create_dir(&domain_dir).await?;
+        }
+
+        let sanitized_api_name = sanitize_filename(&model.name);
+        let extension = match model.format {
+            OpenAPIFormat::Yaml => "yaml",
+            OpenAPIFormat::Json => "json",
+        };
+        let model_file_path = format!(
+            "{}/{}.openapi.{}",
+            domain_dir, sanitized_api_name, extension
+        );
+        self.storage
+            .write_file(&model_file_path, content.as_bytes())
+            .await?;
+
+        info!("Saved OpenAPI spec '{}' to {}", model.name, model_file_path);
         Ok(())
     }
 }

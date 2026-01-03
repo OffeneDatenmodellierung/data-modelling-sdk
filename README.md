@@ -8,9 +8,10 @@ Copyright (c) 2025 Mark Olliver - Licensed under MIT
 
 - **Storage Backends**: File system, browser storage (IndexedDB/localStorage), and HTTP API
 - **Model Loading/Saving**: Load and save models from various storage backends
-- **Import/Export**: Import from SQL, ODCS, ODCL, JSON Schema, AVRO, Protobuf, CADS, ODPS; Export to various formats
+- **Import/Export**: Import from SQL, ODCS, ODCL, JSON Schema, AVRO, Protobuf, CADS, ODPS, BPMN, DMN, OpenAPI; Export to various formats
 - **Business Domain Schema**: Organize systems, CADS nodes, and ODCS nodes within business domains
 - **Universal Converter**: Convert any format to ODCS v3.1.0 format
+- **OpenAPI to ODCS Converter**: Convert OpenAPI schema components to ODCS table definitions
 - **Validation**: Table and relationship validation (naming conflicts, circular dependencies)
 - **Schema Reference**: JSON Schema definitions for all supported formats in `schemas/` directory
 
@@ -28,7 +29,9 @@ base_directory/
 │   ├── table2.odcs.yaml
 │   ├── product1.odps.yaml   # ODPS product files
 │   ├── model1.cads.yaml     # CADS asset files
-│   └── ...                  # Future: OpenAPI/BPMN files
+│   ├── api1.openapi.yaml    # OpenAPI specification files
+│   ├── process1.bpmn.xml    # BPMN process model files
+│   └── decision1.dmn.xml     # DMN decision model files
 ├── domain2/                  # Another domain directory
 │   ├── domain.yaml
 │   └── ...
@@ -40,6 +43,9 @@ Each domain directory contains:
 - `*.odcs.yaml`: ODCS table files referenced by ODCSNodes in the domain
 - `*.odps.yaml`: ODPS product files for data products in the domain
 - `*.cads.yaml`: CADS asset files referenced by CADSNodes in the domain
+- `*.openapi.yaml` / `*.openapi.json`: OpenAPI specification files (can be referenced by CADS assets)
+- `*.bpmn.xml`: BPMN 2.0 process model files (can be referenced by CADS assets)
+- `*.dmn.xml`: DMN 1.3 decision model files (can be referenced by CADS assets)
 
 ## Usage
 
@@ -130,13 +136,21 @@ console.log('Exported YAML:', exportedYaml);
 - `importFromProtobuf(protobufContent: string): string` - Import from Protobuf
 - `importFromCads(yamlContent: string): string` - Import CADS (Compute Asset Description Specification) YAML
 - `importFromOdps(yamlContent: string): string` - Import ODPS (Open Data Product Standard) YAML
+- `importBpmnModel(domainId: string, xmlContent: string, modelName?: string): string` - Import BPMN 2.0 XML model
+- `importDmnModel(domainId: string, xmlContent: string, modelName?: string): string` - Import DMN 1.3 XML model
+- `importOpenapiSpec(domainId: string, content: string, apiName?: string): string` - Import OpenAPI 3.1.1 specification
 - `exportToSql(workspaceJson: string, dialect: string): string` - Export to SQL
 - `exportToAvro(workspaceJson: string): string` - Export to AVRO schema
 - `exportToJsonSchema(workspaceJson: string): string` - Export to JSON Schema
 - `exportToProtobuf(workspaceJson: string): string` - Export to Protobuf
 - `exportToCads(workspaceJson: string): string` - Export to CADS YAML
 - `exportToOdps(workspaceJson: string): string` - Export to ODPS YAML
+- `exportBpmnModel(xmlContent: string): string` - Export BPMN model to XML
+- `exportDmnModel(xmlContent: string): string` - Export DMN model to XML
+- `exportOpenapiSpec(content: string, sourceFormat: string, targetFormat?: string): string` - Export OpenAPI spec with optional format conversion
 - `convertToOdcs(input: string, format?: string): string` - Universal converter: convert any format to ODCS v3.1.0
+- `convertOpenapiToOdcs(openapiContent: string, componentName: string, tableName?: string): string` - Convert OpenAPI schema component to ODCS table
+- `analyzeOpenapiConversion(openapiContent: string, componentName: string): string` - Analyze OpenAPI component conversion feasibility
 - `migrateDataflowToDomain(dataflowYaml: string, domainName?: string): string` - Migrate DataFlow YAML to Domain schema format
 
 **Domain Operations**:
@@ -194,8 +208,12 @@ The SDK supports:
 - **ODCL v1.2.1**: Legacy data contract format (backward compatibility)
 - **ODPS**: Data products linking to ODCS Tables
 - **CADS v1.0**: Compute assets (AI/ML models, applications, pipelines)
+- **BPMN 2.0**: Business Process Model and Notation (process models stored in native XML)
+- **DMN 1.3**: Decision Model and Notation (decision models stored in native XML)
+- **OpenAPI 3.1.1**: API specifications (stored in native YAML or JSON)
 - **Business Domain Schema**: Organize systems, CADS nodes, and ODCS nodes
 - **Universal Converter**: Convert any format to ODCS v3.1.0
+- **OpenAPI to ODCS Converter**: Convert OpenAPI schema components to ODCS table definitions
 
 ### Schema Reference Directory
 

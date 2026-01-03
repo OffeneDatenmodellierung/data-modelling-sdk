@@ -9,11 +9,17 @@
 //! - PNG
 
 pub mod avro;
+#[cfg(feature = "bpmn")]
+pub mod bpmn;
 pub mod cads;
+#[cfg(feature = "dmn")]
+pub mod dmn;
 pub mod json_schema;
 pub mod odcl;
 pub mod odcs;
 pub mod odps;
+#[cfg(feature = "openapi")]
+pub mod openapi;
 #[cfg(feature = "png-export")]
 pub mod png;
 pub mod protobuf;
@@ -44,6 +50,14 @@ pub enum ExportError {
     IoError(String),
     #[error("Export error: {0}")]
     ExportError(String),
+    #[error("BPMN export error: {0}")]
+    BPMNExportError(String),
+    #[error("DMN export error: {0}")]
+    DMNExportError(String),
+    #[error("OpenAPI export error: {0}")]
+    OpenAPIExportError(String),
+    #[error("Model not found: {0}")]
+    ModelNotFound(String),
 }
 
 impl From<Box<dyn std::error::Error>> for ExportError {
@@ -54,11 +68,17 @@ impl From<Box<dyn std::error::Error>> for ExportError {
 
 // Re-export for convenience
 pub use avro::AvroExporter;
+#[cfg(feature = "bpmn")]
+pub use bpmn::BPMNExporter;
 pub use cads::CADSExporter;
+#[cfg(feature = "dmn")]
+pub use dmn::DMNExporter;
 pub use json_schema::JSONSchemaExporter;
 pub use odcl::ODCLExporter;
 pub use odcs::ODCSExporter;
 pub use odps::ODPSExporter;
+#[cfg(feature = "openapi")]
+pub use openapi::OpenAPIExporter;
 #[cfg(feature = "png-export")]
 pub use png::PNGExporter;
 pub use protobuf::ProtobufExporter;

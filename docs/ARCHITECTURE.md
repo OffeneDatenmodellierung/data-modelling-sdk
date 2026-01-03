@@ -23,7 +23,7 @@ The **Data Modelling SDK** is a Rust library that provides unified interfaces fo
 
 The SDK enables:
 
-- **Multi-format Support**: Import from and export to various data contract formats (ODCS, ODCL, SQL, JSON Schema, AVRO, Protobuf, CADS, ODPS)
+- **Multi-format Support**: Import from and export to various data contract formats (ODCS, ODCL, SQL, JSON Schema, AVRO, Protobuf, CADS, ODPS, BPMN, DMN, OpenAPI)
 - **Cross-platform Compatibility**: Works seamlessly in native applications, web applications (WASM), and API backends
 - **Domain Organization**: Organize data contracts, compute assets, and data products within business domains
 - **Validation & Governance**: Validate schemas, detect conflicts, and enforce data governance rules
@@ -352,8 +352,11 @@ Format-specific importers converting external formats to SDK models:
 
 - **`ODCSImporter`**: ODCS v3.1.0 (primary format)
 - **`ODCLImporter`**: ODCL v1.2.1 (legacy, via ODCSImporter)
-- **`CADSImporter`**: CADS v1.0 (compute assets)
+- **`CADSImporter`**: CADS v1.0 (compute assets, supports BPMN/DMN/OpenAPI references)
 - **`ODPSImporter`**: ODPS (data products)
+- **`BPMNImporter`**: BPMN 2.0 XML (process models, requires `bpmn` feature)
+- **`DMNImporter`**: DMN 1.3 XML (decision models, requires `dmn` feature)
+- **`OpenAPIImporter`**: OpenAPI 3.1.1 YAML/JSON (API specs, requires `openapi` feature)
 - **`SQLImporter`**: SQL DDL parsing
 - **`JSONSchemaImporter`**: JSON Schema conversion
 - **`AvroImporter`**: AVRO schema conversion
@@ -365,8 +368,11 @@ Format-specific exporters converting SDK models to external formats:
 
 - **`ODCSExporter`**: ODCS v3.1.0 export
 - **`ODCLExporter`**: ODCL v1.2.1 export (legacy)
-- **`CADSExporter`**: CADS v1.0 export
+- **`CADSExporter`**: CADS v1.0 export (supports BPMN/DMN/OpenAPI references)
 - **`ODPSExporter`**: ODPS export
+- **`BPMNExporter`**: BPMN 2.0 XML export (requires `bpmn` feature)
+- **`DMNExporter`**: DMN 1.3 XML export (requires `dmn` feature)
+- **`OpenAPIExporter`**: OpenAPI 3.1.1 YAML/JSON export with format conversion (requires `openapi` feature)
 - **`SQLExporter`**: SQL DDL generation
 - **`JSONSchemaExporter`**: JSON Schema generation
 - **`AvroExporter`**: AVRO schema generation

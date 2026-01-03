@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DMN 1.3 XSD Schema
+
+  This file should contain the official DMN 1.3 XSD schema from OMG.
+  For now, this is a placeholder. The actual schema should be downloaded from:
+  https://www.omg.org/spec/DMN/1.3/
+
+  Or from the DMN MIWG test suite:
+  https://github.com/process-analytics/dmn-miwg-test-suite
+
+  TODO: Download and replace with official schema
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <!-- Placeholder - replace with official DMN 1.3 XSD -->
+</xs:schema>

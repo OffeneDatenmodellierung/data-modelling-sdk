@@ -43,6 +43,8 @@ impl CADSExporter {
     ///     compliance: None,
     ///     validation_profiles: None,
     ///     bpmn_models: None,
+    ///     dmn_models: None,
+    ///     openapi_specs: None,
     ///     custom_properties: None,
     ///     created_at: None,
     ///     updated_at: None,
@@ -612,6 +614,77 @@ impl CADSExporter {
             yaml.insert(
                 serde_yaml::Value::String("bpmnModels".to_string()),
                 serde_yaml::Value::Sequence(models_yaml),
+            );
+        }
+
+        if let Some(dmn_models) = &asset.dmn_models {
+            let models_yaml: Vec<serde_yaml::Value> = dmn_models
+                .iter()
+                .map(|model| {
+                    let mut model_map = serde_yaml::Mapping::new();
+                    model_map.insert(
+                        serde_yaml::Value::String("name".to_string()),
+                        serde_yaml::Value::String(model.name.clone()),
+                    );
+                    model_map.insert(
+                        serde_yaml::Value::String("reference".to_string()),
+                        serde_yaml::Value::String(model.reference.clone()),
+                    );
+                    let format_str = match model.format {
+                        CADSDMNFormat::Dmn13Xml => "dmn13-xml",
+                    };
+                    model_map.insert(
+                        serde_yaml::Value::String("format".to_string()),
+                        serde_yaml::Value::String(format_str.to_string()),
+                    );
+                    if let Some(description) = &model.description {
+                        model_map.insert(
+                            serde_yaml::Value::String("description".to_string()),
+                            serde_yaml::Value::String(description.clone()),
+                        );
+                    }
+                    serde_yaml::Value::Mapping(model_map)
+                })
+                .collect();
+            yaml.insert(
+                serde_yaml::Value::String("dmnModels".to_string()),
+                serde_yaml::Value::Sequence(models_yaml),
+            );
+        }
+
+        if let Some(openapi_specs) = &asset.openapi_specs {
+            let specs_yaml: Vec<serde_yaml::Value> = openapi_specs
+                .iter()
+                .map(|spec| {
+                    let mut spec_map = serde_yaml::Mapping::new();
+                    spec_map.insert(
+                        serde_yaml::Value::String("name".to_string()),
+                        serde_yaml::Value::String(spec.name.clone()),
+                    );
+                    spec_map.insert(
+                        serde_yaml::Value::String("reference".to_string()),
+                        serde_yaml::Value::String(spec.reference.clone()),
+                    );
+                    let format_str = match spec.format {
+                        CADSOpenAPIFormat::Openapi311Yaml => "openapi-311-yaml",
+                        CADSOpenAPIFormat::Openapi311Json => "openapi-311-json",
+                    };
+                    spec_map.insert(
+                        serde_yaml::Value::String("format".to_string()),
+                        serde_yaml::Value::String(format_str.to_string()),
+                    );
+                    if let Some(description) = &spec.description {
+                        spec_map.insert(
+                            serde_yaml::Value::String("description".to_string()),
+                            serde_yaml::Value::String(description.clone()),
+                        );
+                    }
+                    serde_yaml::Value::Mapping(spec_map)
+                })
+                .collect();
+            yaml.insert(
+                serde_yaml::Value::String("openapiSpecs".to_string()),
+                serde_yaml::Value::Sequence(specs_yaml),
             );
         }
 

@@ -46,6 +46,11 @@ petgraph = "0.6"
 # YAML processing
 yaml-rust = "0.4"
 
+# XML processing (for BPMN/DMN)
+quick-xml = { version = "0.36", features = ["serialize"], optional = true }
+# Note: XSD validation will be implemented using quick-xml with manual schema validation
+# or external validation tools. No dedicated XSD crate available at this time.
+
 # Logging
 tracing = "0.1"
 
@@ -84,6 +89,9 @@ png-export = ["image", "imageproc"]
 databricks-dialect = ["datafusion"]  # Enable datafusion for Databricks SQL dialect support
 git = ["git2"]  # Enable Git operations (for both API and native app)
 schema-validation = ["jsonschema"]  # Enable JSON Schema validation for ODCS/ODCL schemas
+bpmn = ["quick-xml"]  # Enable BPMN 2.0 import/export support
+dmn = ["quick-xml"]  # Enable DMN 1.3 import/export support
+openapi = []  # Enable OpenAPI 3.1.1 import/export support (uses existing jsonschema)
 
 [dependencies.jsonschema]
 version = "0.20"

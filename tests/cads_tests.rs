@@ -57,6 +57,8 @@ description:
 #[test]
 fn test_cads_export_basic() {
     let asset = CADSAsset {
+        dmn_models: None,
+        openapi_specs: None,
         api_version: "v1.0".to_string(),
         kind: CADSKind::AIModel,
         id: "550e8400-e29b-41d4-a716-446655440000".to_string(),

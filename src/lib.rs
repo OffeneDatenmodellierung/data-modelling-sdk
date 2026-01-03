@@ -1107,4 +1107,246 @@ mod wasm {
             Ok(JsValue::from_str("Model saved successfully"))
         })
     }
+
+    // BPMN WASM Bindings
+    /// Import a BPMN model from XML content.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_id` - Domain UUID as string
+    /// * `xml_content` - BPMN XML content as a string
+    /// * `model_name` - Optional model name (extracted from XML if not provided)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing BPMNModel, or JsValue error
+    #[cfg(feature = "bpmn")]
+    #[wasm_bindgen]
+    pub fn import_bpmn_model(
+        domain_id: &str,
+        xml_content: &str,
+        model_name: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::import::bpmn::BPMNImporter;
+        use uuid::Uuid;
+
+        let domain_uuid = Uuid::parse_str(domain_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid domain ID: {}", e)))?;
+
+        let mut importer = BPMNImporter::new();
+        match importer.import(xml_content, domain_uuid, model_name.as_deref()) {
+            Ok(model) => serde_json::to_string(&model)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
+            Err(e) => Err(JsValue::from_str(&format!("Import error: {}", e))),
+        }
+    }
+
+    /// Export a BPMN model to XML content.
+    ///
+    /// # Arguments
+    ///
+    /// * `xml_content` - BPMN XML content as a string
+    ///
+    /// # Returns
+    ///
+    /// BPMN XML content as string, or JsValue error
+    #[cfg(feature = "bpmn")]
+    #[wasm_bindgen]
+    pub fn export_bpmn_model(xml_content: &str) -> Result<String, JsValue> {
+        use crate::export::bpmn::BPMNExporter;
+        let exporter = BPMNExporter::new();
+        exporter
+            .export(xml_content)
+            .map_err(|e| JsValue::from_str(&format!("Export error: {}", e)))
+    }
+
+    // DMN WASM Bindings
+    /// Import a DMN model from XML content.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_id` - Domain UUID as string
+    /// * `xml_content` - DMN XML content as a string
+    /// * `model_name` - Optional model name (extracted from XML if not provided)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing DMNModel, or JsValue error
+    #[cfg(feature = "dmn")]
+    #[wasm_bindgen]
+    pub fn import_dmn_model(
+        domain_id: &str,
+        xml_content: &str,
+        model_name: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::import::dmn::DMNImporter;
+        use uuid::Uuid;
+
+        let domain_uuid = Uuid::parse_str(domain_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid domain ID: {}", e)))?;
+
+        let mut importer = DMNImporter::new();
+        match importer.import(xml_content, domain_uuid, model_name.as_deref()) {
+            Ok(model) => serde_json::to_string(&model)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
+            Err(e) => Err(JsValue::from_str(&format!("Import error: {}", e))),
+        }
+    }
+
+    /// Export a DMN model to XML content.
+    ///
+    /// # Arguments
+    ///
+    /// * `xml_content` - DMN XML content as a string
+    ///
+    /// # Returns
+    ///
+    /// DMN XML content as string, or JsValue error
+    #[cfg(feature = "dmn")]
+    #[wasm_bindgen]
+    pub fn export_dmn_model(xml_content: &str) -> Result<String, JsValue> {
+        use crate::export::dmn::DMNExporter;
+        let exporter = DMNExporter::new();
+        exporter
+            .export(xml_content)
+            .map_err(|e| JsValue::from_str(&format!("Export error: {}", e)))
+    }
+
+    // OpenAPI WASM Bindings
+    /// Import an OpenAPI specification from YAML or JSON content.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_id` - Domain UUID as string
+    /// * `content` - OpenAPI YAML or JSON content as a string
+    /// * `api_name` - Optional API name (extracted from info.title if not provided)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing OpenAPIModel, or JsValue error
+    #[cfg(feature = "openapi")]
+    #[wasm_bindgen]
+    pub fn import_openapi_spec(
+        domain_id: &str,
+        content: &str,
+        api_name: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::import::openapi::OpenAPIImporter;
+        use uuid::Uuid;
+
+        let domain_uuid = Uuid::parse_str(domain_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid domain ID: {}", e)))?;
+
+        let mut importer = OpenAPIImporter::new();
+        match importer.import(content, domain_uuid, api_name.as_deref()) {
+            Ok(model) => serde_json::to_string(&model)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
+            Err(e) => Err(JsValue::from_str(&format!("Import error: {}", e))),
+        }
+    }
+
+    /// Export an OpenAPI specification to YAML or JSON content.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - OpenAPI content as a string
+    /// * `source_format` - Source format ("yaml" or "json")
+    /// * `target_format` - Optional target format for conversion (None to keep original)
+    ///
+    /// # Returns
+    ///
+    /// OpenAPI content in requested format, or JsValue error
+    #[cfg(feature = "openapi")]
+    #[wasm_bindgen]
+    pub fn export_openapi_spec(
+        content: &str,
+        source_format: &str,
+        target_format: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::openapi::OpenAPIExporter;
+        use crate::models::openapi::OpenAPIFormat;
+
+        let source_fmt = match source_format {
+            "yaml" | "yml" => OpenAPIFormat::Yaml,
+            "json" => OpenAPIFormat::Json,
+            _ => {
+                return Err(JsValue::from_str(
+                    "Invalid source format. Use 'yaml' or 'json'",
+                ));
+            }
+        };
+
+        let target_fmt = if let Some(tf) = target_format {
+            match tf.as_str() {
+                "yaml" | "yml" => Some(OpenAPIFormat::Yaml),
+                "json" => Some(OpenAPIFormat::Json),
+                _ => {
+                    return Err(JsValue::from_str(
+                        "Invalid target format. Use 'yaml' or 'json'",
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
+        let exporter = OpenAPIExporter::new();
+        exporter
+            .export(content, source_fmt, target_fmt)
+            .map_err(|e| JsValue::from_str(&format!("Export error: {}", e)))
+    }
+
+    /// Convert an OpenAPI schema component to an ODCS table.
+    ///
+    /// # Arguments
+    ///
+    /// * `openapi_content` - OpenAPI YAML or JSON content as a string
+    /// * `component_name` - Name of the schema component to convert
+    /// * `table_name` - Optional desired ODCS table name (uses component_name if None)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing ODCS Table, or JsValue error
+    #[cfg(feature = "openapi")]
+    #[wasm_bindgen]
+    pub fn convert_openapi_to_odcs(
+        openapi_content: &str,
+        component_name: &str,
+        table_name: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::convert::openapi_to_odcs::OpenAPIToODCSConverter;
+
+        let converter = OpenAPIToODCSConverter::new();
+        match converter.convert_component(openapi_content, component_name, table_name.as_deref()) {
+            Ok(table) => serde_json::to_string(&table)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
+            Err(e) => Err(JsValue::from_str(&format!("Conversion error: {}", e))),
+        }
+    }
+
+    /// Analyze an OpenAPI component for conversion feasibility.
+    ///
+    /// # Arguments
+    ///
+    /// * `openapi_content` - OpenAPI YAML or JSON content as a string
+    /// * `component_name` - Name of the schema component to analyze
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing ConversionReport, or JsValue error
+    #[cfg(feature = "openapi")]
+    #[wasm_bindgen]
+    pub fn analyze_openapi_conversion(
+        openapi_content: &str,
+        component_name: &str,
+    ) -> Result<String, JsValue> {
+        use crate::convert::openapi_to_odcs::OpenAPIToODCSConverter;
+
+        let converter = OpenAPIToODCSConverter::new();
+        match converter.analyze_conversion(openapi_content, component_name) {
+            Ok(report) => serde_json::to_string(&report)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
+            Err(e) => Err(JsValue::from_str(&format!("Analysis error: {}", e))),
+        }
+    }
 }

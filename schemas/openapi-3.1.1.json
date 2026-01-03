@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://spec.openapis.org/oas/3.1/schema/20240221",
+  "title": "OpenAPI 3.1.1 JSON Schema",
+  "description": "This file should contain the official OpenAPI 3.1.1 JSON Schema. For now, this is a placeholder. The actual schema should be downloaded from: https://github.com/OAI/OpenAPI-Specification/blob/main/schemas/v3.1/schema.json",
+  "type": "object",
+  "properties": {
+    "openapi": {
+      "type": "string",
+      "description": "Placeholder - replace with official OpenAPI 3.1.1 JSON Schema"
+    }
+  }
+}

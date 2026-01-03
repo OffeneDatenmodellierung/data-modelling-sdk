@@ -8,10 +8,16 @@
 //! - Protobuf
 
 pub mod avro;
+#[cfg(feature = "bpmn")]
+pub mod bpmn;
 pub mod cads;
+#[cfg(feature = "dmn")]
+pub mod dmn;
 pub mod json_schema;
 pub mod odcs;
 pub mod odps;
+#[cfg(feature = "openapi")]
+pub mod openapi;
 pub mod protobuf;
 pub mod sql;
 
@@ -42,6 +48,18 @@ pub enum ImportError {
     ValidationError(String),
     #[error("IO error: {0}")]
     IoError(String),
+    #[error("BPMN validation error: {0}")]
+    BPMNValidationError(String),
+    #[error("DMN validation error: {0}")]
+    DMNValidationError(String),
+    #[error("OpenAPI validation error: {0}")]
+    OpenAPIValidationError(String),
+    #[error("BPMN parse error: {0}")]
+    BPMNParseError(String),
+    #[error("DMN parse error: {0}")]
+    DMNParseError(String),
+    #[error("OpenAPI parse error: {0}")]
+    OpenAPIParseError(String),
 }
 
 /// Table data from import

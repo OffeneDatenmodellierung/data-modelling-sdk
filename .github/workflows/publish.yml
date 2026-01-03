@@ -41,7 +41,9 @@ jobs:
       - name: Get version from Cargo.toml
         id: version
         run: |
-          VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          # Extract version from [package] section only, not from dependencies
+          # This ensures we get the package version (1.4.0) and not dependency versions (0.20, etc.)
+          VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version from Cargo.toml: $VERSION"
 

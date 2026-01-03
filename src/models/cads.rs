@@ -338,6 +338,52 @@ pub struct CADSBPMNModel {
     pub description: Option<String>,
 }
 
+/// DMN model format
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CADSDMNFormat {
+    #[serde(rename = "dmn13-xml")]
+    Dmn13Xml,
+}
+
+/// DMN model reference
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CADSDMNModel {
+    /// Model name
+    pub name: String,
+    /// Reference to DMN model
+    pub reference: String,
+    /// Format
+    pub format: CADSDMNFormat,
+    /// Description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// OpenAPI spec format
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CADSOpenAPIFormat {
+    #[serde(rename = "openapi-311-yaml")]
+    Openapi311Yaml,
+    #[serde(rename = "openapi-311-json")]
+    Openapi311Json,
+}
+
+/// OpenAPI spec reference
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CADSOpenAPISpec {
+    /// Spec name
+    pub name: String,
+    /// Reference to OpenAPI spec
+    pub reference: String,
+    /// Format
+    pub format: CADSOpenAPIFormat,
+    /// Description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// CADS Asset - main structure
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CADSAsset {
@@ -386,6 +432,12 @@ pub struct CADSAsset {
     /// BPMN models
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bpmn_models: Option<Vec<CADSBPMNModel>>,
+    /// DMN models
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dmn_models: Option<Vec<CADSDMNModel>>,
+    /// OpenAPI specifications
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub openapi_specs: Option<Vec<CADSOpenAPISpec>>,
     /// Custom properties
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_properties: Option<HashMap<String, serde_json::Value>>,

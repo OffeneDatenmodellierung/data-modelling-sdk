@@ -134,6 +134,8 @@ impl CADSImporter {
         let compliance = self.parse_compliance(&json_value)?;
         let validation_profiles = self.parse_validation_profiles(&json_value)?;
         let bpmn_models = self.parse_bpmn_models(&json_value)?;
+        let dmn_models = self.parse_dmn_models(&json_value)?;
+        let openapi_specs = self.parse_openapi_specs(&json_value)?;
         let custom_properties = self.parse_custom_properties(&json_value)?;
 
         Ok(CADSAsset {
@@ -154,6 +156,8 @@ impl CADSImporter {
             compliance,
             validation_profiles,
             bpmn_models,
+            dmn_models,
+            openapi_specs,
             custom_properties,
             created_at: Some(chrono::Utc::now()),
             updated_at: Some(chrono::Utc::now()),
@@ -649,6 +653,83 @@ impl CADSImporter {
             }
             if !models.is_empty() {
                 Ok(Some(models))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Parse DMN models array
+    fn parse_dmn_models(&self, json: &JsonValue) -> Result<Option<Vec<CADSDMNModel>>> {
+        if let Some(models_arr) = json.get("dmnModels").and_then(|v| v.as_array()) {
+            let mut models = Vec::new();
+            for model_item in models_arr {
+                if let Some(model_obj) = model_item.as_object()
+                    && let (Some(name), Some(reference), Some(format_str)) = (
+                        model_obj.get("name").and_then(|v| v.as_str()),
+                        model_obj.get("reference").and_then(|v| v.as_str()),
+                        model_obj.get("format").and_then(|v| v.as_str()),
+                    )
+                {
+                    let format = match format_str {
+                        "dmn13-xml" => CADSDMNFormat::Dmn13Xml,
+                        _ => continue,
+                    };
+
+                    models.push(CADSDMNModel {
+                        name: name.to_string(),
+                        reference: reference.to_string(),
+                        format,
+                        description: model_obj
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                    });
+                }
+            }
+            if !models.is_empty() {
+                Ok(Some(models))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Parse OpenAPI specs array
+    fn parse_openapi_specs(&self, json: &JsonValue) -> Result<Option<Vec<CADSOpenAPISpec>>> {
+        if let Some(specs_arr) = json.get("openapiSpecs").and_then(|v| v.as_array()) {
+            let mut specs = Vec::new();
+            for spec_item in specs_arr {
+                if let Some(spec_obj) = spec_item.as_object()
+                    && let (Some(name), Some(reference), Some(format_str)) = (
+                        spec_obj.get("name").and_then(|v| v.as_str()),
+                        spec_obj.get("reference").and_then(|v| v.as_str()),
+                        spec_obj.get("format").and_then(|v| v.as_str()),
+                    )
+                {
+                    let format = match format_str {
+                        "openapi-311-yaml" => CADSOpenAPIFormat::Openapi311Yaml,
+                        "openapi-311-json" => CADSOpenAPIFormat::Openapi311Json,
+                        _ => continue,
+                    };
+
+                    specs.push(CADSOpenAPISpec {
+                        name: name.to_string(),
+                        reference: reference.to_string(),
+                        format,
+                        description: spec_obj
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                    });
+                }
+            }
+            if !specs.is_empty() {
+                Ok(Some(specs))
             } else {
                 Ok(None)
             }
