@@ -1,7 +1,7 @@
 //! Import module tests
 
 use data_modelling_sdk::import::{
-    avro::AvroImporter, dataflow::DataFlowImporter, json_schema::JSONSchemaImporter,
+    avro::AvroImporter, json_schema::JSONSchemaImporter, odcs::ODCSImporter,
     protobuf::ProtobufImporter, sql::SQLImporter,
 };
 
@@ -359,73 +359,287 @@ mod protobuf_import_tests {
     }
 }
 
-mod dataflow_import_tests {
+// DataFlow import tests removed - DataFlow format has been migrated to Domain schema
+// Use migrate_dataflow_to_domain() for DataFlow → Domain migration
+
+mod odcl_field_preservation_tests {
     use super::*;
-    use data_modelling_sdk::models::InfrastructureType;
+    use std::fs;
+    use std::path::PathBuf;
 
-    #[test]
-    fn test_import_node_with_metadata() {
-        let importer = DataFlowImporter::new();
-        let yaml = r#"
-nodes:
-  - name: user_events
-    metadata:
-      owner: "Data Engineering Team"
-      infrastructure_type: "Kafka"
-      notes: "User interaction events"
-      sla:
-        - property: latency
-          value: 4
-          unit: hours
-          description: "Data must be available within 4 hours"
-"#;
-        let model = importer.import(yaml).unwrap();
-        assert_eq!(model.tables.len(), 1);
-        let table = &model.tables[0];
-        assert_eq!(table.name, "user_events");
-        assert_eq!(table.owner, Some("Data Engineering Team".to_string()));
-        assert_eq!(table.infrastructure_type, Some(InfrastructureType::Kafka));
-        assert_eq!(table.notes, Some("User interaction events".to_string()));
-        assert!(table.sla.is_some());
+    fn get_test_fixture_path(filename: &str) -> PathBuf {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("specs");
+        path.push("003-odcs-field-preservation");
+        path.push("test-fixtures");
+        path.push(filename);
+        path
     }
 
     #[test]
-    fn test_import_relationship_with_metadata() {
-        let importer = DataFlowImporter::new();
-        let source_id = uuid::Uuid::new_v4();
-        let target_id = uuid::Uuid::new_v4();
-        let yaml = format!(
-            r#"
-relationships:
-  - source_node_id: "{}"
-    target_node_id: "{}"
-    metadata:
-      owner: "Data Engineering Team"
-      infrastructure_type: "Kafka"
-      notes: "ETL pipeline"
-"#,
-            source_id, target_id
+    fn test_odcl_import_preserves_description_field() {
+        let mut importer = ODCSImporter::new();
+        let yaml = r#"
+dataContractSpecification: 1.2.1
+id: test-contract
+info:
+  title: Test Contract
+  version: 1.0.0
+models:
+  test_table:
+    type: table
+    fields:
+      test_column:
+        description: This is a test column description
+        type: text
+        required: true
+"#;
+        let result = importer.import(yaml).unwrap();
+
+        assert_eq!(result.tables.len(), 1);
+        let table = &result.tables[0];
+        assert_eq!(table.columns.len(), 1);
+
+        let column = &table.columns[0];
+        assert_eq!(column.name, "test_column");
+        assert_eq!(
+            column.description,
+            Some("This is a test column description".to_string())
         );
-        let model = importer.import(&yaml).unwrap();
-        assert_eq!(model.relationships.len(), 1);
-        let rel = &model.relationships[0];
-        assert_eq!(rel.owner, Some("Data Engineering Team".to_string()));
-        assert_eq!(rel.infrastructure_type, Some(InfrastructureType::Kafka));
-        assert_eq!(rel.notes, Some("ETL pipeline".to_string()));
     }
 
     #[test]
-    fn test_import_without_metadata() {
-        let importer = DataFlowImporter::new();
+    fn test_odcl_import_preserves_quality_array_with_nested_structures() {
+        let mut importer = ODCSImporter::new();
         let yaml = r#"
-nodes:
-  - name: test_table
+dataContractSpecification: 1.2.1
+id: test-contract
+info:
+  title: Test Contract
+  version: 1.0.0
+models:
+  test_table:
+    type: table
+    fields:
+      test_column:
+        type: long
+        required: true
+        quality:
+          - type: sql
+            description: 95% of all values are expected to be between 10 and 499
+            query: |
+              SELECT quantile_cont(test_column, 0.95) AS percentile_95
+              FROM test_table
+            mustBeBetween: [10, 499]
 "#;
-        let model = importer.import(yaml).unwrap();
-        assert_eq!(model.tables.len(), 1);
-        let table = &model.tables[0];
-        assert_eq!(table.name, "test_table");
-        assert_eq!(table.owner, None);
-        assert_eq!(table.infrastructure_type, None);
+        let result = importer.import(yaml).unwrap();
+
+        assert_eq!(result.tables.len(), 1);
+        let table = &result.tables[0];
+
+        // Find the test_column (there might be additional columns created from quality rules)
+        let column = table
+            .columns
+            .iter()
+            .find(|c| c.name == "test_column")
+            .expect("Should find test_column");
+
+        // Verify quality array is preserved
+        // Note: When required=true, a not_null quality rule may be added automatically
+        assert!(column.quality.is_some());
+        let quality = column.quality.as_ref().unwrap();
+        assert!(
+            !quality.is_empty(),
+            "Quality array should have at least 1 rule"
+        );
+
+        // Find the SQL quality rule (there may be a not_null rule added automatically)
+        let quality_rule = quality
+            .iter()
+            .find(|r| r.get("type").and_then(|v| v.as_str()) == Some("sql"))
+            .expect("Should find SQL quality rule");
+        assert_eq!(
+            quality_rule.get("type").and_then(|v| v.as_str()),
+            Some("sql")
+        );
+        assert_eq!(
+            quality_rule.get("description").and_then(|v| v.as_str()),
+            Some("95% of all values are expected to be between 10 and 499")
+        );
+        assert!(quality_rule.get("query").is_some());
+        assert!(quality_rule.get("mustBeBetween").is_some());
+
+        // Verify nested array structure
+        if let Some(must_be_between) = quality_rule.get("mustBeBetween") {
+            if let Some(arr) = must_be_between.as_array() {
+                assert_eq!(arr.len(), 2);
+                assert_eq!(arr[0].as_i64(), Some(10));
+                assert_eq!(arr[1].as_i64(), Some(499));
+            } else {
+                panic!("mustBeBetween should be an array");
+            }
+        } else {
+            panic!("mustBeBetween should be present");
+        }
+    }
+
+    #[test]
+    fn test_odcl_import_preserves_ref_references() {
+        let mut importer = ODCSImporter::new();
+        let yaml = r#"
+dataContractSpecification: 1.2.1
+id: test-contract
+info:
+  title: Test Contract
+  version: 1.0.0
+models:
+  test_table:
+    type: table
+    fields:
+      order_id:
+        $ref: '#/definitions/order_id'
+        type: text
+        required: true
+definitions:
+  order_id:
+    type: text
+    format: uuid
+    description: An internal ID that identifies an order
+"#;
+        let result = importer.import(yaml).unwrap();
+
+        assert_eq!(result.tables.len(), 1);
+        let table = &result.tables[0];
+        assert_eq!(table.columns.len(), 1);
+
+        let column = &table.columns[0];
+        assert_eq!(column.name, "order_id");
+        assert_eq!(column.ref_path, Some("#/definitions/order_id".to_string()));
+    }
+
+    #[test]
+    fn test_odcl_import_preserves_all_three_field_types_together() {
+        let mut importer = ODCSImporter::new();
+        let yaml = r#"
+dataContractSpecification: 1.2.1
+id: test-contract
+info:
+  title: Test Contract
+  version: 1.0.0
+models:
+  test_table:
+    type: table
+    fields:
+      complete_column:
+        $ref: '#/definitions/order_id'
+        description: This column has all three field types
+        type: text
+        required: true
+        quality:
+          - type: sql
+            description: Validation rule
+            query: SELECT COUNT(*) FROM test_table
+            mustBeGreaterThan: 0
+definitions:
+  order_id:
+    type: text
+    format: uuid
+    description: An internal ID
+"#;
+        let result = importer.import(yaml).unwrap();
+
+        assert_eq!(result.tables.len(), 1);
+        let table = &result.tables[0];
+
+        // Find the complete_column (there might be additional columns created from quality rules)
+        let column = table
+            .columns
+            .iter()
+            .find(|c| c.name == "complete_column")
+            .expect("Should find complete_column");
+
+        // Verify description is preserved
+        assert_eq!(
+            column.description,
+            Some("This column has all three field types".to_string())
+        );
+
+        // Verify $ref is preserved
+        assert_eq!(column.ref_path, Some("#/definitions/order_id".to_string()));
+
+        // Verify quality array is preserved with nested structures
+        // Note: When required=true, a not_null quality rule may be added automatically
+        assert!(column.quality.is_some());
+        let quality = column.quality.as_ref().unwrap();
+        assert!(
+            !quality.is_empty(),
+            "Quality array should have at least 1 rule"
+        );
+
+        // Find the SQL quality rule (there may be a not_null rule added automatically)
+        let quality_rule = quality
+            .iter()
+            .find(|r| r.get("type").and_then(|v| v.as_str()) == Some("sql"))
+            .expect("Should find SQL quality rule");
+        assert_eq!(
+            quality_rule.get("type").and_then(|v| v.as_str()),
+            Some("sql")
+        );
+        assert_eq!(
+            quality_rule.get("description").and_then(|v| v.as_str()),
+            Some("Validation rule")
+        );
+        assert!(quality_rule.get("query").is_some());
+        assert!(quality_rule.get("mustBeGreaterThan").is_some());
+    }
+
+    #[test]
+    fn test_odcl_import_from_fixture_file() {
+        let fixture_path = get_test_fixture_path("example.odcl.yaml");
+        let yaml_content = fs::read_to_string(&fixture_path)
+            .unwrap_or_else(|_| panic!("Failed to read fixture file: {:?}", fixture_path));
+
+        let mut importer = ODCSImporter::new();
+        let result = importer.import(&yaml_content).unwrap();
+
+        // Verify we got tables
+        assert!(!result.tables.is_empty());
+
+        // The ODCL parser only parses the first model from the models section
+        // Let's verify that the parsed table has fields with description, quality, and $ref preserved
+        let test_table = &result.tables[0];
+
+        // Verify description is preserved (find a column with description)
+        let desc_column = test_table
+            .columns
+            .iter()
+            .find(|c| c.description.is_some() && !c.description.as_ref().unwrap().is_empty())
+            .expect("Should find column with description");
+        assert!(desc_column.description.is_some());
+
+        // Verify quality array is preserved (find a column with quality rules)
+        let quality_column = test_table
+            .columns
+            .iter()
+            .find(|c| c.quality.is_some() && !c.quality.as_ref().unwrap().is_empty())
+            .expect("Should find column with quality");
+        assert!(quality_column.quality.is_some());
+        let quality = quality_column.quality.as_ref().unwrap();
+        assert!(!quality.is_empty());
+
+        // Verify $ref is preserved (find a column with $ref)
+        let ref_column = test_table
+            .columns
+            .iter()
+            .find(|c| c.ref_path.is_some())
+            .expect("Should find column with $ref");
+        assert!(ref_column.ref_path.is_some());
+        assert!(
+            ref_column
+                .ref_path
+                .as_ref()
+                .unwrap()
+                .starts_with("#/definitions/")
+        );
     }
 }

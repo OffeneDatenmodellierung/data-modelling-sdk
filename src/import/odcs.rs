@@ -11,10 +11,11 @@
 use super::{ImportError, ImportResult, TableData};
 use crate::models::column::ForeignKey;
 use crate::models::enums::{DataVaultClassification, DatabaseType, MedallionLayer, SCDPattern};
-use crate::models::{Column, Table};
+use crate::models::{Column, Table, Tag};
 use anyhow::{Context, Result};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+use std::str::FromStr;
 use tracing::info;
 
 /// ODCS parser service for parsing Open Data Contract Standard YAML files.
@@ -86,6 +87,17 @@ impl ODCSImporter {
                             data_type: c.data_type.clone(),
                             nullable: c.nullable,
                             primary_key: c.primary_key,
+                            description: if c.description.is_empty() {
+                                None
+                            } else {
+                                Some(c.description.clone())
+                            },
+                            quality: if c.quality.is_empty() {
+                                None
+                            } else {
+                                Some(c.quality.clone())
+                            },
+                            ref_path: c.ref_path.clone(),
                         })
                         .collect(),
                 }];
@@ -297,7 +309,7 @@ impl ODCSImporter {
             scd_pattern,
             data_vault_classification,
             modeling_level: None,
-            tags: Vec::new(),
+            tags: Vec::<Tag>::new(),
             odcl_metadata,
             owner: None,
             sla: None,
@@ -422,6 +434,7 @@ impl ODCSImporter {
             description,
             errors: Vec::new(),
             quality: column_quality_rules,
+            ref_path: None,
             enum_values: Vec::new(),
             column_order: 0,
         })
@@ -758,7 +771,7 @@ impl ODCSImporter {
                     scd_pattern: None,
                     data_vault_classification: None,
                     modeling_level: None,
-                    tags: Vec::new(),
+                    tags: Vec::<Tag>::new(),
                     odcl_metadata: HashMap::new(),
                     owner: None,
                     sla: None,
@@ -790,7 +803,7 @@ impl ODCSImporter {
                     scd_pattern: None,
                     data_vault_classification: None,
                     modeling_level: None,
-                    tags: Vec::new(),
+                    tags: Vec::<Tag>::new(),
                     odcl_metadata: HashMap::new(),
                     owner: None,
                     sla: None,
@@ -824,44 +837,91 @@ impl ODCSImporter {
             .and_then(|v| v.as_str())
             .unwrap_or(&table_name);
 
-        let properties = schema_object
-            .get("properties")
-            .and_then(|v| v.as_object())
-            .ok_or_else(|| {
-                errors.push(ParserError {
-                    error_type: "validation_error".to_string(),
-                    field: format!("Object '{}'", object_name),
-                    message: format!("Object '{}' missing 'properties' field", object_name),
-                });
-                anyhow::anyhow!("Missing properties")
-            })?;
-
-        // Parse properties as columns (similar to Data Contract)
+        // Handle both object format (v3.0.x) and array format (v3.1.0) for properties
         let mut columns = Vec::new();
-        for (prop_name, prop_data) in properties {
-            if let Some(prop_obj) = prop_data.as_object() {
-                match self.parse_odcl_v3_property(prop_name, prop_obj, data) {
-                    Ok(mut cols) => columns.append(&mut cols),
-                    Err(e) => {
-                        errors.push(ParserError {
-                            error_type: "property_parse_error".to_string(),
-                            field: format!("Property '{}'", prop_name),
-                            message: e.to_string(),
-                        });
+
+        if let Some(properties_obj) = schema_object.get("properties").and_then(|v| v.as_object()) {
+            // Object format (v3.0.x): properties is a map of name -> property object
+            for (prop_name, prop_data) in properties_obj {
+                if let Some(prop_obj) = prop_data.as_object() {
+                    match self.parse_odcl_v3_property(prop_name, prop_obj, data) {
+                        Ok(mut cols) => columns.append(&mut cols),
+                        Err(e) => {
+                            errors.push(ParserError {
+                                error_type: "property_parse_error".to_string(),
+                                field: format!("Property '{}'", prop_name),
+                                message: e.to_string(),
+                            });
+                        }
                     }
+                } else {
+                    errors.push(ParserError {
+                        error_type: "validation_error".to_string(),
+                        field: format!("Property '{}'", prop_name),
+                        message: format!("Property '{}' must be an object", prop_name),
+                    });
                 }
-            } else {
-                errors.push(ParserError {
-                    error_type: "validation_error".to_string(),
-                    field: format!("Property '{}'", prop_name),
-                    message: format!("Property '{}' must be an object", prop_name),
-                });
             }
+        } else if let Some(properties_arr) =
+            schema_object.get("properties").and_then(|v| v.as_array())
+        {
+            // Array format (v3.1.0): properties is an array of property objects with 'name' field
+            for (idx, prop_data) in properties_arr.iter().enumerate() {
+                if let Some(prop_obj) = prop_data.as_object() {
+                    // Extract name from property object (required in v3.1.0)
+                    // ODCS v3.1.0 requires 'name' field, but we'll also accept 'id' as fallback
+                    let prop_name = match prop_obj.get("name").or_else(|| prop_obj.get("id")) {
+                        Some(JsonValue::String(s)) => s.as_str(),
+                        _ => {
+                            // Skip properties without name or id (not valid ODCS v3.1.0)
+                            errors.push(ParserError {
+                                error_type: "validation_error".to_string(),
+                                field: format!("Property[{}]", idx),
+                                message: format!(
+                                    "Property[{}] missing required 'name' or 'id' field",
+                                    idx
+                                ),
+                            });
+                            continue;
+                        }
+                    };
+
+                    match self.parse_odcl_v3_property(prop_name, prop_obj, data) {
+                        Ok(mut cols) => columns.append(&mut cols),
+                        Err(e) => {
+                            errors.push(ParserError {
+                                error_type: "property_parse_error".to_string(),
+                                field: format!("Property[{}] '{}'", idx, prop_name),
+                                message: e.to_string(),
+                            });
+                        }
+                    }
+                } else {
+                    errors.push(ParserError {
+                        error_type: "validation_error".to_string(),
+                        field: format!("Property[{}]", idx),
+                        message: format!("Property[{}] must be an object", idx),
+                    });
+                }
+            }
+        } else {
+            errors.push(ParserError {
+                error_type: "validation_error".to_string(),
+                field: format!("Object '{}'", object_name),
+                message: format!(
+                    "Object '{}' missing 'properties' field or properties is invalid",
+                    object_name
+                ),
+            });
         }
 
         // Extract metadata from customProperties
-        let (medallion_layers, scd_pattern, data_vault_classification, mut tags) =
-            self.extract_metadata_from_custom_properties(data);
+        let (medallion_layers, scd_pattern, data_vault_classification, mut tags): (
+            _,
+            _,
+            _,
+            Vec<Tag>,
+        ) = self.extract_metadata_from_custom_properties(data);
 
         // Extract sharedDomains from customProperties
         let mut shared_domains: Vec<String> = Vec::new();
@@ -888,10 +948,12 @@ impl ODCSImporter {
         // Extract tags from top-level tags field (if not already extracted from customProperties)
         if let Some(tags_arr) = data.get("tags").and_then(|v| v.as_array()) {
             for item in tags_arr {
-                if let Some(s) = item.as_str()
-                    && !tags.contains(&s.to_string())
-                {
-                    tags.push(s.to_string());
+                if let Some(s) = item.as_str() {
+                    // Parse tag string to Tag enum
+                    let tag = Tag::from_str(s).unwrap_or_else(|_| Tag::Simple(s.to_string()));
+                    if !tags.contains(&tag) {
+                        tags.push(tag);
+                    }
                 }
             }
         }
@@ -1148,12 +1210,12 @@ impl ODCSImporter {
         Vec<MedallionLayer>,
         Option<SCDPattern>,
         Option<DataVaultClassification>,
-        Vec<String>,
+        Vec<Tag>,
     ) {
         let mut medallion_layers = Vec::new();
         let mut scd_pattern = None;
         let mut data_vault_classification = None;
-        let mut tags = Vec::new();
+        let mut tags: Vec<Tag> = Vec::new();
 
         if let Some(custom_props) = data.get("customProperties").and_then(|v| v.as_array()) {
             for prop in custom_props {
@@ -1197,13 +1259,23 @@ impl ODCSImporter {
                             if let Some(arr) = prop_value.and_then(|v| v.as_array()) {
                                 for item in arr {
                                     if let Some(s) = item.as_str() {
-                                        tags.push(s.to_string());
+                                        // Parse tag string to Tag enum
+                                        if let Ok(tag) = Tag::from_str(s) {
+                                            tags.push(tag);
+                                        } else {
+                                            tags.push(Tag::Simple(s.to_string()));
+                                        }
                                     }
                                 }
                             } else if let Some(s) = prop_value.and_then(|v| v.as_str()) {
                                 // Comma-separated string
                                 for part in s.split(',') {
-                                    tags.push(part.trim().to_string());
+                                    let part = part.trim();
+                                    if let Ok(tag) = Tag::from_str(part) {
+                                        tags.push(tag);
+                                    } else {
+                                        tags.push(Tag::Simple(part.to_string()));
+                                    }
                                 }
                             }
                         }
@@ -1220,10 +1292,12 @@ impl ODCSImporter {
         // Also extract tags from top-level tags field
         if let Some(tags_arr) = data.get("tags").and_then(|v| v.as_array()) {
             for item in tags_arr {
-                if let Some(s) = item.as_str()
-                    && !tags.contains(&s.to_string())
-                {
-                    tags.push(s.to_string());
+                if let Some(s) = item.as_str() {
+                    // Parse tag string to Tag enum
+                    let tag = Tag::from_str(s).unwrap_or_else(|_| Tag::Simple(s.to_string()));
+                    if !tags.contains(&tag) {
+                        tags.push(tag);
+                    }
                 }
             }
         }
@@ -1301,7 +1375,7 @@ impl ODCSImporter {
                     scd_pattern: None,
                     data_vault_classification: None,
                     modeling_level: None,
-                    tags: Vec::new(),
+                    tags: Vec::<Tag>::new(),
                     odcl_metadata: HashMap::new(),
                     owner: None,
                     sla: None,
@@ -1477,11 +1551,17 @@ impl ODCSImporter {
         }
 
         // Extract tags from top-level tags field (Data Contract format)
-        let mut tags = Vec::new();
+        let mut tags: Vec<Tag> = Vec::new();
         if let Some(tags_arr) = data.get("tags").and_then(|v| v.as_array()) {
             for item in tags_arr {
                 if let Some(s) = item.as_str() {
-                    tags.push(s.to_string());
+                    // Parse tag string to Tag enum (supports Simple, Pair, List formats)
+                    if let Ok(tag) = Tag::from_str(s) {
+                        tags.push(tag);
+                    } else {
+                        // Fallback: create Simple tag if parsing fails
+                        tags.push(crate::models::Tag::Simple(s.to_string()));
+                    }
                 }
             }
         }
@@ -1610,6 +1690,7 @@ impl ODCSImporter {
                         constraints: Vec::new(),
                         description,
                         quality: Vec::new(),
+                        ref_path: None,
                         enum_values: Vec::new(),
                         errors: Vec::new(),
                         column_order: 0,
@@ -1642,6 +1723,7 @@ impl ODCSImporter {
                         constraints: Vec::new(),
                         description,
                         quality: Vec::new(),
+                        ref_path: None,
                         enum_values: Vec::new(),
                         errors: Vec::new(),
                         column_order: 0,
@@ -1691,6 +1773,7 @@ impl ODCSImporter {
                         constraints: Vec::new(),
                         description,
                         quality: Vec::new(),
+                        ref_path: None,
                         enum_values: Vec::new(),
                         errors: Vec::new(),
                         column_order: 0,
@@ -1725,6 +1808,7 @@ impl ODCSImporter {
                     constraints: Vec::new(),
                     description,
                     quality: Vec::new(),
+                    ref_path: None,
                     enum_values,
                     errors: Vec::new(),
                     column_order: 0,
@@ -1771,11 +1855,23 @@ impl ODCSImporter {
                 quality_rules
             };
 
+        // Extract description from field_data (preserve empty strings)
+        let description = field_data
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        // Extract quality rules from field_data
+        let mut quality_rules = extract_quality_from_obj(field_data);
+
         // Check for $ref
         if let Some(ref_str) = field_data.get("$ref").and_then(|v| v.as_str()) {
+            // Store ref_path (preserve even if definition doesn't exist)
+            let ref_path = Some(ref_str.to_string());
+
             if let Some(definition) = self.resolve_ref(ref_str, data) {
-                // Extract quality rules from field-level first (takes precedence)
-                let mut quality_rules = extract_quality_from_obj(field_data);
+                // Merge quality rules from definition if field doesn't have any
 
                 // Also extract quality rules from definition and merge (if field doesn't have any)
                 if quality_rules.is_empty() {
@@ -1877,14 +1973,18 @@ impl ODCSImporter {
                             composite_key: None,
                             foreign_key: None,
                             constraints: Vec::new(),
-                            description: field_data
-                                .get("description")
-                                .or_else(|| definition.get("description"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string(),
+                            description: if description.is_empty() {
+                                definition
+                                    .get("description")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string()
+                            } else {
+                                description.clone()
+                            },
                             errors: Vec::new(),
                             quality: quality_rules.clone(),
+                            ref_path: ref_path.clone(),
                             enum_values: Vec::new(),
                             column_order: 0,
                         });
@@ -1916,14 +2016,18 @@ impl ODCSImporter {
                         composite_key: None,
                         foreign_key: None,
                         constraints: Vec::new(),
-                        description: field_data
-                            .get("description")
-                            .or_else(|| definition.get("description"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
+                        description: if description.is_empty() {
+                            definition
+                                .get("description")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string()
+                        } else {
+                            description
+                        },
                         errors: Vec::new(),
                         quality: quality_rules,
+                        ref_path,
                         enum_values,
                         column_order: 0,
                     });
@@ -1952,13 +2056,10 @@ impl ODCSImporter {
                     composite_key: None,
                     foreign_key: None,
                     constraints: Vec::new(),
-                    description: field_data
-                        .get("description")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
+                    description,
                     errors: col_errors,
                     quality: Vec::new(),
+                    ref_path: Some(ref_str.to_string()), // Preserve ref_path even if undefined
                     enum_values: Vec::new(),
                     column_order: 0,
                 });
@@ -1996,13 +2097,13 @@ impl ODCSImporter {
                         composite_key: None,
                         foreign_key: None,
                         constraints: Vec::new(),
-                        description: field_data
-                            .get("description")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
+                        description: description.clone(),
                         errors: Vec::new(),
-                        quality: Vec::new(),
+                        quality: quality_rules.clone(),
+                        ref_path: field_data
+                            .get("$ref")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
                         enum_values: Vec::new(),
                         column_order: 0,
                     });
@@ -2048,6 +2149,7 @@ impl ODCSImporter {
                                 .to_string(),
                             errors: Vec::new(),
                             quality: Vec::new(),
+                            ref_path: None,
                             enum_values: Vec::new(),
                             column_order: 0,
                         });
@@ -2103,6 +2205,7 @@ impl ODCSImporter {
                                                     .to_string(),
                                                 errors: Vec::new(),
                                                 quality: Vec::new(),
+                                                ref_path: None,
                                                 enum_values: Vec::new(),
                                                 column_order: 0,
                                             });
@@ -2127,13 +2230,13 @@ impl ODCSImporter {
                             composite_key: None,
                             foreign_key: None,
                             constraints: Vec::new(),
-                            description: field_data
-                                .get("description")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string(),
+                            description: description.clone(),
                             errors: Vec::new(),
-                            quality: Vec::new(),
+                            quality: quality_rules.clone(),
+                            ref_path: field_data
+                                .get("$ref")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
                             enum_values: Vec::new(),
                             column_order: 0,
                         });
@@ -2153,13 +2256,13 @@ impl ODCSImporter {
                         composite_key: None,
                         foreign_key: None,
                         constraints: Vec::new(),
-                        description: field_data
-                            .get("description")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
+                        description: description.clone(),
                         errors: Vec::new(),
-                        quality: Vec::new(),
+                        quality: quality_rules.clone(),
+                        ref_path: field_data
+                            .get("$ref")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
                         enum_values: Vec::new(),
                         column_order: 0,
                     });
@@ -2179,13 +2282,13 @@ impl ODCSImporter {
                 composite_key: None,
                 foreign_key: None,
                 constraints: Vec::new(),
-                description: field_data
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
+                description: description.clone(),
                 errors: Vec::new(),
-                quality: Vec::new(),
+                quality: quality_rules.clone(),
+                ref_path: field_data
+                    .get("$ref")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 enum_values: Vec::new(),
                 column_order: 0,
             });
@@ -2217,13 +2320,13 @@ impl ODCSImporter {
                 composite_key: None,
                 foreign_key: None,
                 constraints: Vec::new(),
-                description: field_data
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
+                description: description.clone(),
                 errors: Vec::new(),
-                quality: Vec::new(),
+                quality: quality_rules.clone(),
+                ref_path: field_data
+                    .get("$ref")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 enum_values: Vec::new(),
                 column_order: 0,
             });
@@ -2265,6 +2368,7 @@ impl ODCSImporter {
                                     .to_string(),
                                 errors: Vec::new(),
                                 quality: Vec::new(),
+                                ref_path: None,
                                 enum_values: Vec::new(),
                                 column_order: 0,
                             });
@@ -2276,20 +2380,36 @@ impl ODCSImporter {
             return Ok(columns);
         }
 
-        // Regular field
+        // Regular field (no $ref or $ref not found)
+        // Check for $ref even in non-$ref path (in case $ref doesn't resolve)
+        let ref_path = field_data
+            .get("$ref")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
         let required = field_data
             .get("required")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let description = field_data
-            .get("description")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
 
-        // Extract column-level quality rules
-        let mut column_quality_rules = Vec::new();
-        if let Some(quality_val) = field_data.get("quality") {
+        // Use description extracted at function start, or extract if not yet extracted
+        let field_description = if description.is_empty() {
+            field_data
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        } else {
+            description
+        };
+
+        // Use quality_rules extracted at function start, or extract if not yet extracted
+        let mut column_quality_rules = quality_rules;
+
+        // Extract column-level quality rules if not already extracted
+        if column_quality_rules.is_empty()
+            && let Some(quality_val) = field_data.get("quality")
+        {
             if let Some(arr) = quality_val.as_array() {
                 // Array of quality rules
                 for item in arr {
@@ -2345,9 +2465,10 @@ impl ODCSImporter {
             composite_key: None,
             foreign_key: self.parse_foreign_key_from_data_contract(field_data),
             constraints: Vec::new(),
-            description,
+            description: field_description,
             errors: Vec::new(),
             quality: column_quality_rules,
+            ref_path,
             enum_values: Vec::new(),
             column_order: 0,
         });
@@ -2519,6 +2640,7 @@ impl ODCSImporter {
                                     .to_string(),
                                 errors: Vec::new(),
                                 quality: Vec::new(),
+                                ref_path: None,
                                 enum_values: Vec::new(),
                                 column_order: 0,
                             });
@@ -2545,6 +2667,7 @@ impl ODCSImporter {
                             .to_string(),
                         errors: Vec::new(),
                         quality: Vec::new(),
+                        ref_path: None,
                         enum_values: Vec::new(),
                         column_order: 0,
                     });

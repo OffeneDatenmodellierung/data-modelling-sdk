@@ -98,6 +98,12 @@ impl AvroExporter {
         let mut schema = serde_json::Map::new();
         schema.insert("type".to_string(), json!("record"));
         schema.insert("name".to_string(), json!(table.name));
+
+        // Add tags if present (AVRO doesn't have standard tags, but we can add them as metadata)
+        if !table.tags.is_empty() {
+            let tags_array: Vec<String> = table.tags.iter().map(|t| t.to_string()).collect();
+            schema.insert("tags".to_string(), json!(tags_array));
+        }
         schema.insert("namespace".to_string(), json!("com.datamodel"));
         schema.insert("fields".to_string(), json!(fields));
 

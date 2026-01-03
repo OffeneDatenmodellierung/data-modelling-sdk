@@ -1,6 +1,6 @@
 [package]
 name = "data-modelling-sdk"
-version = "1.2.0"
+version = "1.4.0"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"
@@ -83,6 +83,11 @@ wasm = ["wasm-bindgen", "wasm-bindgen-futures", "web-sys", "js-sys"]
 png-export = ["image", "imageproc"]
 databricks-dialect = ["datafusion"]  # Enable datafusion for Databricks SQL dialect support
 git = ["git2"]  # Enable Git operations (for both API and native app)
+schema-validation = ["jsonschema"]  # Enable JSON Schema validation for ODCS/ODCL schemas
+
+[dependencies.jsonschema]
+version = "0.20"
+optional = true
 
 [dev-dependencies]
 tempfile = "3"

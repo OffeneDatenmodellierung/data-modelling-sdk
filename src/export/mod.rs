@@ -9,9 +9,11 @@
 //! - PNG
 
 pub mod avro;
-pub mod dataflow;
+pub mod cads;
 pub mod json_schema;
+pub mod odcl;
 pub mod odcs;
+pub mod odps;
 #[cfg(feature = "png-export")]
 pub mod png;
 pub mod protobuf;
@@ -52,8 +54,11 @@ impl From<Box<dyn std::error::Error>> for ExportError {
 
 // Re-export for convenience
 pub use avro::AvroExporter;
+pub use cads::CADSExporter;
 pub use json_schema::JSONSchemaExporter;
+pub use odcl::ODCLExporter;
 pub use odcs::ODCSExporter;
+pub use odps::ODPSExporter;
 #[cfg(feature = "png-export")]
 pub use png::PNGExporter;
 pub use protobuf::ProtobufExporter;

@@ -20,7 +20,7 @@
 //! for runtime parsing of .proto file content.
 
 use crate::import::{ImportError, ImportResult, TableData};
-use crate::models::{Column, Table};
+use crate::models::{Column, Table, Tag};
 use crate::validation::input::{validate_column_name, validate_data_type, validate_table_name};
 use anyhow::Result;
 use std::collections::HashMap;
@@ -90,6 +90,17 @@ impl ProtobufImporter {
                                 data_type: c.data_type.clone(),
                                 nullable: c.nullable,
                                 primary_key: c.primary_key,
+                                description: if c.description.is_empty() {
+                                    None
+                                } else {
+                                    Some(c.description.clone())
+                                },
+                                quality: if c.quality.is_empty() {
+                                    None
+                                } else {
+                                    Some(c.quality.clone())
+                                },
+                                ref_path: c.ref_path.clone(),
                             })
                             .collect(),
                     });
@@ -337,6 +348,7 @@ impl ProtobufImporter {
                                 constraints: Vec::new(),
                                 description: String::new(),
                                 quality: Vec::new(),
+                                ref_path: None,
                                 enum_values: Vec::new(),
                                 errors: Vec::new(),
                                 column_order: 0,
@@ -364,6 +376,7 @@ impl ProtobufImporter {
                             constraints: Vec::new(),
                             description: String::new(),
                             quality: Vec::new(),
+                            ref_path: None,
                             enum_values: Vec::new(),
                             errors: Vec::new(),
                             column_order: 0,
@@ -389,12 +402,19 @@ impl ProtobufImporter {
                     constraints: Vec::new(),
                     description: String::new(),
                     quality: Vec::new(),
+                    ref_path: None,
                     enum_values: Vec::new(),
                     errors: Vec::new(),
                     column_order: 0,
                 });
             }
         }
+
+        // Extract tags from Protobuf content (from comments)
+        // Note: We need the original proto_content to extract tags, but we don't have it here
+        // For now, we'll leave tags empty - tags can be added via custom options or comments
+        // In a full implementation, we'd pass proto_content to this method
+        let tags: Vec<Tag> = Vec::new(); // Tags extracted from comments/options would go here
 
         let mut odcl_metadata = HashMap::new();
         odcl_metadata.insert(
@@ -413,7 +433,7 @@ impl ProtobufImporter {
             scd_pattern: None,
             data_vault_classification: None,
             modeling_level: None,
-            tags: Vec::new(),
+            tags,
             odcl_metadata,
             owner: None,
             sla: None,

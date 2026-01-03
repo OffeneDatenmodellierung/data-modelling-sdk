@@ -7,11 +7,12 @@
 //! - Maximum length limits
 
 use crate::import::{ImportError, ImportResult, TableData};
-use crate::models::{Column, Table};
+use crate::models::{Column, Table, Tag};
 use crate::validation::input::{validate_column_name, validate_table_name};
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::str::FromStr;
 use tracing::{info, warn};
 
 /// Parser for AVRO schema format.
@@ -75,6 +76,17 @@ impl AvroImporter {
                                 data_type: c.data_type.clone(),
                                 nullable: c.nullable,
                                 primary_key: c.primary_key,
+                                description: if c.description.is_empty() {
+                                    None
+                                } else {
+                                    Some(c.description.clone())
+                                },
+                                quality: if c.quality.is_empty() {
+                                    None
+                                } else {
+                                    Some(c.quality.clone())
+                                },
+                                ref_path: c.ref_path.clone(),
                             })
                             .collect(),
                     });
@@ -184,6 +196,38 @@ impl AvroImporter {
             }
         }
 
+        // Extract tags from AVRO schema (can be in root or in aliases/metadata)
+        let mut tags: Vec<Tag> = Vec::new();
+        if let Some(tags_arr) = schema_obj.get("tags").and_then(|v| v.as_array()) {
+            for item in tags_arr {
+                if let Some(s) = item.as_str() {
+                    if let Ok(tag) = Tag::from_str(s) {
+                        tags.push(tag);
+                    } else {
+                        tags.push(Tag::Simple(s.to_string()));
+                    }
+                }
+            }
+        }
+        // Also check aliases/metadata for tags
+        if let Some(aliases_arr) = schema_obj.get("aliases").and_then(|v| v.as_array()) {
+            for item in aliases_arr {
+                if let Some(s) = item.as_str() {
+                    // AVRO aliases can be used as tags
+                    if let Ok(tag) = Tag::from_str(s) {
+                        if !tags.contains(&tag) {
+                            tags.push(tag);
+                        }
+                    } else {
+                        let simple_tag = Tag::Simple(s.to_string());
+                        if !tags.contains(&simple_tag) {
+                            tags.push(simple_tag);
+                        }
+                    }
+                }
+            }
+        }
+
         // Build table metadata
         let mut odcl_metadata = HashMap::new();
         if let Some(ref ns) = namespace {
@@ -204,7 +248,7 @@ impl AvroImporter {
             scd_pattern: None,
             data_vault_classification: None,
             modeling_level: None,
-            tags: Vec::new(),
+            tags,
             odcl_metadata,
             owner: None,
             sla: None,
@@ -298,6 +342,7 @@ impl AvroImporter {
                 constraints: Vec::new(),
                 description,
                 quality: Vec::new(),
+                ref_path: None,
                 enum_values: Vec::new(),
                 errors: Vec::new(),
                 column_order: 0,
@@ -389,6 +434,7 @@ impl AvroImporter {
                     constraints: Vec::new(),
                     description,
                     quality: Vec::new(),
+                    ref_path: None,
                     enum_values: Vec::new(),
                     errors: Vec::new(),
                     column_order: 0,
@@ -406,6 +452,7 @@ impl AvroImporter {
                     constraints: Vec::new(),
                     description,
                     quality: Vec::new(),
+                    ref_path: None,
                     enum_values: Vec::new(),
                     errors: Vec::new(),
                     column_order: 0,

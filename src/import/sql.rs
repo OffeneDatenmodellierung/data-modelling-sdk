@@ -240,6 +240,9 @@ impl SQLImporter {
                 data_type,
                 nullable,
                 primary_key: is_pk,
+                description: None,
+                quality: None,
+                ref_path: None,
             });
         }
 

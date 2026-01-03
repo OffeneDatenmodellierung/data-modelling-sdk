@@ -8,9 +8,10 @@
 //! - Protobuf
 
 pub mod avro;
-pub mod dataflow;
+pub mod cads;
 pub mod json_schema;
 pub mod odcs;
+pub mod odps;
 pub mod protobuf;
 pub mod sql;
 
@@ -59,12 +60,23 @@ pub struct ColumnData {
     pub data_type: String,
     pub nullable: bool,
     pub primary_key: bool,
+    /// Column description/documentation (from ODCS/ODCL description field)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Quality rules and validation checks (from ODCS/ODCL quality array)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality: Option<Vec<std::collections::HashMap<String, serde_json::Value>>>,
+    /// JSON Schema $ref reference path (from ODCS/ODCL $ref field)
+    #[serde(skip_serializing_if = "Option::is_none", rename = "$ref")]
+    pub ref_path: Option<String>,
 }
 
 // Re-export for convenience
 pub use avro::AvroImporter;
+pub use cads::CADSImporter;
 pub use json_schema::JSONSchemaImporter;
 pub use odcs::ODCSImporter;
+pub use odps::ODPSImporter;
 pub use protobuf::ProtobufImporter;
 pub use sql::SQLImporter;
 

@@ -11,7 +11,7 @@ use data_modelling_sdk::models::relationship::{
     ConnectionPoint, ETLJobMetadata, ForeignKeyDetails, VisualMetadata,
 };
 use data_modelling_sdk::models::{
-    Column, ContactDetails, DataModel, ForeignKey, Position, Relationship, SlaProperty, Table,
+    Column, ContactDetails, DataModel, ForeignKey, Position, Relationship, SlaProperty, Table, Tag,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -180,8 +180,8 @@ mod table_tests {
     #[test]
     fn test_table_with_tags() {
         let mut table = Table::new("users".to_string(), vec![]);
-        table.tags.push("pii".to_string());
-        table.tags.push("customer_data".to_string());
+        table.tags.push(Tag::Simple("pii".to_string()));
+        table.tags.push(Tag::Simple("customer_data".to_string()));
         assert_eq!(table.tags.len(), 2);
     }
 
@@ -1181,12 +1181,12 @@ mod filter_tests {
             "table1".to_string(),
             vec![Column::new("id".to_string(), "INT".to_string())],
         );
-        table1.tags.push("production".to_string());
+        table1.tags.push(Tag::Simple("production".to_string()));
         let mut table2 = Table::new(
             "table2".to_string(),
             vec![Column::new("id".to_string(), "INT".to_string())],
         );
-        table2.tags.push("staging".to_string());
+        table2.tags.push(Tag::Simple("staging".to_string()));
         model.tables.push(table1);
         model.tables.push(table2);
 

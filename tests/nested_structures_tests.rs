@@ -49,6 +49,7 @@ fn create_column(name: &str, data_type: &str, primary_key: bool, nullable: bool)
         constraints: Vec::new(),
         description: String::new(),
         quality: Vec::new(),
+        ref_path: None,
         enum_values: Vec::new(),
         errors: Vec::new(),
         column_order: 0,

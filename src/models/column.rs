@@ -57,6 +57,9 @@ pub struct Column {
     /// Quality rules and checks
     #[serde(default)]
     pub quality: Vec<HashMap<String, serde_json::Value>>,
+    /// JSON Schema $ref reference path
+    #[serde(skip_serializing_if = "Option::is_none", rename = "$ref")]
+    pub ref_path: Option<String>,
     /// Enum values if this column is an enumeration type
     #[serde(default)]
     pub enum_values: Vec<String>,
@@ -101,6 +104,7 @@ impl Column {
             description: String::new(),
             errors: Vec::new(),
             quality: Vec::new(),
+            ref_path: None,
             enum_values: Vec::new(),
             column_order: 0,
         }

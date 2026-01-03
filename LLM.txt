@@ -7,7 +7,7 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/pixie79/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 1.2.0
+**Version**: 1.3.0
 
 ## Architecture
 
@@ -30,22 +30,28 @@ data-modelling-sdk/
 │   ├── export/                 # Export functionality
 │   │   ├── mod.rs
 │   │   ├── avro.rs            # AVRO format exporter
+│   │   ├── cads.rs            # CADS format exporter
 │   │   ├── json_schema.rs     # JSON Schema exporter
 │   │   ├── odcl.rs            # ODCL format exporter
-│   │   ├── dataflow.rs        # Data Flow format exporter (lightweight, separate from ODCS)
 │   │   ├── odcs.rs            # ODCS v3.1.0 format exporter
+│   │   ├── odps.rs            # ODPS format exporter
 │   │   ├── png.rs             # PNG diagram exporter (feature-gated)
 │   │   ├── protobuf.rs        # Protobuf exporter
 │   │   └── sql.rs             # SQL DDL exporter
+│   ├── convert/                # Universal format converter
+│   │   ├── mod.rs
+│   │   ├── converter.rs      # Universal converter (any format → ODCS)
+│   │   └── migrate_dataflow.rs # DataFlow → Domain migration utility
 │   ├── git/                    # Git operations (feature-gated)
 │   │   ├── mod.rs
 │   │   └── git_service.rs     # Git service for version control operations
 │   ├── import/                 # Import functionality
 │   │   ├── mod.rs
 │   │   ├── avro.rs            # AVRO format importer
-│   │   ├── dataflow.rs        # Data Flow format importer (lightweight, separate from ODCS)
+│   │   ├── cads.rs            # CADS format importer
 │   │   ├── json_schema.rs     # JSON Schema importer
-│   │   ├── odcs.rs            # ODCS v3.1.0 format importer (primary)
+│   │   ├── odcs.rs            # ODCS v3.1.0 format importer (primary, also handles ODCL)
+│   │   ├── odps.rs            # ODPS format importer
 │   │   ├── protobuf.rs        # Protobuf importer
 │   │   └── sql.rs             # SQL DDL importer
 │   ├── model/                  # Model loading/saving
@@ -55,12 +61,16 @@ data-modelling-sdk/
 │   │   └── saver.rs           # Model saver
 │   ├── models/                 # Core data structures
 │   │   ├── mod.rs
+│   │   ├── cads.rs            # CADS model structs (CADSAsset, CADSKind, etc.)
 │   │   ├── column.rs          # Column and ForeignKey models
 │   │   ├── cross_domain.rs    # Cross-domain relationship models
-│   │   ├── data_model.rs      # DataModel container
-│   │   ├── enums.rs           # Enums (DatabaseType, MedallionLayer, etc.)
+│   │   ├── data_model.rs      # DataModel container (includes domain operations)
+│   │   ├── domain.rs          # Business Domain schema models (Domain, System, CADSNode, ODCSNode, etc.)
+│   │   ├── enums.rs           # Enums (DatabaseType, MedallionLayer, InfrastructureType, etc.)
+│   │   ├── odps.rs            # ODPS model structs (ODPSDataProduct, ODPSInputPort, etc.)
 │   │   ├── relationship.rs    # Relationship model
-│   │   └── table.rs           # Table model
+│   │   ├── table.rs           # Table model
+│   │   └── tag.rs             # Enhanced Tag enum (Simple, Pair, List)
 │   ├── storage/                # Storage backend abstraction
 │   │   ├── mod.rs             # StorageBackend trait
 │   │   ├── api.rs             # HTTP API backend (feature-gated)
@@ -75,17 +85,33 @@ data-modelling-sdk/
 │       └── mod.rs             # WorkspaceInfo, ProfileInfo types
 ├── tests/                      # Test suite
 │   ├── auth_tests.rs
+│   ├── cads_tests.rs          # CADS import/export tests
+│   ├── domain_tests.rs        # Business Domain schema tests
 │   ├── export_tests.rs
 │   ├── git_tests.rs
 │   ├── import_tests.rs
-│   ├── integration_tests.rs
+│   ├── integration_tests.rs   # Includes DataFlow migration and universal converter tests
 │   ├── model_tests.rs
 │   ├── models_tests.rs
 │   ├── nested_structures_tests.rs
 │   ├── odcs_comprehensive_tests.rs
+│   ├── odps_tests.rs          # ODPS import/export tests
 │   ├── storage_tests.rs
+│   ├── tag_tests.rs          # Enhanced tag support tests
 │   ├── validation_tests.rs
 │   └── workspace_tests.rs
+├── schemas/                    # Schema reference directory
+│   ├── README.md              # Schema documentation
+│   ├── odcs-json-schema-v3.1.0.json  # ODCS v3.1.0 JSON Schema
+│   ├── odcl-json-schema-1.2.1.json   # ODCL v1.2.1 JSON Schema (legacy)
+│   ├── odps-json-schema-latest.json  # ODPS JSON Schema
+│   └── cads.schema.json       # CADS v1.0 JSON Schema
+├── docs/                       # Documentation
+│   └── SCHEMA_OVERVIEW.md     # Comprehensive schema overview guide
+├── specs/                      # Specification documents
+│   └── 003-odcs-field-preservation/  # Current feature spec
+│       ├── schemas/           # Original schema location (also copied to root schemas/)
+│       └── ...
 ├── Cargo.toml                  # Package manifest
 ├── cargo-audit.toml           # Security audit configuration
 ├── .pre-commit-config.yaml    # Pre-commit hooks configuration
@@ -107,21 +133,29 @@ Abstracts file operations across different environments:
 
 Core data structures:
 
-- **`Table`**: Represents a database table/data contract with columns, metadata, and relationships. Also used as Data Flow nodes with enhanced metadata (owner, SLA, contact_details, infrastructure_type, notes)
-- **`Column`**: Column definition with data type, constraints, foreign keys
-- **`Relationship`**: Relationship between tables (source/target, type, metadata). Also used as Data Flow relationships with enhanced metadata (owner, SLA, contact_details, infrastructure_type, notes)
-- **`DataModel`**: Container for tables and relationships representing a workspace/domain. Includes filter methods for Data Flow nodes and relationships
+- **`Table`**: Represents a database table/data contract with columns, metadata, and relationships. Supports enhanced tags (Simple, Pair, List)
+- **`Column`**: Column definition with data type, constraints, foreign keys. Includes `description`, `quality`, and `$ref` fields for ODCS/ODCL compatibility
+- **`Relationship`**: Relationship between tables (source/target, type, metadata)
+- **`DataModel`**: Container for tables, relationships, and domains. Includes filter methods and domain operations (`add_domain`, `add_system_to_domain`, etc.)
+- **`Domain`**: Business domain container with systems, CADS nodes, ODCS nodes, and connections
+- **`System`**: Physical infrastructure entity (Kafka, Cassandra, EKS, etc.) with DataFlow metadata (owner, SLA, contact_details, infrastructure_type, notes, version)
+- **`CADSNode`**: Reference to CADS asset (AI/ML model, application, pipeline) with shared reference support
+- **`ODCSNode`**: Reference to ODCS Table with shared reference support
+- **`CADSAsset`**: CADS asset model (AIModel, MLPipeline, Application, etc.) with full CADS v1.0 support
+- **`ODPSDataProduct`**: ODPS data product model with input/output ports, support, team, and custom properties
+- **`Tag`**: Enhanced tag enum supporting Simple, Pair, and List formats
 - **`ForeignKey`**: Foreign key relationship details
 - **`SlaProperty`**: SLA property structure (property, value, unit, element, driver, description, scheduler, schedule)
 - **`ContactDetails`**: Contact details structure (email, phone, name, role, other)
-- **Enums**: `DatabaseType`, `MedallionLayer`, `SCDPattern`, `DataVaultClassification`, `ModelingLevel`, `Cardinality`, `RelationshipType`, `InfrastructureType` (70+ infrastructure types)
+- **Enums**: `DatabaseType`, `MedallionLayer`, `SCDPattern`, `DataVaultClassification`, `ModelingLevel`, `Cardinality`, `RelationshipType`, `InfrastructureType` (70+ infrastructure types), `CrowsfeetCardinality` (OneToOne, OneToMany, ZeroOrOne, ZeroOrMany), `CADSKind`, `CADSStatus`, `ODPSStatus`
 
 ### Import (`src/import/`)
 
-Importers convert various formats to SDK `Table` models:
+Importers convert various formats to SDK models:
 
-- **`ODCSImporter`**: Primary importer for ODCS v3.1.0 format (also handles legacy ODCL) - for Data Models (tables)
-- **`DataFlowImporter`**: Lightweight importer for Data Flow format YAML (nodes and relationships) - separate from ODCS
+- **`ODCSImporter`**: Primary importer for ODCS v3.1.0 format (also handles legacy ODCL v1.2.1) - for Data Models (tables). Preserves `description`, `quality`, and `$ref` fields. Supports enhanced tags.
+- **`CADSImporter`**: Importer for CADS v1.0 format - for compute assets (AI/ML models, applications, pipelines)
+- **`ODPSImporter`**: Importer for ODPS format - for data products linking to ODCS Tables
 - **`SQLImporter`**: SQL DDL parser (CREATE TABLE statements)
 - **`JSONSchemaImporter`**: JSON Schema to Table conversion
 - **`AvroImporter`**: AVRO schema to Table conversion
@@ -129,10 +163,12 @@ Importers convert various formats to SDK `Table` models:
 
 ### Export (`src/export/`)
 
-Exporters convert SDK `Table` models to various formats:
+Exporters convert SDK models to various formats:
 
-- **`ODCSExporter`**: Exports to ODCS v3.1.0 format - for Data Models (tables)
-- **`DataFlowExporter`**: Lightweight exporter for Data Flow format YAML (nodes and relationships) - separate from ODCS
+- **`ODCSExporter`**: Exports to ODCS v3.1.0 format - for Data Models (tables). Preserves all fields including `description`, `quality`, and `$ref`. Supports enhanced tags.
+- **`ODCLExporter`**: Exports to ODCL v1.2.1 format - for legacy compatibility
+- **`CADSExporter`**: Exports to CADS v1.0 format - for compute assets
+- **`ODPSExporter`**: Exports to ODPS format - for data products
 - **`SQLExporter`**: Generates SQL DDL (CREATE TABLE statements)
 - **`JSONSchemaExporter`**: Exports to JSON Schema format
 - **`AvroExporter`**: Exports to AVRO schema format
@@ -141,16 +177,29 @@ Exporters convert SDK `Table` models to various formats:
 
 ### Model Management (`src/model/`)
 
-- **`ModelLoader`**: Loads models from storage backends (tables + relationships)
-- **`ModelSaver`**: Saves models to storage backends
+- **`ModelLoader`**: Loads models from storage backends. Supports both legacy `tables/` directory structure and new domain-based structure:
+  - `load_model()`: Legacy method for loading from `tables/` directory
+  - `load_domains()`: Loads all domains from domain directories (auto-discovery)
+  - `load_domains_from_list()`: Loads domains from explicit directory names
+  - `load_domain()`: Loads a single domain from a domain directory
+  - `load_domain_odcs_tables()`: Loads ODCS tables from a domain directory
+  - `load_domain_odps_products()`: Loads ODPS products from a domain directory
+  - `load_domain_cads_assets()`: Loads CADS assets from a domain directory
+- **`ModelSaver`**: Saves models to storage backends. Supports domain-based file structure:
+  - `save_table()`: Legacy method for saving to `tables/` directory
+  - `save_domain()`: Saves domain with all associated ODCS/ODPS/CADS files to domain directory
+  - `save_odps_product()`: Saves ODPS product to domain directory
+  - `save_cads_asset()`: Saves CADS asset to domain directory
 - **`ApiModelLoader`**: Loads models via HTTP API
+- **`DomainLoadResult`**: Result structure containing loaded domains, tables, ODPS products, and CADS assets
 
 ### Validation (`src/validation/`)
 
 - **`TableValidator`**: Validates table names, detects naming conflicts
 - **`RelationshipValidator`**: Validates relationships, detects circular dependencies
 - **`InputValidator`**: Validates table/column names, UUIDs, SQL identifiers
-- **`DataModel` filter methods**: `filter_nodes_by_owner()`, `filter_relationships_by_owner()`, `filter_nodes_by_infrastructure_type()`, `filter_relationships_by_infrastructure_type()`, `filter_by_tags()`
+- **`DataModel` filter methods**: `filter_nodes_by_owner()`, `filter_relationships_by_owner()`, `filter_nodes_by_infrastructure_type()`, `filter_relationships_by_infrastructure_type()`, `filter_by_tags()` (supports enhanced tags)
+- **`DataModel` domain methods**: `add_domain()`, `get_domain_by_id()`, `get_domain_by_name()`, `add_system_to_domain()`, `add_cads_node_to_domain()`, `add_odcs_node_to_domain()`, `add_system_connection_to_domain()`, `add_node_connection_to_domain()`
 
 ### Git Operations (`src/git/`)
 
@@ -319,6 +368,36 @@ cargo build --features native-fs,git
 cargo build --all-features
 ```
 
+## File Structure
+
+The SDK organizes files using a domain-based directory structure:
+
+```
+base_directory/
+├── .git/                     # Git folder (if present)
+├── README.md                 # Repository files
+├── schemas/                  # Schema reference directory
+│   ├── README.md
+│   ├── odcs-json-schema-v3.1.0.json
+│   ├── odcl-json-schema-1.2.1.json
+│   ├── odps-json-schema-latest.json
+│   └── cads.schema.json
+├── domain1/                  # Domain directory
+│   ├── domain.yaml          # Domain definition
+│   ├── table1.odcs.yaml     # ODCS table files
+│   ├── product1.odps.yaml   # ODPS product files
+│   └── model1.cads.yaml    # CADS asset files
+├── domain2/                  # Another domain directory
+│   └── ...
+└── tables/                    # Legacy: tables not in any domain (backward compatibility)
+```
+
+Each domain directory contains:
+- `domain.yaml`: Domain definition with systems, CADS nodes, ODCS nodes, and connections
+- `*.odcs.yaml`: ODCS table files referenced by ODCSNodes in the domain
+- `*.odps.yaml`: ODPS product files for data products in the domain
+- `*.cads.yaml`: CADS asset files referenced by CADSNodes in the domain
+
 ## Key Design Decisions
 
 1. **Storage Abstraction**: Uses trait-based storage backends to support multiple environments (native, WASM, API)
@@ -327,6 +406,8 @@ cargo build --all-features
 4. **Error Handling**: Uses `anyhow::Result` for convenience, `thiserror` for structured errors
 5. **UUID Strategy**: Uses UUIDv5 (deterministic) for model/table IDs to avoid random number generation requirements
 6. **ODCS Primary Format**: ODCS v3.1.0 is the primary format, with legacy ODCL support for backward compatibility
+7. **Domain-Based Organization**: Files are organized by business domain, with each domain containing its definition and associated ODCS/ODPS/CADS files
+8. **Schema Reference**: JSON Schema definitions for all supported formats are maintained in `schemas/` directory for validation and reference
 
 ## Common Patterns
 
@@ -368,6 +449,23 @@ pub trait Exporter {
     fn export_table(&self, table: &Table) -> Result<String, ExportError>;
 }
 ```
+
+## Schema Reference
+
+The SDK maintains JSON Schema definitions for all supported formats in the `schemas/` directory:
+
+- **ODCS v3.1.0**: `schemas/odcs-json-schema-v3.1.0.json` - Primary format for data contracts
+- **ODCL v1.2.1**: `schemas/odcl-json-schema-1.2.1.json` - Legacy data contract format
+- **ODPS**: `schemas/odps-json-schema-latest.json` - Data products linking to ODCS tables
+- **CADS v1.0**: `schemas/cads.schema.json` - Compute assets (AI/ML models, applications, pipelines)
+
+These schemas serve as authoritative references for:
+- **Validation**: Validating imported YAML/JSON files against official specifications
+- **Documentation**: Understanding the structure and fields of each format
+- **Compliance**: Ensuring the SDK maintains full coverage of each specification
+- **Reference**: Quick lookup for field definitions and types
+
+See `schemas/README.md` for detailed information about each schema.
 
 ## Security
 

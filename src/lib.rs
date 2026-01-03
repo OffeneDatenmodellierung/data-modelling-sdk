@@ -9,6 +9,7 @@
 //! - Workspace management types
 
 pub mod auth;
+pub mod convert;
 pub mod export;
 #[cfg(feature = "git")]
 pub mod git;
@@ -28,15 +29,16 @@ pub use storage::browser::BrowserStorageBackend;
 pub use storage::filesystem::FileSystemStorageBackend;
 pub use storage::{StorageBackend, StorageError};
 
+pub use convert::{ConversionError, convert_to_odcs};
 #[cfg(feature = "png-export")]
 pub use export::PNGExporter;
 pub use export::{
     AvroExporter, ExportError, ExportResult, JSONSchemaExporter, ODCSExporter, ProtobufExporter,
-    SQLExporter, dataflow::DataFlowExporter,
+    SQLExporter,
 };
 pub use import::{
     AvroImporter, ImportError, ImportResult, JSONSchemaImporter, ODCSImporter, ProtobufImporter,
-    SQLImporter, dataflow::DataFlowImporter,
+    SQLImporter,
 };
 #[cfg(feature = "api-backend")]
 pub use model::ApiModelLoader;
@@ -290,39 +292,215 @@ mod wasm {
         }
     }
 
-    /// Import Data Flow format YAML content (lightweight format for Data Flow nodes and relationships).
+    /// Import CADS YAML content and return a structured representation.
     ///
     /// # Arguments
     ///
-    /// * `yaml_content` - Data Flow format YAML content as a string
+    /// * `yaml_content` - CADS YAML content as a string
     ///
     /// # Returns
     ///
-    /// JSON string containing DataModel with nodes and relationships, or JsValue error
+    /// JSON string containing CADS asset, or JsValue error
     #[wasm_bindgen]
-    pub fn import_from_dataflow(yaml_content: &str) -> Result<String, JsValue> {
-        let importer = crate::import::dataflow::DataFlowImporter::new();
+    pub fn import_from_cads(yaml_content: &str) -> Result<String, JsValue> {
+        let importer = crate::import::CADSImporter::new();
         match importer.import(yaml_content) {
-            Ok(model) => serde_json::to_string(&model)
+            Ok(asset) => serde_json::to_string(&asset)
                 .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
             Err(err) => Err(import_error_to_js(err)),
         }
     }
 
-    /// Export a data model to Data Flow format YAML (lightweight format for Data Flow nodes and relationships).
+    /// Export a CADS asset to YAML format.
     ///
     /// # Arguments
     ///
-    /// * `workspace_json` - JSON string containing workspace/data model structure
+    /// * `asset_json` - JSON string containing CADS asset
     ///
     /// # Returns
     ///
-    /// Data Flow format YAML string, or JsValue error
+    /// CADS YAML format string, or JsValue error
     #[wasm_bindgen]
-    pub fn export_to_dataflow(workspace_json: &str) -> Result<String, JsValue> {
-        let model = deserialize_workspace(workspace_json)?;
-        let exporter = crate::export::dataflow::DataFlowExporter::new();
-        Ok(exporter.export_model(&model))
+    pub fn export_to_cads(asset_json: &str) -> Result<String, JsValue> {
+        let asset: crate::models::cads::CADSAsset = serde_json::from_str(asset_json)
+            .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
+        let exporter = crate::export::CADSExporter;
+        match exporter.export(&asset) {
+            Ok(yaml) => Ok(yaml),
+            Err(err) => Err(export_error_to_js(err)),
+        }
+    }
+
+    /// Import ODPS YAML content and return a structured representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - ODPS YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing ODPS data product, or JsValue error
+    #[wasm_bindgen]
+    pub fn import_from_odps(yaml_content: &str) -> Result<String, JsValue> {
+        let importer = crate::import::ODPSImporter::new();
+        match importer.import(yaml_content) {
+            Ok(product) => serde_json::to_string(&product)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
+            Err(err) => Err(import_error_to_js(err)),
+        }
+    }
+
+    /// Export an ODPS data product to YAML format.
+    ///
+    /// # Arguments
+    ///
+    /// * `product_json` - JSON string containing ODPS data product
+    ///
+    /// # Returns
+    ///
+    /// ODPS YAML format string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_to_odps(product_json: &str) -> Result<String, JsValue> {
+        let product: crate::models::odps::ODPSDataProduct = serde_json::from_str(product_json)
+            .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
+        let exporter = crate::export::ODPSExporter;
+        match exporter.export(&product) {
+            Ok(yaml) => Ok(yaml),
+            Err(err) => Err(export_error_to_js(err)),
+        }
+    }
+
+    /// Create a new business domain.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Domain name
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing Domain, or JsValue error
+    #[wasm_bindgen]
+    pub fn create_domain(name: &str) -> Result<String, JsValue> {
+        let domain = crate::models::domain::Domain::new(name.to_string());
+        serde_json::to_string(&domain)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Import Domain YAML content and return a structured representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - Domain YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing Domain, or JsValue error
+    #[wasm_bindgen]
+    pub fn import_from_domain(yaml_content: &str) -> Result<String, JsValue> {
+        match crate::models::domain::Domain::from_yaml(yaml_content) {
+            Ok(domain) => serde_json::to_string(&domain)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
+            Err(e) => Err(JsValue::from_str(&format!("Parse error: {}", e))),
+        }
+    }
+
+    /// Export a Domain to YAML format.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_json` - JSON string containing Domain
+    ///
+    /// # Returns
+    ///
+    /// Domain YAML format string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_to_domain(domain_json: &str) -> Result<String, JsValue> {
+        let domain: crate::models::domain::Domain = serde_json::from_str(domain_json)
+            .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
+        domain
+            .to_yaml()
+            .map_err(|e| JsValue::from_str(&format!("YAML serialization error: {}", e)))
+    }
+
+    /// Migrate DataFlow YAML to Domain schema format.
+    ///
+    /// # Arguments
+    ///
+    /// * `dataflow_yaml` - DataFlow YAML content as a string
+    /// * `domain_name` - Optional domain name (defaults to "MigratedDomain")
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing Domain, or JsValue error
+    #[wasm_bindgen]
+    pub fn migrate_dataflow_to_domain(
+        dataflow_yaml: &str,
+        domain_name: Option<String>,
+    ) -> Result<String, JsValue> {
+        match crate::convert::migrate_dataflow::migrate_dataflow_to_domain(
+            dataflow_yaml,
+            domain_name.as_deref(),
+        ) {
+            Ok(domain) => serde_json::to_string(&domain)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
+            Err(e) => Err(JsValue::from_str(&format!("Migration error: {}", e))),
+        }
+    }
+
+    /// Parse a tag string into a Tag enum.
+    ///
+    /// # Arguments
+    ///
+    /// * `tag_str` - Tag string (Simple, Pair, or List format)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing Tag, or JsValue error
+    #[wasm_bindgen]
+    pub fn parse_tag(tag_str: &str) -> Result<String, JsValue> {
+        use crate::models::Tag;
+        use std::str::FromStr;
+        match Tag::from_str(tag_str) {
+            Ok(tag) => serde_json::to_string(&tag)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e))),
+            Err(_) => Err(JsValue::from_str("Invalid tag format")),
+        }
+    }
+
+    /// Serialize a Tag enum to string format.
+    ///
+    /// # Arguments
+    ///
+    /// * `tag_json` - JSON string containing Tag
+    ///
+    /// # Returns
+    ///
+    /// Tag string (Simple, Pair, or List format), or JsValue error
+    #[wasm_bindgen]
+    pub fn serialize_tag(tag_json: &str) -> Result<String, JsValue> {
+        use crate::models::Tag;
+        let tag: Tag = serde_json::from_str(tag_json)
+            .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
+        Ok(tag.to_string())
+    }
+
+    /// Convert any format to ODCS v3.1.0 YAML format.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - Format-specific content as a string
+    /// * `format` - Optional format identifier. If None, attempts auto-detection.
+    ///   Supported formats: "sql", "json_schema", "avro", "protobuf", "odcl", "odcs", "cads", "odps", "domain"
+    ///
+    /// # Returns
+    ///
+    /// ODCS v3.1.0 YAML string, or JsValue error
+    #[wasm_bindgen]
+    pub fn convert_to_odcs(input: &str, format: Option<String>) -> Result<String, JsValue> {
+        match crate::convert::convert_to_odcs(input, format.as_deref()) {
+            Ok(yaml) => Ok(yaml),
+            Err(e) => Err(JsValue::from_str(&format!("Conversion error: {}", e))),
+        }
     }
 
     /// Filter Data Flow nodes (tables) by owner.
@@ -439,6 +617,97 @@ mod wasm {
             "relationships": relationships
         });
         serde_json::to_string(&result)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    // ============================================================================
+    // Domain Operations
+    // ============================================================================
+
+    /// Add a system to a domain in a DataModel.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing workspace/data model structure
+    /// * `domain_id` - Domain UUID as string
+    /// * `system_json` - JSON string containing System
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing updated DataModel, or JsValue error
+    #[wasm_bindgen]
+    pub fn add_system_to_domain(
+        workspace_json: &str,
+        domain_id: &str,
+        system_json: &str,
+    ) -> Result<String, JsValue> {
+        let mut model = deserialize_workspace(workspace_json)?;
+        let domain_uuid = uuid::Uuid::parse_str(domain_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid domain ID: {}", e)))?;
+        let system: crate::models::domain::System = serde_json::from_str(system_json)
+            .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
+        model
+            .add_system_to_domain(domain_uuid, system)
+            .map_err(|e| JsValue::from_str(&e))?;
+        serde_json::to_string(&model)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Add a CADS node to a domain in a DataModel.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing workspace/data model structure
+    /// * `domain_id` - Domain UUID as string
+    /// * `node_json` - JSON string containing CADSNode
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing updated DataModel, or JsValue error
+    #[wasm_bindgen]
+    pub fn add_cads_node_to_domain(
+        workspace_json: &str,
+        domain_id: &str,
+        node_json: &str,
+    ) -> Result<String, JsValue> {
+        let mut model = deserialize_workspace(workspace_json)?;
+        let domain_uuid = uuid::Uuid::parse_str(domain_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid domain ID: {}", e)))?;
+        let node: crate::models::domain::CADSNode = serde_json::from_str(node_json)
+            .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
+        model
+            .add_cads_node_to_domain(domain_uuid, node)
+            .map_err(|e| JsValue::from_str(&e))?;
+        serde_json::to_string(&model)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    /// Add an ODCS node to a domain in a DataModel.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing workspace/data model structure
+    /// * `domain_id` - Domain UUID as string
+    /// * `node_json` - JSON string containing ODCSNode
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing updated DataModel, or JsValue error
+    #[wasm_bindgen]
+    pub fn add_odcs_node_to_domain(
+        workspace_json: &str,
+        domain_id: &str,
+        node_json: &str,
+    ) -> Result<String, JsValue> {
+        let mut model = deserialize_workspace(workspace_json)?;
+        let domain_uuid = uuid::Uuid::parse_str(domain_id)
+            .map_err(|e| JsValue::from_str(&format!("Invalid domain ID: {}", e)))?;
+        let node: crate::models::domain::ODCSNode = serde_json::from_str(node_json)
+            .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
+        model
+            .add_odcs_node_to_domain(domain_uuid, node)
+            .map_err(|e| JsValue::from_str(&e))?;
+        serde_json::to_string(&model)
             .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
     }
 

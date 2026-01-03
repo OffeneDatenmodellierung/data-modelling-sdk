@@ -5,6 +5,109 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-03
+
+### Added
+
+- **feat(storage)**: Domain-based file organization
+  - Domain directories with `domain.yaml` files
+  - ODCS tables saved as `{name}.odcs.yaml` within domain directories
+  - ODPS products saved as `{name}.odps.yaml` within domain directories
+  - CADS assets saved as `{name}.cads.yaml` within domain directories
+  - `ModelSaver::save_domain()` for saving complete domains with all associated files
+  - `ModelLoader::load_domains()` for loading domains from domain directories
+  - `ModelLoader::load_domains_from_list()` for loading specific domains
+  - Backward compatibility maintained with legacy `tables/` directory structure
+
+- **feat(schemas)**: Schema reference directory
+  - `schemas/` directory with JSON Schema definitions for all supported formats
+  - ODCS v3.1.0, ODCL v1.2.1, ODPS, and CADS schemas maintained for validation and reference
+  - Comprehensive schema documentation in `schemas/README.md`
+
+- **feat(docs)**: Architecture guide
+  - Comprehensive Architecture Guide (`docs/ARCHITECTURE.md`) covering project decisions, use cases, and integration patterns
+  - Updated README.md with domain-based file structure documentation
+  - Updated LLM.txt with new architecture details
+
+### Changed
+
+- **refactor(storage)**: File organization now uses domain-based structure
+  - Files organized by business domain instead of flat `tables/` directory
+  - Each domain contains its definition and all associated ODCS/ODPS/CADS files
+  - Legacy `tables/` directory still supported for backward compatibility
+
+## [1.3.0] - 2026-01-03
+
+### Added
+
+- **feat(odcs)**: Complete ODCS v3.1.0 and ODCL v1.2.1 field preservation
+  - Preserve `description`, `quality` arrays (with nested structures), and `$ref` references during import/export
+  - Full schema coverage for ODCS v3.1.0 and ODCL v1.2.1 formats
+  - Round-trip import/export preserves all fields
+
+- **feat(tags)**: Enhanced tag support with Simple, Pair, and List formats
+  - `Tag` enum supporting three formats: `Simple(String)`, `Pair(String, String)`, `List(String, Vec<String>)`
+  - Auto-detection parsing with graceful degradation for malformed tags
+  - Backward compatible with existing `Vec<String>` tags
+  - Tag support in ODCS, ODCL, JSON Schema, AVRO, and Protobuf importers/exporters
+
+- **feat(cads)**: Full CADS v1.0 support
+  - CADS importer (`CADSImporter`) for AI/ML models, applications, pipelines
+  - CADS exporter (`CADSExporter`) for serializing CADS assets
+  - Support for all CADS asset kinds: AIModel, MLPipeline, Application, ETLPipeline, SourceSystem, DestinationSystem
+  - Full metadata support: runtime, SLA, pricing, team, risk, compliance, validation profiles
+
+- **feat(odps)**: Full ODPS (Open Data Product Standard) support
+  - ODPS importer (`ODPSImporter`) for data products
+  - ODPS exporter (`ODPSExporter`) for serializing data products
+  - Contract ID validation against ODCS Tables
+  - Support for input/output ports, support, team, and custom properties
+
+- **feat(domain)**: Business Domain schema support
+  - `Domain` struct for organizing systems, CADS nodes, and ODCS nodes
+  - `System` struct representing physical infrastructure with DataFlow metadata
+  - `CADSNode` and `ODCSNode` structs with shared reference support
+  - ERD-style `SystemConnection` for system-to-system relationships
+  - Crowsfeet notation `NodeConnection` for ODCS node relationships
+  - Domain operations in `DataModel`: `add_domain()`, `add_system_to_domain()`, `add_cads_node_to_domain()`, `add_odcs_node_to_domain()`, etc.
+  - Domain YAML import/export: `Domain::from_yaml()`, `Domain::to_yaml()`
+
+- **feat(converter)**: Universal format converter
+  - `convert_to_odcs()` function converts any format to ODCS v3.1.0
+  - Auto-detection for SQL, ODCS, ODCL, JSON Schema, AVRO, Protobuf, CADS, ODPS, Domain formats
+  - Format-specific conversion logic with informative error messages
+
+- **feat(migration)**: DataFlow to Domain migration utility
+  - `migrate_dataflow_to_domain()` converts DataFlow YAML to Domain schema
+  - Preserves all metadata during migration
+  - Maps DataFlow nodes to Systems and relationships to SystemConnections
+
+- **feat(wasm)**: Comprehensive WASM bindings for new features
+  - CADS import/export: `importFromCads()`, `exportToCads()`
+  - ODPS import/export: `importFromOdps()`, `exportToOdps()`
+  - Domain operations: `createDomain()`, `importFromDomain()`, `exportToDomain()`, `migrateDataflowToDomain()`
+  - Domain management: `addSystemToDomain()`, `addCadsNodeToDomain()`, `addOdcsNodeToDomain()`
+  - Tag operations: `parseTag()`, `serializeTag()`
+  - Universal converter: `convertToOdcs()`
+
+### Changed
+
+- **refactor(dataflow)**: DataFlow format removed and replaced with Domain schema
+  - DataFlow import/export modules removed
+  - DataFlow WASM bindings removed
+  - Migration utility provided for existing DataFlow files
+
+- **refactor(tags)**: Enhanced tag support across all formats
+  - `Table.tags` and `Relationship.tags` now use `Vec<Tag>` instead of `Vec<String>`
+  - All importers parse enhanced tags using `Tag::from_str()`
+  - All exporters serialize tags using `Tag::to_string()`
+
+### Documentation
+
+- Added comprehensive Schema Overview Guide (`docs/SCHEMA_OVERVIEW.md`)
+- Updated README.md with Domain schema and new format support
+- Updated LLM.txt with new modules and architecture details
+
 ## [1.2.0] - 2026-01-27
 
 ### Added
@@ -16,10 +119,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add `ContactDetails` struct with email, phone, name, role, and other fields
   - Add `InfrastructureType` enum with 70+ infrastructure types covering major cloud databases, container platforms, data warehouses, message queues, and BI/analytics tools
   - Add filter methods to `DataModel`: `filter_nodes_by_owner()`, `filter_relationships_by_owner()`, `filter_nodes_by_infrastructure_type()`, `filter_relationships_by_infrastructure_type()`, `filter_by_tags()`
-  - Add lightweight Data Flow format importer (`DataFlowImporter`) separate from ODCS format
-  - Add lightweight Data Flow format exporter (`DataFlowExporter`) separate from ODCS format
-  - Add WASM bindings for Data Flow format: `importFromDataflow()`, `exportToDataflow()`
-  - Add WASM bindings for filter methods: `filterNodesByOwner()`, `filterRelationshipsByOwner()`, `filterNodesByInfrastructureType()`, `filterRelationshipsByInfrastructureType()`, `filterByTags()`
 
 ### Changed
 

@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/cads/schema/1.0/cads.schema.json",
+  "title": "Compute Asset Description Specification (CADS)",
+  "type": "object",
+
+  "required": ["apiVersion", "kind", "id", "name", "version", "status"],
+
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "pattern": "^v[0-9]+(\\.[0-9]+)?$"
+    },
+
+    "kind": {
+      "type": "string",
+      "enum": [
+        "AIModel",
+        "MLPipeline",
+        "Application",
+        "ETLPipeline",
+        "SourceSystem",
+        "DestinationSystem"
+      ]
+    },
+
+    "id": {
+      "type": "string",
+      "description": "Globally unique identifier (UUID or URN)"
+    },
+
+    "name": {
+      "type": "string",
+      "minLength": 3
+    },
+
+    "version": {
+      "type": "string",
+      "description": "Semantic or organisational version"
+    },
+
+    "status": {
+      "type": "string",
+      "enum": ["draft", "validated", "production", "deprecated"]
+    },
+
+    "domain": { "type": "string" },
+
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+
+    "description": {
+      "type": "object",
+      "properties": {
+        "purpose": { "type": "string" },
+        "usage": { "type": "string" },
+        "limitations": { "type": "string" },
+        "externalLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["url"],
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "environment": { "type": "string" },
+        "endpoints": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri" }
+        },
+        "container": {
+          "type": "object",
+          "properties": {
+            "image": { "type": "string" }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" },
+            "gpu": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "sla": {
+      "type": "object",
+      "properties": {
+        "properties": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["element", "value", "unit"],
+            "properties": {
+              "element": { "type": "string" },
+              "value": { "type": ["number", "string"] },
+              "unit": { "type": "string" },
+              "driver": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "pricing": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": [
+            "per_request",
+            "per_hour",
+            "per_batch",
+            "subscription",
+            "internal"
+          ]
+        },
+        "currency": { "type": "string" },
+        "unitCost": { "type": "number" },
+        "billingUnit": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+
+    "team": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "name"],
+        "properties": {
+          "role": { "type": "string" },
+          "name": { "type": "string" },
+          "contact": { "type": "string" }
+        }
+      }
+    },
+
+    "risk": {
+      "type": "object",
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": ["minimal", "low", "medium", "high"]
+        },
+        "impactAreas": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "fairness",
+              "privacy",
+              "safety",
+              "security",
+              "financial",
+              "operational",
+              "reputational"
+            ]
+          }
+        },
+        "intendedUse": { "type": "string" },
+        "outOfScopeUse": { "type": "string" },
+        "assessment": {
+          "type": "object",
+          "properties": {
+            "methodology": { "type": "string" },
+            "date": { "type": "string", "format": "date" },
+            "assessor": { "type": "string" }
+          }
+        },
+        "mitigations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["description", "status"],
+            "properties": {
+              "description": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["planned", "implemented", "verified"]
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "compliance": {
+      "type": "object",
+      "properties": {
+        "frameworks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "status"],
+            "properties": {
+              "name": { "type": "string" },
+              "category": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["not_applicable", "assessed", "compliant", "non_compliant"]
+              }
+            }
+          }
+        },
+        "controls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "description"],
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "evidence": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "validationProfiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "requiredChecks"],
+        "properties": {
+          "name": { "type": "string" },
+          "appliesTo": {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string" },
+              "riskClassification": { "type": "string" }
+            }
+          },
+          "requiredChecks": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "bpmnModels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "reference", "format"],
+        "properties": {
+          "name": { "type": "string" },
+          "reference": { "type": "string" },
+          "format": {
+            "type": "string",
+            "enum": ["bpmn20-xml", "json"]
+          },
+          "description": { "type": "string" }
+        }
+      }
+    },
+
+    "customProperties": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

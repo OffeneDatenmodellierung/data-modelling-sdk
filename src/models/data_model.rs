@@ -1,10 +1,13 @@
 //! DataModel for the SDK
 
+use super::domain::{CADSNode, Domain, NodeConnection, ODCSNode, System, SystemConnection};
 use super::enums::InfrastructureType;
 use super::relationship::Relationship;
 use super::table::Table;
+use super::tag::Tag;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use uuid::Uuid;
 
 /// Data model representing a complete data model with tables and relationships
@@ -40,6 +43,9 @@ pub struct DataModel {
     /// Relationships between tables
     #[serde(default)]
     pub relationships: Vec<Relationship>,
+    /// Business domains in this model
+    #[serde(default)]
+    pub domains: Vec<Domain>,
     /// Path to the control file (relationships.yaml)
     pub control_file_path: String,
     /// Path to diagram file if applicable
@@ -95,6 +101,7 @@ impl DataModel {
             git_directory_path,
             tables: Vec::new(),
             relationships: Vec::new(),
+            domains: Vec::new(),
             control_file_path,
             diagram_file_path: None,
             is_subfolder: false,
@@ -347,18 +354,24 @@ impl DataModel {
     /// # Example
     ///
     /// ```rust
-    /// # use data_modelling_sdk::models::{DataModel, Table, Column};
+    /// # use data_modelling_sdk::models::{DataModel, Table, Column, Tag};
     /// # let mut model = DataModel::new("test".to_string(), "/path".to_string(), "control.yaml".to_string());
     /// # let mut table = Table::new("test_table".to_string(), vec![Column::new("id".to_string(), "INT".to_string())]);
-    /// # table.tags.push("production".to_string());
+    /// # table.tags.push(Tag::Simple("production".to_string()));
     /// # model.tables.push(table);
     /// let (tagged_nodes, tagged_relationships) = model.filter_by_tags("production");
     /// ```
     pub fn filter_by_tags(&self, tag: &str) -> (Vec<&Table>, Vec<&Relationship>) {
+        // Parse the tag string to Tag enum for comparison
+        let search_tag = Tag::from_str(tag).unwrap_or_else(|_| {
+            // If parsing fails, create a Simple tag
+            Tag::Simple(tag.to_string())
+        });
+
         let tagged_tables: Vec<&Table> = self
             .tables
             .iter()
-            .filter(|t| t.tags.contains(&tag.to_string()))
+            .filter(|t| t.tags.contains(&search_tag))
             .collect();
         let tagged_relationships: Vec<&Relationship> = self
             .relationships
@@ -370,5 +383,187 @@ impl DataModel {
             })
             .collect();
         (tagged_tables, tagged_relationships)
+    }
+
+    /// Add a domain to the model
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to add
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use data_modelling_sdk::models::{DataModel, Domain};
+    /// # let mut model = DataModel::new("test".to_string(), "/path".to_string(), "control.yaml".to_string());
+    /// let domain = Domain::new("customer-service".to_string());
+    /// model.add_domain(domain);
+    /// ```
+    pub fn add_domain(&mut self, domain: Domain) {
+        self.domains.push(domain);
+        self.updated_at = Utc::now();
+    }
+
+    /// Get a domain by its ID
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_id` - The UUID of the domain to find
+    ///
+    /// # Returns
+    ///
+    /// A reference to the domain if found, `None` otherwise.
+    pub fn get_domain_by_id(&self, domain_id: Uuid) -> Option<&Domain> {
+        self.domains.iter().find(|d| d.id == domain_id)
+    }
+
+    /// Get a mutable reference to a domain by its ID
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_id` - The UUID of the domain to find
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the domain if found, `None` otherwise.
+    pub fn get_domain_by_id_mut(&mut self, domain_id: Uuid) -> Option<&mut Domain> {
+        self.domains.iter_mut().find(|d| d.id == domain_id)
+    }
+
+    /// Get a domain by its name
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the domain to find
+    ///
+    /// # Returns
+    ///
+    /// A reference to the first domain with the given name if found, `None` otherwise.
+    pub fn get_domain_by_name(&self, name: &str) -> Option<&Domain> {
+        self.domains.iter().find(|d| d.name == name)
+    }
+
+    /// Add a system to a domain
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_id` - The UUID of the domain
+    /// * `system` - The system to add
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the domain was found and the system was added, `Err` otherwise.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use data_modelling_sdk::models::{DataModel, Domain, System, InfrastructureType};
+    /// # use uuid::Uuid;
+    /// # let mut model = DataModel::new("test".to_string(), "/path".to_string(), "control.yaml".to_string());
+    /// # let domain = Domain::new("customer-service".to_string());
+    /// # let domain_id = domain.id;
+    /// # model.add_domain(domain);
+    /// let system = System::new("kafka-cluster".to_string(), InfrastructureType::Kafka, domain_id);
+    /// model.add_system_to_domain(domain_id, system).unwrap();
+    /// ```
+    pub fn add_system_to_domain(&mut self, domain_id: Uuid, system: System) -> Result<(), String> {
+        let domain = self
+            .get_domain_by_id_mut(domain_id)
+            .ok_or_else(|| format!("Domain with ID {} not found", domain_id))?;
+        domain.add_system(system);
+        self.updated_at = Utc::now();
+        Ok(())
+    }
+
+    /// Add a CADS node to a domain
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_id` - The UUID of the domain
+    /// * `node` - The CADS node to add
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the domain was found and the node was added, `Err` otherwise.
+    pub fn add_cads_node_to_domain(
+        &mut self,
+        domain_id: Uuid,
+        node: CADSNode,
+    ) -> Result<(), String> {
+        let domain = self
+            .get_domain_by_id_mut(domain_id)
+            .ok_or_else(|| format!("Domain with ID {} not found", domain_id))?;
+        domain.add_cads_node(node);
+        self.updated_at = Utc::now();
+        Ok(())
+    }
+
+    /// Add an ODCS node to a domain
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_id` - The UUID of the domain
+    /// * `node` - The ODCS node to add
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the domain was found and the node was added, `Err` otherwise.
+    pub fn add_odcs_node_to_domain(
+        &mut self,
+        domain_id: Uuid,
+        node: ODCSNode,
+    ) -> Result<(), String> {
+        let domain = self
+            .get_domain_by_id_mut(domain_id)
+            .ok_or_else(|| format!("Domain with ID {} not found", domain_id))?;
+        domain.add_odcs_node(node);
+        self.updated_at = Utc::now();
+        Ok(())
+    }
+
+    /// Add a system connection to a domain
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_id` - The UUID of the domain
+    /// * `connection` - The system connection to add
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the domain was found and the connection was added, `Err` otherwise.
+    pub fn add_system_connection_to_domain(
+        &mut self,
+        domain_id: Uuid,
+        connection: SystemConnection,
+    ) -> Result<(), String> {
+        let domain = self
+            .get_domain_by_id_mut(domain_id)
+            .ok_or_else(|| format!("Domain with ID {} not found", domain_id))?;
+        domain.add_system_connection(connection);
+        self.updated_at = Utc::now();
+        Ok(())
+    }
+
+    /// Add a node connection to a domain
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_id` - The UUID of the domain
+    /// * `connection` - The node connection to add
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the domain was found and the connection was added, `Err` otherwise.
+    pub fn add_node_connection_to_domain(
+        &mut self,
+        domain_id: Uuid,
+        connection: NodeConnection,
+    ) -> Result<(), String> {
+        let domain = self
+            .get_domain_by_id_mut(domain_id)
+            .ok_or_else(|| format!("Domain with ID {} not found", domain_id))?;
+        domain.add_node_connection(connection);
+        self.updated_at = Utc::now();
+        Ok(())
     }
 }

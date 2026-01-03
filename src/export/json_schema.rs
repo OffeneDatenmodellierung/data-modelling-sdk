@@ -129,6 +129,12 @@ impl JSONSchemaExporter {
             schema.insert("required".to_string(), json!(required));
         }
 
+        // Add tags if present
+        if !table.tags.is_empty() {
+            let tags_array: Vec<String> = table.tags.iter().map(|t| t.to_string()).collect();
+            schema.insert("tags".to_string(), json!(tags_array));
+        }
+
         json!(schema)
     }
 

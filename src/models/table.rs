@@ -5,11 +5,58 @@ use super::enums::{
     DataVaultClassification, DatabaseType, InfrastructureType, MedallionLayer, ModelingLevel,
     SCDPattern,
 };
+use super::tag::Tag;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json;
 use std::collections::HashMap;
+use std::str::FromStr;
 use uuid::Uuid;
+
+/// Deserialize tags with backward compatibility (supports Vec<String> and Vec<Tag>)
+fn deserialize_tags<'de, D>(deserializer: D) -> Result<Vec<Tag>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // Accept either Vec<String> (backward compatibility) or Vec<Tag>
+    struct TagVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for TagVisitor {
+        type Value = Vec<Tag>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a vector of tags (strings or Tag objects)")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            let mut tags = Vec::new();
+            while let Some(item) = seq.next_element::<serde_json::Value>()? {
+                match item {
+                    serde_json::Value::String(s) => {
+                        // Backward compatibility: parse string as Tag
+                        if let Ok(tag) = Tag::from_str(&s) {
+                            tags.push(tag);
+                        }
+                    }
+                    _ => {
+                        // Try to deserialize as Tag directly (if it's a string in JSON)
+                        if let serde_json::Value::String(s) = item
+                            && let Ok(tag) = Tag::from_str(&s)
+                        {
+                            tags.push(tag);
+                        }
+                    }
+                }
+            }
+            Ok(tags)
+        }
+    }
+
+    deserializer.deserialize_seq(TagVisitor)
+}
 
 /// Position coordinates for table placement on canvas
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -151,9 +198,9 @@ pub struct Table {
     /// Modeling level (Conceptual, Logical, Physical)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modeling_level: Option<ModelingLevel>,
-    /// Tags for categorization and filtering
-    #[serde(default)]
-    pub tags: Vec<String>,
+    /// Tags for categorization and filtering (supports Simple, Pair, and List formats)
+    #[serde(default, deserialize_with = "deserialize_tags")]
+    pub tags: Vec<Tag>,
     /// ODCL/ODCS metadata (legacy format support)
     #[serde(default)]
     pub odcl_metadata: HashMap<String, serde_json::Value>,

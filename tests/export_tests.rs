@@ -1,14 +1,10 @@
 //! Export module tests
 
 use data_modelling_sdk::export::{
-    avro::AvroExporter, dataflow::DataFlowExporter, json_schema::JSONSchemaExporter,
-    protobuf::ProtobufExporter, sql::SQLExporter,
+    avro::AvroExporter, json_schema::JSONSchemaExporter, protobuf::ProtobufExporter,
+    sql::SQLExporter,
 };
-use data_modelling_sdk::models::{
-    Column, DataModel, InfrastructureType, Relationship, SlaProperty, Table,
-};
-use serde_json::json;
-use uuid::Uuid;
+use data_modelling_sdk::models::{Column, Table};
 
 fn create_test_table(name: &str, columns: Vec<Column>) -> Table {
     Table {
@@ -51,6 +47,7 @@ fn create_column(name: &str, data_type: &str, primary_key: bool, nullable: bool)
         constraints: Vec::new(),
         description: String::new(),
         quality: Vec::new(),
+        ref_path: None,
         enum_values: Vec::new(),
         errors: Vec::new(),
         column_order: 0,
@@ -365,90 +362,5 @@ mod avro_export_tests {
     }
 }
 
-mod dataflow_export_tests {
-    use super::*;
-
-    #[test]
-    fn test_export_node_with_metadata() {
-        let mut table = Table::new(
-            "user_events".to_string(),
-            vec![Column::new("id".to_string(), "UUID".to_string())],
-        );
-        table.owner = Some("Data Engineering Team".to_string());
-        table.infrastructure_type = Some(InfrastructureType::Kafka);
-        table.notes = Some("User interaction events".to_string());
-        table.sla = Some(vec![SlaProperty {
-            property: "latency".to_string(),
-            value: json!(4),
-            unit: "hours".to_string(),
-            description: Some("Data must be available within 4 hours".to_string()),
-            element: None,
-            driver: Some("operational".to_string()),
-            scheduler: None,
-            schedule: None,
-        }]);
-
-        let yaml = DataFlowExporter::export_node(&table);
-        assert!(yaml.contains("user_events"));
-        assert!(yaml.contains("Data Engineering Team"));
-        assert!(yaml.contains("Kafka"));
-        assert!(yaml.contains("User interaction events"));
-        assert!(yaml.contains("latency"));
-    }
-
-    #[test]
-    fn test_export_relationship_with_metadata() {
-        let source_id = Uuid::new_v4();
-        let target_id = Uuid::new_v4();
-        let mut relationship = Relationship::new(source_id, target_id);
-        relationship.owner = Some("Data Engineering Team".to_string());
-        relationship.infrastructure_type = Some(InfrastructureType::Kafka);
-        relationship.notes = Some("ETL pipeline".to_string());
-
-        let yaml = DataFlowExporter::export_relationship(&relationship);
-        assert!(yaml.contains(&source_id.to_string()));
-        assert!(yaml.contains(&target_id.to_string()));
-        assert!(yaml.contains("Data Engineering Team"));
-        assert!(yaml.contains("Kafka"));
-    }
-
-    #[test]
-    fn test_export_model_round_trip() {
-        let mut model = DataModel::new(
-            "test".to_string(),
-            "/tmp".to_string(),
-            "control.yaml".to_string(),
-        );
-        let mut table = Table::new(
-            "test_table".to_string(),
-            vec![Column::new("id".to_string(), "INT".to_string())],
-        );
-        table.owner = Some("Team A".to_string());
-        table.infrastructure_type = Some(InfrastructureType::PostgreSQL);
-        model.tables.push(table);
-
-        let source_id = Uuid::new_v4();
-        let target_id = Uuid::new_v4();
-        let mut relationship = Relationship::new(source_id, target_id);
-        relationship.owner = Some("Team B".to_string());
-        relationship.infrastructure_type = Some(InfrastructureType::Kafka);
-        model.relationships.push(relationship);
-
-        let yaml = DataFlowExporter::export_model(&model);
-        assert!(yaml.contains("nodes:"));
-        assert!(yaml.contains("relationships:"));
-        assert!(yaml.contains("Team A"));
-        assert!(yaml.contains("Team B"));
-
-        // Test round-trip
-        let importer = data_modelling_sdk::import::dataflow::DataFlowImporter::new();
-        let imported_model = importer.import(&yaml).unwrap();
-        assert_eq!(imported_model.tables.len(), 1);
-        assert_eq!(imported_model.relationships.len(), 1);
-        assert_eq!(imported_model.tables[0].owner, Some("Team A".to_string()));
-        assert_eq!(
-            imported_model.relationships[0].owner,
-            Some("Team B".to_string())
-        );
-    }
-}
+// DataFlow export tests removed - DataFlow format has been migrated to Domain schema
+// Use migrate_dataflow_to_domain() for DataFlow → Domain migration

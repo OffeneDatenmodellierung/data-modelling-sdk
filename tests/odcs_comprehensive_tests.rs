@@ -4,7 +4,7 @@
 
 use data_modelling_sdk::export::odcs::ODCSExporter;
 use data_modelling_sdk::import::odcs::ODCSImporter;
-use data_modelling_sdk::models::{Column, Table};
+use data_modelling_sdk::models::{Column, Table, Tag};
 use data_modelling_sdk::{DataVaultClassification, DatabaseType, MedallionLayer, SCDPattern};
 use serde_yaml::Value as YamlValue;
 
@@ -142,6 +142,7 @@ fn create_column(name: &str, data_type: &str, primary_key: bool, nullable: bool)
         constraints: Vec::new(),
         description: String::new(),
         quality: Vec::new(),
+        ref_path: None,
         enum_values: Vec::new(),
         errors: Vec::new(),
         column_order: 0,
@@ -241,7 +242,10 @@ mod odcs_export_tests {
     #[test]
     fn test_export_table_with_tags() {
         let mut table = create_test_table("users", vec![create_column("id", "INT", true, false)]);
-        table.tags = vec!["pii".to_string(), "sensitive".to_string()];
+        table.tags = vec![
+            Tag::Simple("pii".to_string()),
+            Tag::Simple("sensitive".to_string()),
+        ];
 
         let yaml = ODCSExporter::export_table(&table, "odcs_v3_1_0");
 
@@ -433,8 +437,8 @@ schema:
 
         let (table, errors) = importer.parse_table(yaml).unwrap();
         assert_eq!(errors.len(), 0);
-        assert!(table.tags.contains(&"pii".to_string()));
-        assert!(table.tags.contains(&"sensitive".to_string()));
+        assert!(table.tags.contains(&Tag::Simple("pii".to_string())));
+        assert!(table.tags.contains(&Tag::Simple("sensitive".to_string())));
     }
 
     #[test]
@@ -542,5 +546,139 @@ schema:
         assert_eq!(errors.len(), 0, "Import should have no errors");
         assert_eq!(imported_table.name, original_table.name);
         assert_eq!(imported_table.columns.len(), original_table.columns.len());
+    }
+
+    #[test]
+    fn test_odcs_v3_1_0_import_preserves_description_fields() {
+        let mut importer = ODCSImporter::new();
+        let yaml = r#"
+apiVersion: v3.1.0
+kind: DataContract
+id: test-contract-id
+version: 1.0.0
+schema:
+  - id: test_schema
+    name: test_table
+    properties:
+      - id: col1_prop
+        name: test_column
+        logicalType: string
+        physicalType: varchar(100)
+        required: true
+        description: This is a test column description
+"#;
+        let (table, errors) = importer.parse_table(yaml).unwrap();
+        assert_eq!(errors.len(), 0, "Import should have no errors");
+        assert_eq!(table.columns.len(), 1);
+
+        let column = &table.columns[0];
+        assert_eq!(column.name, "test_column");
+        assert_eq!(column.description, "This is a test column description");
+    }
+
+    #[test]
+    fn test_odcs_v3_1_0_import_preserves_quality_arrays_with_nested_structures() {
+        let mut importer = ODCSImporter::new();
+        let yaml = r#"
+apiVersion: v3.1.0
+kind: DataContract
+id: test-contract-id
+version: 1.0.0
+schema:
+  - id: test_schema
+    name: test_table
+    properties:
+      - id: col1_prop
+        name: test_column
+        logicalType: long
+        physicalType: bigint
+        required: true
+        quality:
+          - metric: nullValues
+            mustBe: 0
+            description: column should not contain null values
+            dimension: completeness
+            type: library
+            severity: error
+            businessImpact: operational
+            schedule: 0 20 * * *
+            scheduler: cron
+            customProperties:
+              - property: FIELD_NAME
+                value: test_column
+              - property: COMPARISON_TYPE
+                value: Greater than
+"#;
+        let (table, errors) = importer.parse_table(yaml).unwrap();
+        assert_eq!(errors.len(), 0, "Import should have no errors");
+        assert_eq!(table.columns.len(), 1);
+
+        let column = &table.columns[0];
+        assert_eq!(column.name, "test_column");
+
+        // Verify quality array is preserved (note: when required=true, a not_null rule may be added)
+        assert!(
+            !column.quality.is_empty(),
+            "Quality array should not be empty"
+        );
+
+        // Find the library quality rule (there may be a not_null rule added automatically)
+        let quality_rule = column
+            .quality
+            .iter()
+            .find(|r| r.get("type").and_then(|v| v.as_str()) == Some("library"))
+            .expect("Should find library quality rule");
+
+        // Verify nested structure is preserved
+        assert_eq!(
+            quality_rule.get("metric").and_then(|v| v.as_str()),
+            Some("nullValues")
+        );
+        assert_eq!(quality_rule.get("mustBe").and_then(|v| v.as_i64()), Some(0));
+        assert_eq!(
+            quality_rule.get("description").and_then(|v| v.as_str()),
+            Some("column should not contain null values")
+        );
+        assert!(quality_rule.get("customProperties").is_some());
+
+        // Verify nested customProperties array
+        if let Some(custom_props) = quality_rule.get("customProperties")
+            && let Some(arr) = custom_props.as_array()
+        {
+            assert!(!arr.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_odcs_v3_1_0_import_preserves_ref_references() {
+        let mut importer = ODCSImporter::new();
+        let yaml = r#"
+apiVersion: v3.1.0
+kind: DataContract
+id: test-contract-id
+version: 1.0.0
+schema:
+  - id: test_schema
+    name: test_table
+    properties:
+      - id: col1_prop
+        name: order_id
+        logicalType: string
+        physicalType: varchar(100)
+        required: true
+        $ref: '#/definitions/order_id'
+definitions:
+  order_id:
+    logicalType: string
+    physicalType: uuid
+    description: An internal ID that identifies an order
+"#;
+        let (table, errors) = importer.parse_table(yaml).unwrap();
+        assert_eq!(errors.len(), 0, "Import should have no errors");
+        assert_eq!(table.columns.len(), 1);
+
+        let column = &table.columns[0];
+        assert_eq!(column.name, "order_id");
+        assert_eq!(column.ref_path, Some("#/definitions/order_id".to_string()));
     }
 }

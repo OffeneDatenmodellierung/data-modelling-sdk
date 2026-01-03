@@ -1,10 +1,22 @@
 //! Model saving functionality
 //!
 //! Saves models to storage backends, handling YAML serialization.
+//!
+//! File structure:
+//! - Base directory (workspace_path)
+//!   - Domain directories (e.g., `domain1/`, `domain2/`)
+//!     - `domain.yaml` - Domain definition
+//!     - `{name}.odcs.yaml` - ODCS table files
+//!     - `{name}.odps.yaml` - ODPS product files
+//!     - `{name}.cads.yaml` - CADS asset files
+//!   - `tables/` - Legacy: tables not in any domain (backward compatibility)
 
+use crate::export::{cads::CADSExporter, odcs::ODCSExporter, odps::ODPSExporter};
+use crate::models::{cads::CADSAsset, domain::Domain, odps::ODPSDataProduct, table::Table};
 use crate::storage::{StorageBackend, StorageError};
 use anyhow::Result;
 use serde_yaml;
+use std::collections::HashMap;
 use tracing::info;
 use uuid::Uuid;
 
@@ -65,6 +77,8 @@ impl<B: StorageBackend> ModelSaver<B> {
     /// Save relationships to storage
     ///
     /// Saves relationships to `relationships.yaml` in the workspace directory.
+    /// Note: Relationships are now stored within domain.yaml files, but this method
+    /// is kept for backward compatibility.
     pub async fn save_relationships(
         &self,
         workspace_path: &str,
@@ -98,6 +112,150 @@ impl<B: StorageBackend> ModelSaver<B> {
             relationships.len(),
             file_path
         );
+        Ok(())
+    }
+
+    /// Save a domain to storage
+    ///
+    /// Saves the domain as `domain.yaml` in a domain directory named after the domain.
+    /// Also saves all associated ODCS tables, ODPS products, and CADS assets within the domain directory.
+    pub async fn save_domain(
+        &self,
+        workspace_path: &str,
+        domain: &Domain,
+        tables: &HashMap<Uuid, Table>,
+        odps_products: &HashMap<Uuid, ODPSDataProduct>,
+        cads_assets: &HashMap<Uuid, CADSAsset>,
+    ) -> Result<(), StorageError> {
+        let sanitized_domain_name = sanitize_filename(&domain.name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+
+        // Ensure domain directory exists
+        if !self.storage.dir_exists(&domain_dir).await? {
+            self.storage.create_dir(&domain_dir).await?;
+        }
+
+        // Save domain.yaml
+        let domain_yaml = domain.to_yaml().map_err(|e| {
+            StorageError::SerializationError(format!("Failed to serialize domain: {}", e))
+        })?;
+        let domain_file_path = format!("{}/domain.yaml", domain_dir);
+        self.storage
+            .write_file(&domain_file_path, domain_yaml.as_bytes())
+            .await?;
+        info!("Saved domain '{}' to {}", domain.name, domain_file_path);
+
+        // Save ODCS tables referenced by ODCSNodes
+        for odcs_node in &domain.odcs_nodes {
+            if let Some(table_id) = odcs_node.table_id
+                && let Some(table) = tables.get(&table_id)
+            {
+                let sanitized_table_name = sanitize_filename(&table.name);
+                let table_file_path = format!("{}/{}.odcs.yaml", domain_dir, sanitized_table_name);
+                let odcs_yaml = ODCSExporter::export_table(table, "odcs_v3_1_0");
+                self.storage
+                    .write_file(&table_file_path, odcs_yaml.as_bytes())
+                    .await?;
+                info!("Saved ODCS table '{}' to {}", table.name, table_file_path);
+            }
+        }
+
+        // Save ODPS products (if we have a way to identify which products belong to this domain)
+        // For now, we'll save all products that have a matching domain field
+        for product in odps_products.values() {
+            if let Some(product_domain) = &product.domain
+                && product_domain == &domain.name
+            {
+                let sanitized_product_name =
+                    sanitize_filename(product.name.as_ref().unwrap_or(&product.id));
+                let product_file_path =
+                    format!("{}/{}.odps.yaml", domain_dir, sanitized_product_name);
+                let odps_yaml = ODPSExporter::export_product(product);
+                self.storage
+                    .write_file(&product_file_path, odps_yaml.as_bytes())
+                    .await?;
+                info!(
+                    "Saved ODPS product '{}' to {}",
+                    product.id, product_file_path
+                );
+            }
+        }
+
+        // Save CADS assets referenced by CADSNodes
+        for cads_node in &domain.cads_nodes {
+            if let Some(cads_asset_id) = cads_node.cads_asset_id
+                && let Some(asset) = cads_assets.get(&cads_asset_id)
+            {
+                let sanitized_asset_name = sanitize_filename(&asset.name);
+                let asset_file_path = format!("{}/{}.cads.yaml", domain_dir, sanitized_asset_name);
+                let cads_yaml = CADSExporter::export_asset(asset);
+                self.storage
+                    .write_file(&asset_file_path, cads_yaml.as_bytes())
+                    .await?;
+                info!("Saved CADS asset '{}' to {}", asset.name, asset_file_path);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Save an ODPS product to a domain directory
+    ///
+    /// Saves the product as `{product_name}.odps.yaml` in the specified domain directory.
+    pub async fn save_odps_product(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+        product: &ODPSDataProduct,
+    ) -> Result<(), StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+
+        // Ensure domain directory exists
+        if !self.storage.dir_exists(&domain_dir).await? {
+            self.storage.create_dir(&domain_dir).await?;
+        }
+
+        let sanitized_product_name =
+            sanitize_filename(product.name.as_ref().unwrap_or(&product.id));
+        let product_file_path = format!("{}/{}.odps.yaml", domain_dir, sanitized_product_name);
+        let odps_yaml = ODPSExporter::export_product(product);
+        self.storage
+            .write_file(&product_file_path, odps_yaml.as_bytes())
+            .await?;
+
+        info!(
+            "Saved ODPS product '{}' to {}",
+            product.id, product_file_path
+        );
+        Ok(())
+    }
+
+    /// Save a CADS asset to a domain directory
+    ///
+    /// Saves the asset as `{asset_name}.cads.yaml` in the specified domain directory.
+    pub async fn save_cads_asset(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+        asset: &CADSAsset,
+    ) -> Result<(), StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+
+        // Ensure domain directory exists
+        if !self.storage.dir_exists(&domain_dir).await? {
+            self.storage.create_dir(&domain_dir).await?;
+        }
+
+        let sanitized_asset_name = sanitize_filename(&asset.name);
+        let asset_file_path = format!("{}/{}.cads.yaml", domain_dir, sanitized_asset_name);
+        let cads_yaml = CADSExporter::export_asset(asset);
+        self.storage
+            .write_file(&asset_file_path, cads_yaml.as_bytes())
+            .await?;
+
+        info!("Saved CADS asset '{}' to {}", asset.name, asset_file_path);
         Ok(())
     }
 }

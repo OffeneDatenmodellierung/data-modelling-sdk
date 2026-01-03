@@ -86,6 +86,15 @@ impl ProtobufExporter {
         proto
     }
 
+    /// Export tags as Protobuf comments.
+    fn export_tags_as_comments(tags: &[crate::models::Tag]) -> String {
+        if tags.is_empty() {
+            return String::new();
+        }
+        let tag_strings: Vec<String> = tags.iter().map(|t| t.to_string()).collect();
+        format!("  // tags: {}\n", tag_strings.join(", "))
+    }
+
     /// Export a table to Protobuf message format.
     ///
     /// # Arguments
@@ -117,6 +126,11 @@ impl ProtobufExporter {
 
         let message_name = Self::sanitize_identifier(&table.name);
         proto.push_str(&format!("message {} {{\n", message_name));
+
+        // Add tags as comments if present
+        if !table.tags.is_empty() {
+            proto.push_str(&Self::export_tags_as_comments(&table.tags));
+        }
 
         for column in &table.columns {
             *field_number += 1;

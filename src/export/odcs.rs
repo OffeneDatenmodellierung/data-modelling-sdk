@@ -171,7 +171,7 @@ impl ODCSExporter {
             let tags_yaml: Vec<serde_yaml::Value> = table
                 .tags
                 .iter()
-                .map(|t| serde_yaml::Value::String(t.clone()))
+                .map(|t| serde_yaml::Value::String(t.to_string()))
                 .collect();
             yaml.insert(
                 serde_yaml::Value::String("tags".to_string()),
@@ -433,6 +433,14 @@ impl ODCSExporter {
                         );
                     }
 
+                    // Export $ref reference for nested columns if present
+                    if let Some(ref_path) = &child_col.ref_path {
+                        child_prop.insert(
+                            serde_yaml::Value::String("$ref".to_string()),
+                            serde_yaml::Value::String(ref_path.clone()),
+                        );
+                    }
+
                     // Export enum values for nested columns
                     if !child_col.enum_values.is_empty() {
                         let enum_yaml: Vec<serde_yaml::Value> = child_col
@@ -621,6 +629,14 @@ impl ODCSExporter {
                 prop.insert(
                     serde_yaml::Value::String("quality".to_string()),
                     serde_yaml::Value::Sequence(quality_array),
+                );
+            }
+
+            // Export $ref reference if present
+            if let Some(ref_path) = &column.ref_path {
+                prop.insert(
+                    serde_yaml::Value::String("$ref".to_string()),
+                    serde_yaml::Value::String(ref_path.clone()),
                 );
             }
 
@@ -899,7 +915,7 @@ impl ODCSExporter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::Column;
+    use crate::models::{Column, Tag};
 
     #[test]
     fn test_export_odcs_v3_1_0_basic() {
@@ -918,6 +934,7 @@ mod tests {
                 description: "Primary key".to_string(),
                 errors: Vec::new(),
                 quality: Vec::new(),
+                ref_path: None,
                 enum_values: Vec::new(),
                 column_order: 0,
             }],
@@ -928,7 +945,7 @@ mod tests {
             scd_pattern: None,
             data_vault_classification: None,
             modeling_level: None,
-            tags: vec!["test".to_string()],
+            tags: vec![Tag::Simple("test".to_string())],
             odcl_metadata: HashMap::new(),
             owner: None,
             sla: None,
