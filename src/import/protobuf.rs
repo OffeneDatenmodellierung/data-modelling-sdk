@@ -101,6 +101,11 @@ impl ProtobufImporter {
                                     Some(c.quality.clone())
                                 },
                                 ref_path: c.ref_path.clone(),
+                                enum_values: if c.enum_values.is_empty() {
+                                    None
+                                } else {
+                                    Some(c.enum_values.clone())
+                                },
                             })
                             .collect(),
                     });

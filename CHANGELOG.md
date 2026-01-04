@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-01-04
+
+### Added
+
+- **feat(json-schema)**: Full JSON Schema validation support
+  - Import: Extract all JSON Schema validation keywords (pattern, minimum, maximum, minLength, maxLength, enum, const, multipleOf, minItems, maxItems, uniqueItems, minProperties, maxProperties, allOf, anyOf, oneOf, not)
+  - Export: Export validation conditions from Column quality rules and enum_values back to JSON Schema format
+  - Added enum_values field to ColumnData structure to preserve enumeration values through import pipeline
+  - Validation keywords stored as quality rules with source="json_schema" for proper round-trip preservation
+  - Comprehensive integration test for validation conditions round-trip
+
 ## [1.6.1] - 2026-01-04
 
 ### Fixed

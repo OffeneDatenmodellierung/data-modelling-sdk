@@ -93,6 +93,11 @@ impl JSONSchemaImporter {
                                     Some(c.quality.clone())
                                 },
                                 ref_path: c.ref_path.clone(),
+                                enum_values: if c.enum_values.is_empty() {
+                                    None
+                                } else {
+                                    Some(c.enum_values.clone())
+                                },
                             })
                             .collect(),
                     });
@@ -319,6 +324,35 @@ impl JSONSchemaImporter {
             .as_object()
             .ok_or_else(|| anyhow::anyhow!("Property schema must be an object"))?;
 
+        // Handle $ref references
+        if let Some(ref_path) = prop_obj.get("$ref").and_then(|v| v.as_str()) {
+            // Create column with reference
+            let description = prop_obj
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+
+            let quality_rules = self.extract_validation_keywords(prop_obj, prop_name);
+
+            return Ok(vec![Column {
+                name: prop_name.to_string(),
+                data_type: "STRING".to_string(), // Default for $ref, will be resolved later
+                nullable,
+                primary_key: false,
+                secondary_key: false,
+                composite_key: None,
+                foreign_key: None,
+                constraints: Vec::new(),
+                description,
+                quality: quality_rules,
+                ref_path: Some(ref_path.to_string()),
+                enum_values: Vec::new(),
+                errors: Vec::new(),
+                column_order: 0,
+            }]);
+        }
+
         let prop_type = prop_obj
             .get("type")
             .and_then(|v| v.as_str())
@@ -335,6 +369,10 @@ impl JSONSchemaImporter {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .unwrap_or_default();
+
+        // Extract validation keywords and enum values
+        let quality_rules = self.extract_validation_keywords(prop_obj, prop_name);
+        let enum_values = self.extract_enum_values(prop_obj);
 
         let mut columns = Vec::new();
 
@@ -376,8 +414,16 @@ impl JSONSchemaImporter {
                             }
                         }
                     }
+                    // Extract object-level validation keywords (minProperties, maxProperties, etc.)
+                    // and add them to the first nested column or create a parent column
+                    let object_quality = self.extract_validation_keywords(prop_obj, prop_name);
+                    if !object_quality.is_empty() && !columns.is_empty() {
+                        // Add object-level validation to the first column
+                        columns[0].quality.extend(object_quality);
+                    }
                 } else {
                     // Object without properties - treat as STRUCT
+                    let struct_quality = self.extract_validation_keywords(prop_obj, prop_name);
                     columns.push(Column {
                         name: prop_name.to_string(),
                         data_type: "STRUCT".to_string(),
@@ -388,7 +434,7 @@ impl JSONSchemaImporter {
                         foreign_key: None,
                         constraints: Vec::new(),
                         description,
-                        quality: Vec::new(),
+                        quality: struct_quality,
                         ref_path: None,
                         enum_values: Vec::new(),
                         errors: Vec::new(),
@@ -456,6 +502,14 @@ impl JSONSchemaImporter {
                     "ARRAY<STRING>".to_string()
                 };
 
+                // Extract array-specific validation keywords
+                let mut array_quality = self.extract_validation_keywords(prop_obj, prop_name);
+                // Also extract validation from items if it's a simple array
+                if let Some(items_obj) = items.as_object() {
+                    let items_quality = self.extract_validation_keywords(items_obj, prop_name);
+                    array_quality.extend(items_quality);
+                }
+
                 columns.push(Column {
                     name: prop_name.to_string(),
                     data_type,
@@ -466,7 +520,7 @@ impl JSONSchemaImporter {
                     foreign_key: None,
                     constraints: Vec::new(),
                     description,
-                    quality: Vec::new(),
+                    quality: array_quality,
                     ref_path: None,
                     enum_values: Vec::new(),
                     errors: Vec::new(),
@@ -486,9 +540,9 @@ impl JSONSchemaImporter {
                     foreign_key: None,
                     constraints: Vec::new(),
                     description,
-                    quality: Vec::new(),
+                    quality: quality_rules,
                     ref_path: None,
-                    enum_values: Vec::new(),
+                    enum_values: enum_values.clone(),
                     errors: Vec::new(),
                     column_order: 0,
                 });
@@ -508,6 +562,184 @@ impl JSONSchemaImporter {
             "null" => "NULL".to_string(),
             _ => "STRING".to_string(), // Default fallback
         }
+    }
+
+    /// Extract validation keywords from JSON Schema property and convert to quality rules.
+    fn extract_validation_keywords(
+        &self,
+        prop_obj: &serde_json::Map<String, Value>,
+        _prop_name: &str,
+    ) -> Vec<HashMap<String, serde_json::Value>> {
+        let mut quality_rules = Vec::new();
+
+        // Pattern (regex) validation
+        if let Some(pattern) = prop_obj.get("pattern").and_then(|v| v.as_str()) {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("pattern"));
+            rule.insert("pattern".to_string(), json!(pattern));
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // Minimum value (for numbers)
+        if let Some(minimum) = prop_obj.get("minimum") {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("minimum"));
+            rule.insert("value".to_string(), minimum.clone());
+            rule.insert("source".to_string(), json!("json_schema"));
+            if let Some(exclusive_minimum) = prop_obj.get("exclusiveMinimum") {
+                rule.insert("exclusive".to_string(), exclusive_minimum.clone());
+            }
+            quality_rules.push(rule);
+        }
+
+        // Maximum value (for numbers)
+        if let Some(maximum) = prop_obj.get("maximum") {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("maximum"));
+            rule.insert("value".to_string(), maximum.clone());
+            rule.insert("source".to_string(), json!("json_schema"));
+            if let Some(exclusive_maximum) = prop_obj.get("exclusiveMaximum") {
+                rule.insert("exclusive".to_string(), exclusive_maximum.clone());
+            }
+            quality_rules.push(rule);
+        }
+
+        // MinLength (for strings)
+        if let Some(min_length) = prop_obj.get("minLength").and_then(|v| v.as_u64()) {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("minLength"));
+            rule.insert("value".to_string(), json!(min_length));
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // MaxLength (for strings)
+        if let Some(max_length) = prop_obj.get("maxLength").and_then(|v| v.as_u64()) {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("maxLength"));
+            rule.insert("value".to_string(), json!(max_length));
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // MultipleOf (for numbers)
+        if let Some(multiple_of) = prop_obj.get("multipleOf") {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("multipleOf"));
+            rule.insert("value".to_string(), multiple_of.clone());
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // Const (constant value)
+        if let Some(const_val) = prop_obj.get("const") {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("const"));
+            rule.insert("value".to_string(), const_val.clone());
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // MinItems (for arrays)
+        if let Some(min_items) = prop_obj.get("minItems").and_then(|v| v.as_u64()) {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("minItems"));
+            rule.insert("value".to_string(), json!(min_items));
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // MaxItems (for arrays)
+        if let Some(max_items) = prop_obj.get("maxItems").and_then(|v| v.as_u64()) {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("maxItems"));
+            rule.insert("value".to_string(), json!(max_items));
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // UniqueItems (for arrays)
+        if let Some(unique_items) = prop_obj.get("uniqueItems").and_then(|v| v.as_bool())
+            && unique_items
+        {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("uniqueItems"));
+            rule.insert("value".to_string(), json!(true));
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // MinProperties (for objects)
+        if let Some(min_props) = prop_obj.get("minProperties").and_then(|v| v.as_u64()) {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("minProperties"));
+            rule.insert("value".to_string(), json!(min_props));
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // MaxProperties (for objects)
+        if let Some(max_props) = prop_obj.get("maxProperties").and_then(|v| v.as_u64()) {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("maxProperties"));
+            rule.insert("value".to_string(), json!(max_props));
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // AdditionalProperties (for objects)
+        if let Some(additional_props) = prop_obj.get("additionalProperties") {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("additionalProperties"));
+            rule.insert("value".to_string(), additional_props.clone());
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // Format (already handled separately, but preserve as quality rule for completeness)
+        if let Some(format_val) = prop_obj.get("format").and_then(|v| v.as_str()) {
+            let mut rule = HashMap::new();
+            rule.insert("type".to_string(), json!("format"));
+            rule.insert("value".to_string(), json!(format_val));
+            rule.insert("source".to_string(), json!("json_schema"));
+            quality_rules.push(rule);
+        }
+
+        // AllOf, AnyOf, OneOf, Not (complex validation)
+        for keyword in &["allOf", "anyOf", "oneOf", "not"] {
+            if let Some(value) = prop_obj.get(*keyword) {
+                let mut rule = HashMap::new();
+                rule.insert("type".to_string(), json!(*keyword));
+                rule.insert("value".to_string(), value.clone());
+                rule.insert("source".to_string(), json!("json_schema"));
+                quality_rules.push(rule);
+            }
+        }
+
+        quality_rules
+    }
+
+    /// Extract enum values from JSON Schema property.
+    fn extract_enum_values(&self, prop_obj: &serde_json::Map<String, Value>) -> Vec<String> {
+        prop_obj
+            .get("enum")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| {
+                        // Convert enum values to strings
+                        match v {
+                            Value::String(s) => Some(s.clone()),
+                            Value::Number(n) => Some(n.to_string()),
+                            Value::Bool(b) => Some(b.to_string()),
+                            Value::Null => Some("null".to_string()),
+                            _ => serde_json::to_string(v).ok(),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 

@@ -87,6 +87,9 @@ pub struct ColumnData {
     /// JSON Schema $ref reference path (from ODCS/ODCL $ref field)
     #[serde(skip_serializing_if = "Option::is_none", rename = "$ref")]
     pub ref_path: Option<String>,
+    /// Enum values if this column is an enumeration type
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enum_values: Option<Vec<String>>,
 }
 
 // Re-export for convenience

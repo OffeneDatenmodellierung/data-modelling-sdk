@@ -36,7 +36,7 @@ fn create_table_from_import_result(
                     description: c.description.clone().unwrap_or_default(),
                     quality: c.quality.clone().unwrap_or_default(),
                     ref_path: c.ref_path.clone(),
-                    enum_values: Vec::new(),
+                    enum_values: c.enum_values.clone().unwrap_or_default(),
                     errors: Vec::new(),
                     column_order: 0,
                 })
@@ -179,6 +179,115 @@ mod json_schema_roundtrip_tests {
         assert!(properties.contains_key("id"));
         assert!(properties.contains_key("name"));
         assert!(properties.contains_key("active"));
+    }
+
+    #[test]
+    fn test_json_schema_validation_conditions_roundtrip() {
+        let schema_with_validations = r#"
+        {
+            "title": "Product",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                },
+                "name": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 100,
+                    "pattern": "^[A-Z][a-zA-Z0-9 ]*$"
+                },
+                "price": {
+                    "type": "number",
+                    "minimum": 0,
+                    "exclusiveMinimum": false,
+                    "multipleOf": 0.01
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "inactive", "pending"]
+                },
+                "tags": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "uniqueItems": true
+                }
+            },
+            "required": ["id", "name"]
+        }
+        "#;
+
+        let importer = JSONSchemaImporter::new();
+        let import_result = importer.import(schema_with_validations).unwrap();
+
+        assert_eq!(import_result.tables.len(), 1);
+        let table = &import_result.tables[0];
+        assert_eq!(table.name.as_deref(), Some("Product"));
+
+        // Verify validation conditions were extracted
+        let id_col = table.columns.iter().find(|c| c.name == "id").unwrap();
+        assert!(
+            id_col.quality.is_some() && !id_col.quality.as_ref().unwrap().is_empty(),
+            "id column should have quality rules"
+        );
+
+        let name_col = table.columns.iter().find(|c| c.name == "name").unwrap();
+        assert!(
+            name_col.quality.is_some() && !name_col.quality.as_ref().unwrap().is_empty(),
+            "name column should have quality rules"
+        );
+
+        let status_col = table.columns.iter().find(|c| c.name == "status").unwrap();
+        assert!(
+            status_col.enum_values.is_some()
+                && !status_col.enum_values.as_ref().unwrap().is_empty(),
+            "status column should have enum values"
+        );
+        assert_eq!(status_col.enum_values.as_ref().unwrap().len(), 3);
+
+        // Export back to JSON Schema
+        let tables = create_table_from_import_result(&import_result);
+        let exporter = JSONSchemaExporter;
+        let export_result = exporter.export(&tables).unwrap();
+
+        // Parse exported schema
+        let exported_schema: serde_json::Value =
+            serde_json::from_str(&export_result.content).unwrap();
+        let definitions = exported_schema
+            .get("definitions")
+            .unwrap()
+            .as_object()
+            .unwrap();
+        let product_schema = definitions.get("Product").unwrap();
+        let properties = product_schema
+            .get("properties")
+            .unwrap()
+            .as_object()
+            .unwrap();
+
+        // Verify validations were exported
+        let id_prop = properties.get("id").unwrap().as_object().unwrap();
+        assert!(id_prop.contains_key("minimum"));
+        assert!(id_prop.contains_key("maximum"));
+
+        let name_prop = properties.get("name").unwrap().as_object().unwrap();
+        assert!(name_prop.contains_key("minLength"));
+        assert!(name_prop.contains_key("maxLength"));
+        assert!(name_prop.contains_key("pattern"));
+
+        let status_prop = properties.get("status").unwrap().as_object().unwrap();
+        assert!(status_prop.contains_key("enum"));
+        let enum_vals = status_prop.get("enum").unwrap().as_array().unwrap();
+        assert_eq!(enum_vals.len(), 3);
+
+        let tags_prop = properties.get("tags").unwrap().as_object().unwrap();
+        assert!(tags_prop.contains_key("minItems"));
+        assert!(tags_prop.contains_key("maxItems"));
+        assert!(tags_prop.contains_key("uniqueItems"));
     }
 }
 

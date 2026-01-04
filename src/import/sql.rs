@@ -903,6 +903,7 @@ impl SQLImporter {
                 description,
                 quality: None,
                 ref_path: None,
+                enum_values: None,
             });
         }
 

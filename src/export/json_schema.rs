@@ -105,6 +105,37 @@ impl JSONSchemaExporter {
                 property.insert("description".to_string(), json!(column.description));
             }
 
+            // Export $ref if present
+            if let Some(ref_path) = &column.ref_path {
+                property.insert("$ref".to_string(), json!(ref_path));
+            }
+
+            // Export enum values
+            if !column.enum_values.is_empty() {
+                let enum_vals: Vec<Value> = column
+                    .enum_values
+                    .iter()
+                    .map(|v| {
+                        // Try to parse as number or boolean, otherwise use as string
+                        if let Ok(num) = v.parse::<i64>() {
+                            json!(num)
+                        } else if let Ok(num) = v.parse::<f64>() {
+                            json!(num)
+                        } else if let Ok(b) = v.parse::<bool>() {
+                            json!(b)
+                        } else if v == "null" {
+                            json!(null)
+                        } else {
+                            json!(v)
+                        }
+                    })
+                    .collect();
+                property.insert("enum".to_string(), json!(enum_vals));
+            }
+
+            // Export validation keywords from quality rules
+            Self::export_validation_keywords(&mut property, column);
+
             properties.insert(column.name.clone(), json!(property));
         }
 
@@ -185,8 +216,137 @@ impl JSONSchemaExporter {
             "email" => ("string".to_string(), Some("email".to_string())),
             _ => {
                 // Default to string for VARCHAR, TEXT, CHAR, etc.
-                // Default to string for VARCHAR, TEXT, CHAR, etc.
                 ("string".to_string(), None)
+            }
+        }
+    }
+
+    /// Export validation keywords from quality rules to JSON Schema property.
+    fn export_validation_keywords(
+        property: &mut serde_json::Map<String, Value>,
+        column: &crate::models::Column,
+    ) {
+        for rule in &column.quality {
+            // Only process rules that came from JSON Schema (have source="json_schema")
+            // or don't have a source field (for backward compatibility)
+            let source = rule.get("source").and_then(|v| v.as_str());
+            if source.is_some() && source != Some("json_schema") {
+                continue;
+            }
+
+            if let Some(rule_type) = rule.get("type").and_then(|v| v.as_str()) {
+                match rule_type {
+                    "pattern" => {
+                        if let Some(pattern) = rule.get("pattern").or_else(|| rule.get("value")) {
+                            property.insert("pattern".to_string(), pattern.clone());
+                        }
+                    }
+                    "minimum" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("minimum".to_string(), value.clone());
+                            if let Some(exclusive) = rule.get("exclusive")
+                                && exclusive.as_bool() == Some(true)
+                            {
+                                property.insert("exclusiveMinimum".to_string(), json!(true));
+                            }
+                        }
+                    }
+                    "maximum" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("maximum".to_string(), value.clone());
+                            if let Some(exclusive) = rule.get("exclusive")
+                                && exclusive.as_bool() == Some(true)
+                            {
+                                property.insert("exclusiveMaximum".to_string(), json!(true));
+                            }
+                        }
+                    }
+                    "minLength" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("minLength".to_string(), value.clone());
+                        }
+                    }
+                    "maxLength" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("maxLength".to_string(), value.clone());
+                        }
+                    }
+                    "multipleOf" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("multipleOf".to_string(), value.clone());
+                        }
+                    }
+                    "const" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("const".to_string(), value.clone());
+                        }
+                    }
+                    "minItems" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("minItems".to_string(), value.clone());
+                        }
+                    }
+                    "maxItems" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("maxItems".to_string(), value.clone());
+                        }
+                    }
+                    "uniqueItems" => {
+                        if let Some(value) = rule.get("value")
+                            && value.as_bool() == Some(true)
+                        {
+                            property.insert("uniqueItems".to_string(), json!(true));
+                        }
+                    }
+                    "minProperties" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("minProperties".to_string(), value.clone());
+                        }
+                    }
+                    "maxProperties" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("maxProperties".to_string(), value.clone());
+                        }
+                    }
+                    "additionalProperties" => {
+                        if let Some(value) = rule.get("value") {
+                            property.insert("additionalProperties".to_string(), value.clone());
+                        }
+                    }
+                    "format" => {
+                        // Format is already handled in map_data_type_to_json_schema,
+                        // but if it's in quality rules, use it
+                        if let Some(value) = rule.get("value").and_then(|v| v.as_str()) {
+                            // Only set if not already set
+                            if !property.contains_key("format") {
+                                property.insert("format".to_string(), json!(value));
+                            }
+                        }
+                    }
+                    "allOf" | "anyOf" | "oneOf" | "not" => {
+                        // Complex validation keywords
+                        if let Some(value) = rule.get("value") {
+                            property.insert(rule_type.to_string(), value.clone());
+                        }
+                    }
+                    _ => {
+                        // Unknown rule type - preserve as custom property or skip
+                        // Could add to a customProperties field if needed
+                    }
+                }
+            }
+        }
+
+        // Also handle constraints that might map to JSON Schema
+        for constraint in &column.constraints {
+            // Try to parse common constraint patterns
+            let constraint_upper = constraint.to_uppercase();
+            if constraint_upper.contains("UNIQUE") {
+                // For string types, uniqueItems doesn't apply, but we could add a custom property
+                // For now, skip as JSON Schema doesn't have a direct unique constraint
+            } else if constraint_upper.starts_with("CHECK") {
+                // CHECK constraints could be preserved as a custom property
+                // For now, we'll skip as JSON Schema doesn't have CHECK
             }
         }
     }
