@@ -5,7 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.6.0] - 2026-01-XX
+## [1.6.1] - 2026-01-04
+
+### Fixed
+
+- **fix(sql)**: Fixed Databricks SQL parser issues with COMMENT clauses
+  - Fixed multiline COMMENT clause parsing by converting newlines to spaces within quoted strings
+  - Fixed escaped quotes in COMMENT clauses (`\'` converted to SQL standard `''`)
+  - Added support for `MAP<...>` complex types (extracted and restored like STRUCT/ARRAY)
+  - Added preprocessing to remove unsupported table-level `COMMENT` clauses
+  - Added preprocessing to remove unsupported `CLUSTER BY AUTO` clauses
+  - Improved SQL normalization to preserve quoted strings correctly
+
+### Added
+
+- **feat(sql)**: Added SQL parser test tool (`cargo run --example test_sql`)
+  - Command-line tool for manually testing SQL parsing with different dialects
+  - Supports reading from file, stdin, or command-line argument
+  - Pretty-print option for detailed column information
+  - Convenience script (`test_sql.sh`) for quick testing
+
+## [1.6.0] - 2026-01-03
 
 ### Added
 

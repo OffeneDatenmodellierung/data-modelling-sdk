@@ -818,4 +818,130 @@ mod databricks_sql_tests {
         assert!(result.errors.is_empty());
         assert_eq!(result.tables.len(), 3);
     }
+
+    #[test]
+    fn test_databricks_multiline_comment_clauses() {
+        // Test case based on issue #15 - multiline COMMENT clauses
+        // Representative SQL without "bets" or "flutter" references
+        let importer = SQLImporter::new("databricks");
+        let sql = r#"
+CREATE TABLE IF NOT EXISTS IDENTIFIER(:catalog_name || '.analytics.user_events') (
+  event_id STRING COMMENT 'Unique identifier for each event.',
+  event_type STRING COMMENT 'The type of event that occurred. This is a finite list which can be found at the bottom of this contract, under the quality section.',
+  event_metadata ARRAY<STRUCT<
+    id: STRING,
+    name: STRING,
+    priority: INT,
+    category: STRING,
+    source: STRING,
+    event_details: STRUCT<
+      name: STRING,
+      field: STRING,
+      timestamp: TIMESTAMP
+    >
+  >> COMMENT 'details associated with the events that have been triggered.',
+  highest_priority INT COMMENT 'If there are multiple events that are completed at once, this value highlights the highest priority from the group of events.',
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+COMMENT 'User events table for analytics processing'
+TBLPROPERTIES (
+  'delta.autoOptimize.optimizeWrite' = 'true',
+  'delta.autoOptimize.autoCompact' = 'true'
+);
+        "#;
+        let result = importer.parse(sql);
+
+        // Should parse successfully despite multiline COMMENT clauses
+        // TBLPROPERTIES is removed during preprocessing, so parsing should succeed
+        assert!(
+            result.is_ok(),
+            "Failed to parse SQL with multiline COMMENT clauses: {:?}",
+            result.err()
+        );
+        let result = result.unwrap();
+        assert!(
+            result.errors.is_empty(),
+            "Parse errors: {:?}",
+            result.errors
+        );
+        assert_eq!(result.tables.len(), 1);
+        assert_eq!(
+            result.tables[0].name.as_deref(),
+            Some("analytics.user_events")
+        );
+        assert!(result.tables[0].columns.len() >= 5);
+
+        // Verify COMMENT clauses are extracted
+        let event_id_col = result.tables[0]
+            .columns
+            .iter()
+            .find(|c| c.name == "event_id")
+            .expect("event_id column should exist");
+        assert_eq!(
+            event_id_col.description.as_deref(),
+            Some("Unique identifier for each event.")
+        );
+
+        let highest_priority_col = result.tables[0]
+            .columns
+            .iter()
+            .find(|c| c.name == "highest_priority")
+            .expect("highest_priority column should exist");
+        assert!(
+            highest_priority_col
+                .description
+                .as_deref()
+                .unwrap()
+                .contains("highest priority")
+        );
+    }
+
+    #[test]
+    fn test_databricks_escaped_quotes_in_comments() {
+        // Test escaped quotes in COMMENT clauses (e.g., customer\'s, aren\'t)
+        let importer = SQLImporter::new("databricks");
+        let sql = r#"
+CREATE TABLE test (
+  id STRING COMMENT 'Unique identifier.',
+  name STRING COMMENT 'annotations are values that users link to customer IDs to provide any additional information about the customer\'s behaviour.',
+  description STRING COMMENT 'the time at which the alert was removed by the UI, by either completing the alert, dismissing the alert or by the alert hitting the rule\'s expiry time.',
+  metadata STRING COMMENT 'betMetadata gives bet information, and will be populated whenever there\'s an alert based off of a bet or group of bets. These fields aren\'t'
+);
+        "#;
+        let result = importer.parse(sql).unwrap();
+
+        assert!(result.errors.is_empty());
+        assert_eq!(result.tables.len(), 1);
+        assert_eq!(result.tables[0].columns.len(), 4);
+
+        // Verify escaped quotes are handled correctly
+        let name_col = result.tables[0]
+            .columns
+            .iter()
+            .find(|c| c.name == "name")
+            .expect("name column should exist");
+        assert!(
+            name_col
+                .description
+                .as_deref()
+                .unwrap()
+                .contains("customer's")
+        );
+
+        let desc_col = result.tables[0]
+            .columns
+            .iter()
+            .find(|c| c.name == "description")
+            .expect("description column should exist");
+        assert!(desc_col.description.as_deref().unwrap().contains("rule's"));
+
+        let meta_col = result.tables[0]
+            .columns
+            .iter()
+            .find(|c| c.name == "metadata")
+            .expect("metadata column should exist");
+        assert!(meta_col.description.as_deref().unwrap().contains("there's"));
+        assert!(meta_col.description.as_deref().unwrap().contains("aren't"));
+    }
 }

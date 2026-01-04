@@ -1,6 +1,6 @@
 [package]
 name = "data-modelling-sdk"
-version = "1.6.0"
+version = "1.6.1"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"
@@ -96,6 +96,10 @@ openapi = []  # Enable OpenAPI 3.1.1 import/export support (uses existing jsonsc
 [dependencies.jsonschema]
 version = "0.20"
 optional = true
+
+[[example]]
+name = "test_sql"
+path = "examples/test_sql.rs"
 
 [dev-dependencies]
 tempfile = "3"
