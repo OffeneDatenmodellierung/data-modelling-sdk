@@ -190,6 +190,263 @@ impl SQLImporter {
         re.replace_all(sql, "CREATE VIEW").to_string()
     }
 
+    /// Preprocess table-level COMMENT clause removal
+    ///
+    /// sqlparser does not support table-level COMMENT clauses, so we remove them before parsing.
+    /// Handles both single-quoted and double-quoted COMMENT strings.
+    /// Table-level COMMENT appears after the closing parenthesis, not inside column definitions.
+    fn preprocess_table_comment(sql: &str) -> String {
+        use regex::Regex;
+
+        // Remove COMMENT clause that appears after closing parenthesis of CREATE TABLE
+        // Pattern: ) followed by whitespace, then COMMENT, then quoted string
+        // This ensures we only match table-level COMMENT, not column-level COMMENT
+        // Match: )\s+COMMENT\s+['"]...['"]
+        let re_single = Regex::new(r#"(?i)\)\s+COMMENT\s+'[^']*'"#).unwrap();
+        let re_double = Regex::new(r#"(?i)\)\s+COMMENT\s+"[^"]*""#).unwrap();
+
+        // Replace with just the closing parenthesis
+        let result = re_single.replace_all(sql, ")");
+        re_double.replace_all(&result, ")").to_string()
+    }
+
+    /// Preprocess TBLPROPERTIES clause removal
+    ///
+    /// sqlparser does not support TBLPROPERTIES, so we remove it before parsing.
+    /// This preserves the rest of the SQL structure while allowing parsing to succeed.
+    fn preprocess_tblproperties(sql: &str) -> String {
+        use regex::Regex;
+
+        // Remove TBLPROPERTIES clause (may span multiple lines)
+        // Pattern matches: TBLPROPERTIES ( ... ) where ... can contain nested parentheses
+        // We need to match balanced parentheses
+        let mut result = sql.to_string();
+        let re = Regex::new(r"(?i)TBLPROPERTIES\s*\(").unwrap();
+
+        // Find all TBLPROPERTIES occurrences and remove them with balanced parentheses
+        let mut search_start = 0;
+        while let Some(m) = re.find_at(&result, search_start) {
+            let start = m.start();
+            let mut pos = m.end();
+            let mut paren_count = 1;
+
+            // Find matching closing parenthesis (using byte positions)
+            let bytes = result.as_bytes();
+            while pos < bytes.len() && paren_count > 0 {
+                if let Some(ch) = result[pos..].chars().next() {
+                    if ch == '(' {
+                        paren_count += 1;
+                    } else if ch == ')' {
+                        paren_count -= 1;
+                    }
+                    pos += ch.len_utf8();
+                } else {
+                    break;
+                }
+            }
+
+            if paren_count == 0 {
+                // Remove TBLPROPERTIES clause including the closing parenthesis
+                result.replace_range(start..pos, "");
+                search_start = start;
+            } else {
+                // Unbalanced parentheses, skip this match
+                search_start = pos;
+            }
+        }
+
+        result
+    }
+
+    /// Preprocess CLUSTER BY clause removal
+    ///
+    /// sqlparser does not support CLUSTER BY, so we remove it before parsing.
+    fn preprocess_cluster_by(sql: &str) -> String {
+        use regex::Regex;
+
+        // Remove CLUSTER BY clause (may have AUTO or column list)
+        // Pattern: CLUSTER BY followed by AUTO or column list
+        let re = Regex::new(r"(?i)\s+CLUSTER\s+BY\s+(?:AUTO|\([^)]*\)|[\w,\s]+)").unwrap();
+        re.replace_all(sql, "").to_string()
+    }
+
+    /// Normalize SQL while preserving quoted strings
+    ///
+    /// Converts multiline SQL to single line, but preserves quoted strings
+    /// (both single and double quotes) to avoid breaking COMMENT clauses and other string literals.
+    /// Handles escape sequences: `\'` (escaped quote) and `\\` (escaped backslash).
+    fn normalize_sql_preserving_quotes(sql: &str) -> String {
+        let mut result = String::with_capacity(sql.len());
+        let mut chars = sql.chars().peekable();
+        let mut in_single_quote = false;
+        let mut in_double_quote = false;
+        let mut last_char_was_space = false;
+
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\\' if in_single_quote || in_double_quote => {
+                    // Handle escape sequences inside quoted strings
+                    // \' or \" or \\ - preserve the escape sequence
+                    if let Some(&next_ch) = chars.peek() {
+                        result.push(ch);
+                        result.push(next_ch);
+                        chars.next(); // Consume the escaped character
+                        last_char_was_space = false;
+                    } else {
+                        // Backslash at end of string - just add it
+                        result.push(ch);
+                        last_char_was_space = false;
+                    }
+                }
+                '\'' if !in_double_quote => {
+                    // Check if this is an escaped quote (doubled quotes: '')
+                    // In SQL standard, '' inside a string means a single quote
+                    if in_single_quote && chars.peek() == Some(&'\'') {
+                        // Doubled quote - this is an escaped quote, not the end of string
+                        result.push(ch);
+                        result.push(ch);
+                        chars.next(); // Consume the second quote
+                        last_char_was_space = false;
+                    } else {
+                        // Regular quote - toggle quote state
+                        in_single_quote = !in_single_quote;
+                        result.push(ch);
+                        last_char_was_space = false;
+                    }
+                }
+                '"' if !in_single_quote => {
+                    // Check if this is an escaped quote (doubled quotes: "")
+                    if in_double_quote && chars.peek() == Some(&'"') {
+                        // Doubled quote - this is an escaped quote, not the end of string
+                        result.push(ch);
+                        result.push(ch);
+                        chars.next(); // Consume the second quote
+                        last_char_was_space = false;
+                    } else {
+                        // Regular quote - toggle quote state
+                        in_double_quote = !in_double_quote;
+                        result.push(ch);
+                        last_char_was_space = false;
+                    }
+                }
+                '\n' | '\r' => {
+                    if in_single_quote || in_double_quote {
+                        // Replace newlines inside quoted strings with space
+                        // sqlparser doesn't support multiline string literals
+                        if !last_char_was_space {
+                            result.push(' ');
+                            last_char_was_space = true;
+                        }
+                    } else {
+                        // Replace newlines outside quotes with space
+                        if !last_char_was_space {
+                            result.push(' ');
+                            last_char_was_space = true;
+                        }
+                    }
+                }
+                ' ' | '\t' => {
+                    if in_single_quote || in_double_quote {
+                        // Preserve spaces inside quoted strings
+                        result.push(ch);
+                        last_char_was_space = false;
+                    } else {
+                        // Collapse multiple spaces to single space
+                        if !last_char_was_space {
+                            result.push(' ');
+                            last_char_was_space = true;
+                        }
+                    }
+                }
+                '-' if !in_single_quote && !in_double_quote => {
+                    // Check for SQL comment (--)
+                    if let Some(&'-') = chars.peek() {
+                        // Skip rest of line comment
+                        for c in chars.by_ref() {
+                            if c == '\n' || c == '\r' {
+                                break;
+                            }
+                        }
+                        if !last_char_was_space {
+                            result.push(' ');
+                            last_char_was_space = true;
+                        }
+                    } else {
+                        result.push(ch);
+                        last_char_was_space = false;
+                    }
+                }
+                _ => {
+                    result.push(ch);
+                    last_char_was_space = false;
+                }
+            }
+        }
+
+        result.trim().to_string()
+    }
+
+    /// Convert backslash-escaped quotes to SQL standard doubled quotes
+    ///
+    /// sqlparser doesn't support `\'` escape sequences, so we convert them to `''`
+    /// which is the SQL standard way to escape quotes in string literals.
+    fn convert_backslash_escaped_quotes(sql: &str) -> String {
+        let mut result = String::with_capacity(sql.len());
+        let mut chars = sql.chars().peekable();
+        let mut in_single_quote = false;
+        let mut in_double_quote = false;
+
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\\' if (in_single_quote || in_double_quote) => {
+                    // Handle escape sequences inside quoted strings
+                    if let Some(&next_ch) = chars.peek() {
+                        match next_ch {
+                            '\'' if in_single_quote => {
+                                // Convert \' to '' (SQL standard escaped quote)
+                                result.push_str("''");
+                                chars.next(); // Consume the escaped quote
+                            }
+                            '"' if in_double_quote => {
+                                // Convert \" to "" (SQL standard escaped quote)
+                                result.push_str("\"\"");
+                                chars.next(); // Consume the escaped quote
+                            }
+                            '\\' => {
+                                // Convert \\ to \\ (keep as is, but we need to handle it)
+                                result.push('\\');
+                                result.push('\\');
+                                chars.next(); // Consume the escaped backslash
+                            }
+                            _ => {
+                                // Other escape sequences - preserve as is
+                                result.push(ch);
+                                result.push(next_ch);
+                                chars.next();
+                            }
+                        }
+                    } else {
+                        // Backslash at end - just add it
+                        result.push(ch);
+                    }
+                }
+                '\'' if !in_double_quote => {
+                    in_single_quote = !in_single_quote;
+                    result.push(ch);
+                }
+                '"' if !in_single_quote => {
+                    in_double_quote = !in_double_quote;
+                    result.push(ch);
+                }
+                _ => {
+                    result.push(ch);
+                }
+            }
+        }
+
+        result
+    }
+
     /// Replace variable references in STRUCT field types with STRING
     ///
     /// Handles patterns like STRUCT<field: :variable_type> -> STRUCT<field: STRING>
@@ -271,9 +528,9 @@ impl SQLImporter {
         result
     }
 
-    /// Extract STRUCT and ARRAY column definitions and replace with placeholders
+    /// Extract STRUCT, ARRAY, and MAP column definitions and replace with placeholders
     ///
-    /// sqlparser doesn't support STRUCT types, so we need to extract them manually
+    /// sqlparser doesn't support these complex types, so we need to extract them manually
     /// and replace with a simple type that can be parsed, then restore the original
     /// type string after parsing.
     ///
@@ -284,9 +541,9 @@ impl SQLImporter {
         let mut column_types = Vec::new();
         let mut result = sql.to_string();
 
-        // Use regex to find all STRUCT<...> and ARRAY<...> patterns with their preceding column names
-        // Pattern: word(s) followed by STRUCT< or ARRAY<, then match balanced brackets
-        let re = Regex::new(r"(\w+)\s+(STRUCT<|ARRAY<)").unwrap();
+        // Use regex to find all STRUCT<...>, ARRAY<...>, and MAP<...> patterns with their preceding column names
+        // Pattern: word(s) followed by STRUCT<, ARRAY<, or MAP<, then match balanced brackets
+        let re = Regex::new(r"(\w+)\s+(STRUCT<|ARRAY<|MAP<)").unwrap();
 
         // Find all matches and extract the full type
         let mut matches_to_replace: Vec<(usize, usize, String, String)> = Vec::new();
@@ -297,8 +554,8 @@ impl SQLImporter {
             let struct_or_array = cap.get(2).map(|m| m.as_str()).unwrap_or("");
 
             // Find the matching closing bracket
-            // Start counting from the '<' in STRUCT< or ARRAY<
-            let bracket_start = type_start + col_name.len() + 1 + struct_or_array.len() - 1; // After "column_name STRUCT<" or "column_name ARRAY<"
+            // Start counting from the '<' in STRUCT<, ARRAY<, or MAP<
+            let bracket_start = type_start + col_name.len() + 1 + struct_or_array.len() - 1; // After "column_name STRUCT<", "column_name ARRAY<", or "column_name MAP<"
             let mut bracket_count = 0;
             let mut type_end = bracket_start;
 
@@ -316,7 +573,7 @@ impl SQLImporter {
             }
 
             if bracket_count == 0 && type_end > type_start {
-                // Extract the full type (STRUCT<...> or ARRAY<...>)
+                // Extract the full type (STRUCT<...>, ARRAY<...>, or MAP<...>)
                 // Start from after the column name and space
                 let type_start_pos = type_start + col_name.len() + 1;
                 let full_type = sql[type_start_pos..type_end].trim().to_string();
@@ -389,21 +646,26 @@ impl SQLImporter {
             let mut state = PreprocessingState::new();
             // Step 1: Preprocess MATERIALIZED VIEW (convert to CREATE VIEW for sqlparser compatibility)
             let mut preprocessed = Self::preprocess_materialized_views(sql);
-            // Step 2: Replace IDENTIFIER() expressions
+            // Step 2: Remove table-level COMMENT clauses (sqlparser doesn't support them)
+            preprocessed = Self::preprocess_table_comment(&preprocessed);
+            // Step 3: Remove TBLPROPERTIES (sqlparser doesn't support it)
+            preprocessed = Self::preprocess_tblproperties(&preprocessed);
+            // Step 3.5: Remove CLUSTER BY clause (sqlparser doesn't support it)
+            preprocessed = Self::preprocess_cluster_by(&preprocessed);
+            // Step 4: Replace IDENTIFIER() expressions
             preprocessed = Self::preprocess_identifier_expressions(&preprocessed, &mut state);
-            // Step 3: Replace variable references in column definitions (e.g., "id :var STRING" -> "id STRING")
+            // Step 5: Replace variable references in column definitions (e.g., "id :var STRING" -> "id STRING")
             preprocessed = Self::replace_variables_in_column_definitions(&preprocessed);
-            // Step 4: Replace variable references in type definitions
+            // Step 6: Replace variable references in type definitions
             // This replaces :variable_type with STRING in STRUCT and ARRAY types
             preprocessed = Self::replace_nested_variables(&preprocessed);
-            // Step 5: Normalize SQL (handle multiline) before extraction
-            let normalized: String = preprocessed
-                .lines()
-                .map(|line| line.trim())
-                .filter(|line| !line.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
-            // Step 4: Extract STRUCT/ARRAY columns (sqlparser doesn't support them)
+            // Step 7: Normalize SQL (handle multiline) before extraction
+            // Preserve quoted strings during normalization to avoid breaking COMMENT clauses
+            let normalized = Self::normalize_sql_preserving_quotes(&preprocessed);
+            // Step 7.5: Convert backslash-escaped quotes to SQL standard doubled quotes
+            // sqlparser doesn't support \' escape sequences, so convert to ''
+            let normalized = Self::convert_backslash_escaped_quotes(&normalized);
+            // Step 8: Extract STRUCT/ARRAY/MAP columns (sqlparser doesn't support them)
             let (simplified_sql, complex_cols) = Self::extract_complex_type_columns(&normalized);
             (simplified_sql, state, complex_cols)
         } else {
@@ -609,6 +871,14 @@ impl SQLImporter {
 
             let col_name = col.name.value.clone();
             let mut data_type = col.data_type.to_string();
+            let mut description = None;
+
+            // Extract COMMENT clause from column options
+            for opt_def in &col.options {
+                if let ColumnOption::Comment(comment) = &opt_def.option {
+                    description = Some(comment.clone());
+                }
+            }
 
             // Restore complex types (STRUCT/ARRAY) if this column was extracted
             if let Some((_, original_type)) =
@@ -630,7 +900,7 @@ impl SQLImporter {
                 data_type,
                 nullable,
                 primary_key: is_pk,
-                description: None,
+                description,
                 quality: None,
                 ref_path: None,
             });
