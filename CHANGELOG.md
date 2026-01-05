@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-01-05
+
+### Added
+
+- **feat(cli)**: Full CLI wrapper implementation (`data-modelling-cli`)
+  - Comprehensive import/export commands for all supported formats (SQL, AVRO, JSON Schema, Protobuf, OpenAPI, ODCS)
+  - Support for importing SQL files with various dialects (PostgreSQL, MySQL, SQLite, Generic, Databricks)
+  - Support for `CREATE VIEW` and `CREATE MATERIALIZED VIEW` statements
+  - Import from AVRO, JSON Schema, Protobuf, OpenAPI, and ODCS formats
+  - Export to ODCS, AVRO, JSON Schema, Protobuf (proto2/proto3), and Protobuf descriptor formats
+  - UUID override support for imported tables (`--uuid` flag)
+  - Automatic ODCS file generation on import (can be disabled with `--no-odcs`)
+  - External reference resolution for JSON Schema and OpenAPI (`$ref`, `import`)
+  - Schema validation before import (optional `--validate` flag)
+  - Protobuf descriptor export using `protoc` compiler
+  - Comprehensive error messages with platform-specific installation guidance
+  - GitHub Actions workflow for building and releasing CLI binaries (Linux, macOS, Windows)
+  - Full test coverage for all import/export operations
+
+- **feat(protobuf)**: Proto2 and Proto3 format support
+  - `--protobuf-version` flag to select proto2 or proto3 (default: proto3)
+  - Correct field labeling: proto2 uses `required`/`optional`, proto3 uses optional by default
+  - Proper handling of `repeated` fields in both versions
+  - Protobuf descriptor export supports both proto2 and proto3
+
+- **feat(cli)**: OpenAPI support enabled by default
+  - CLI builds now include OpenAPI feature by default in GitHub releases
+  - CI/CD workflows updated to build with `openapi` feature enabled
+  - Documentation updated with OpenAPI build instructions
+
+### Changed
+
+- **refactor(cli)**: Export operations now accept `.odcs.yaml` files directly as input
+  - Removed requirement for `workspace.json` file
+  - Simplified export workflow: `data-modelling-cli export <format> input.odcs.yaml output.<ext>`
+
+### Fixed
+
+- **fix(protobuf)**: Fixed invalid `optional repeated` syntax in proto3 exports
+  - `repeated` fields no longer include `optional` keyword (proto3 compliant)
+  - Proto2 correctly uses `required` for non-nullable fields
+
 ## [1.6.2] - 2026-01-04
 
 ### Added

@@ -1,0 +1,189 @@
+name: Release CLI
+
+on:
+  workflow_dispatch:  # Allow manual triggering
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (e.g., v1.6.2)
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Release CLI
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: data-modelling-cli-linux-x86_64
+            binary_ext: ""
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: data-modelling-cli-macos-x86_64
+            binary_ext: ""
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: data-modelling-cli-macos-arm64
+            binary_ext: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: data-modelling-cli-windows-x86_64
+            binary_ext: ".exe"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add target for cross-compilation (if needed)
+        if: matrix.os != 'windows-latest' && matrix.target != 'x86_64-unknown-linux-gnu'
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build CLI binary
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cargo build --release --bin data-modelling-cli --features cli,openapi --target ${{ matrix.target }}
+          else
+            cargo build --release --bin data-modelling-cli --features cli,openapi --target ${{ matrix.target }}
+          fi
+
+      - name: Get version from tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            # Extract from Cargo.toml for manual runs
+            VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+          echo "Building CLI version: ${{ steps.version.outputs.version }}"
+
+      - name: Prepare binary for upload
+        id: prepare
+        shell: bash
+        run: |
+          BINARY_NAME="data-modelling-cli${{ matrix.binary_ext }}"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            BINARY_PATH="target/${{ matrix.target }}/release/$BINARY_NAME"
+          else
+            BINARY_PATH="target/${{ matrix.target }}/release/$BINARY_NAME"
+          fi
+
+          # Create archive
+          ARCHIVE_NAME="${{ matrix.artifact_name }}-v${{ steps.version.outputs.version }}.tar.gz"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Use zip for Windows
+            ARCHIVE_NAME="${{ matrix.artifact_name }}-v${{ steps.version.outputs.version }}.zip"
+            cd target/${{ matrix.target }}/release
+            zip -r ../../../../$ARCHIVE_NAME $BINARY_NAME
+            cd ../../..
+          else
+            tar -czf $ARCHIVE_NAME -C target/${{ matrix.target }}/release $BINARY_NAME
+          fi
+
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+          echo "binary_path=$BINARY_PATH" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ steps.prepare.outputs.archive_name }}
+          retention-days: 30
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Create checksums
+        shell: bash
+        run: |
+          cd artifacts
+          find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) | while read file; do
+            sha256sum "$file" > "${file}.sha256"
+          done
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: CLI v${{ steps.version.outputs.version }}
+          body: |
+            ## Data Modelling CLI v${{ steps.version.outputs.version }}
+
+            ### Downloads
+
+            **Linux (x86_64)**
+            - Binary: [data-modelling-cli-linux-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-cli-linux-x86_64-v${{ steps.version.outputs.version }}.tar.gz)
+            - SHA256: See checksum files
+
+            **macOS (Intel)**
+            - Binary: [data-modelling-cli-macos-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-cli-macos-x86_64-v${{ steps.version.outputs.version }}.tar.gz)
+            - SHA256: See checksum files
+
+            **macOS (Apple Silicon)**
+            - Binary: [data-modelling-cli-macos-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-cli-macos-arm64-v${{ steps.version.outputs.version }}.tar.gz)
+            - SHA256: See checksum files
+
+            **Windows (x86_64)**
+            - Binary: [data-modelling-cli-windows-x86_64.zip](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-cli-windows-x86_64-v${{ steps.version.outputs.version }}.zip)
+            - SHA256: See checksum files
+
+            ### Installation
+
+            **Linux/macOS:**
+            ```bash
+            tar -xzf data-modelling-cli-*-v${{ steps.version.outputs.version }}.tar.gz
+            sudo mv data-modelling-cli /usr/local/bin/
+            ```
+
+            **Windows:**
+            ```powershell
+            Expand-Archive data-modelling-cli-windows-x86_64-v${{ steps.version.outputs.version }}.zip
+            # Add to PATH or use full path
+            ```
+
+            ### Usage
+
+            See [CLI.md](https://github.com/${{ github.repository }}/blob/main/CLI.md) for usage instructions.
+
+          files: |
+            artifacts/**/*
+          draft: false
+          prerelease: false

@@ -9,6 +9,8 @@
 //! - Workspace management types
 
 pub mod auth;
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod convert;
 pub mod export;
 #[cfg(feature = "git")]

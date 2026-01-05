@@ -7,7 +7,7 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/pixie79/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 1.6.0
+**Version**: 1.7.0
 
 ## Architecture
 
@@ -181,7 +181,7 @@ Importers convert various formats to SDK models:
   - Databricks dialect supports: `IDENTIFIER()` function calls, variable references (`:variable_name`) in types/columns/metadata, `STRUCT`/`ARRAY` complex types, and views/materialized views
 - **`JSONSchemaImporter`**: JSON Schema to Table conversion
 - **`AvroImporter`**: AVRO schema to Table conversion
-- **`ProtobufImporter`**: Protobuf .proto files to Table conversion
+- **`ProtobufImporter`**: Protobuf .proto files to Table conversion (supports proto2 and proto3 syntax)
 
 ### Export (`src/export/`)
 
@@ -198,7 +198,7 @@ Exporters convert SDK models to various formats:
   - Supports multiple SQL dialects: PostgreSQL, MySQL, SQLite, Generic, and Databricks
 - **`JSONSchemaExporter`**: Exports to JSON Schema format
 - **`AvroExporter`**: Exports to AVRO schema format
-- **`ProtobufExporter`**: Exports to Protobuf .proto format
+- **`ProtobufExporter`**: Exports to Protobuf .proto format (supports proto2 and proto3 via `export_with_version()`)
 - **`PNGExporter`**: Generates PNG diagrams (requires `png-export` feature)
 
 ### Model Management (`src/model/`)
