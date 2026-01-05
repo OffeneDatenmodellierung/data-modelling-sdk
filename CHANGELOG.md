@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.8.0] - 2026-01-05
+
+### Added
+
+- **feat(odps)**: ODPS schema validation and CLI support
+  - ODPS import/export with JSON Schema validation (requires `odps-validation` feature)
+  - CLI commands: `import odps` and `export odps` for ODPS YAML files
+  - Manual test script (`test-odps`) for round-trip testing with field preservation verification
+  - WASM binding: `validateOdps()` function for JavaScript validation
+  - Field preservation: All ODPS fields (required and optional) preserved during import/export round-trips
+  - Empty array preservation: Empty optional arrays maintained in exported YAML
+  - Feature flag support: Validation can be enabled/disabled via `odps-validation` feature flag
+  - Enhanced ODPS import display: Shows tags, description, managementPorts, support, and team information
+
+### Fixed
+
+- **fix(cli)**: Fixed pre-commit hook issues
+  - Fixed formatting and clippy warnings
+  - Added feature declaration for `odps-validation` in Cargo.toml lints section
+  - Fixed collapsed if statements and unnecessary unwrap patterns
+
 ## [1.7.1] - 2026-01-05
 
 ### Fixed

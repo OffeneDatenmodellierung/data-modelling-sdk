@@ -139,3 +139,53 @@ pub fn validate_json_schema(_content: &str) -> Result<(), CliError> {
     // Validation disabled - feature not enabled
     Ok(())
 }
+
+/// Validate an ODPS file against the ODPS JSON Schema
+#[cfg(feature = "odps-validation")]
+pub fn validate_odps(content: &str) -> Result<(), CliError> {
+    validate_odps_internal(content).map_err(CliError::ValidationError)
+}
+
+#[cfg(not(feature = "odps-validation"))]
+pub fn validate_odps(_content: &str) -> Result<(), CliError> {
+    // Validation disabled - feature not enabled
+    Ok(())
+}
+
+/// Internal ODPS validation function that returns a string error (used by both CLI and import/export modules)
+#[cfg(feature = "odps-validation")]
+pub(crate) fn validate_odps_internal(content: &str) -> Result<(), String> {
+    use jsonschema::Validator;
+    use serde_json::Value;
+
+    // Load ODPS JSON Schema
+    let schema_content = include_str!("../../schemas/odps-json-schema-latest.json");
+    let schema: Value = serde_json::from_str(schema_content)
+        .map_err(|e| format!("Failed to load ODPS schema: {}", e))?;
+
+    let validator =
+        Validator::new(&schema).map_err(|e| format!("Failed to compile ODPS schema: {}", e))?;
+
+    // Parse YAML content
+    let data: Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
+
+    // Validate
+    if let Err(errors) = validator.validate(&data) {
+        let error_messages: Vec<String> = errors
+            .map(|e| format!("{}: {}", e.instance_path, e))
+            .collect();
+        return Err(format!(
+            "ODPS validation failed:\n{}",
+            error_messages.join("\n")
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "odps-validation"))]
+pub(crate) fn validate_odps_internal(_content: &str) -> Result<(), String> {
+    // Validation disabled - feature not enabled
+    Ok(())
+}

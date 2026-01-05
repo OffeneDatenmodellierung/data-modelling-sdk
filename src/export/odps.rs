@@ -20,7 +20,48 @@ impl ODPSExporter {
     ///
     /// A Result containing the YAML string in ODPS format, or an ExportError
     pub fn export(&self, product: &ODPSDataProduct) -> Result<String, ExportError> {
-        Ok(Self::export_product(product))
+        let yaml = Self::export_product(product);
+
+        // Validate exported YAML against ODPS schema (if feature enabled)
+        #[cfg(feature = "odps-validation")]
+        {
+            #[cfg(feature = "cli")]
+            {
+                use crate::cli::validation::validate_odps_internal;
+                validate_odps_internal(&yaml).map_err(ExportError::ValidationError)?;
+            }
+            #[cfg(not(feature = "cli"))]
+            {
+                // Inline validation when CLI feature is not enabled
+                use jsonschema::Validator;
+                use serde_json::Value;
+
+                let schema_content = include_str!("../../schemas/odps-json-schema-latest.json");
+                let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
+                    ExportError::ValidationError(format!("Failed to load ODPS schema: {}", e))
+                })?;
+
+                let validator = Validator::new(&schema).map_err(|e| {
+                    ExportError::ValidationError(format!("Failed to compile ODPS schema: {}", e))
+                })?;
+
+                let data: Value = serde_yaml::from_str(&yaml).map_err(|e| {
+                    ExportError::ValidationError(format!("Failed to parse YAML: {}", e))
+                })?;
+
+                if let Err(errors) = validator.validate(&data) {
+                    let error_messages: Vec<String> = errors
+                        .map(|e| format!("{}: {}", e.instance_path, e))
+                        .collect();
+                    return Err(ExportError::ValidationError(format!(
+                        "ODPS validation failed:\n{}",
+                        error_messages.join("\n")
+                    )));
+                }
+            }
+        }
+
+        Ok(yaml)
     }
 
     /// Export a Data Product to ODPS YAML format
@@ -185,26 +226,25 @@ impl ODPSExporter {
         }
 
         if let Some(auth_defs) = &product.authoritative_definitions {
+            // Preserve empty arrays (include even if empty)
             let defs_yaml = Self::serialize_authoritative_definitions(auth_defs);
-            if !defs_yaml.is_empty() {
-                yaml.insert(
-                    serde_yaml::Value::String("authoritativeDefinitions".to_string()),
-                    serde_yaml::Value::Sequence(defs_yaml),
-                );
-            }
+            yaml.insert(
+                serde_yaml::Value::String("authoritativeDefinitions".to_string()),
+                serde_yaml::Value::Sequence(defs_yaml),
+            );
         }
 
         if let Some(custom_props) = &product.custom_properties {
+            // Preserve empty arrays (include even if empty)
             let props_yaml = Self::serialize_custom_properties(custom_props);
-            if !props_yaml.is_empty() {
-                yaml.insert(
-                    serde_yaml::Value::String("customProperties".to_string()),
-                    serde_yaml::Value::Sequence(props_yaml),
-                );
-            }
+            yaml.insert(
+                serde_yaml::Value::String("customProperties".to_string()),
+                serde_yaml::Value::Sequence(props_yaml),
+            );
         }
 
         if let Some(input_ports) = &product.input_ports {
+            // Preserve empty arrays (include even if empty)
             let ports_yaml: Vec<serde_yaml::Value> = input_ports
                 .iter()
                 .map(|port| {
@@ -253,6 +293,7 @@ impl ODPSExporter {
                     serde_yaml::Value::Mapping(port_map)
                 })
                 .collect();
+            // Always include inputPorts, even if empty, to preserve structure
             yaml.insert(
                 serde_yaml::Value::String("inputPorts".to_string()),
                 serde_yaml::Value::Sequence(ports_yaml),

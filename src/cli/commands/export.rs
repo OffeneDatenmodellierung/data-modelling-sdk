@@ -1,7 +1,9 @@
 //! Export command handlers
 
 use crate::cli::error::CliError;
-use crate::export::{AvroExporter, JSONSchemaExporter, ODCSExporter, ProtobufExporter};
+use crate::export::{
+    AvroExporter, JSONSchemaExporter, ODCSExporter, ODPSExporter, ProtobufExporter,
+};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -13,6 +15,7 @@ pub enum ExportFormat {
     JsonSchema,
     Protobuf,
     ProtobufDescriptor,
+    Odps,
 }
 
 /// Arguments for export operations
@@ -285,4 +288,63 @@ pub fn handle_export_protobuf_descriptor(args: &ExportArgs) -> Result<(), CliErr
     );
 
     Ok(())
+}
+
+/// Detect if content is ODPS format
+fn is_odps_format(content: &str) -> bool {
+    content.contains("apiVersion:") && content.contains("kind: DataProduct")
+}
+
+/// Handle ODPS export command
+///
+/// ODPS is a native format - it only accepts ODPS input files.
+/// ODCS cannot be converted to ODPS as they are different format types.
+pub fn handle_export_odps(args: &ExportArgs) -> Result<(), CliError> {
+    #[cfg(not(feature = "odps-validation"))]
+    {
+        return Err(CliError::InvalidArgument(
+            "ODPS export requires 'odps-validation' feature".to_string(),
+        ));
+    }
+
+    #[cfg(feature = "odps-validation")]
+    {
+        // Check overwrite
+        check_file_overwrite(&args.output, args.force)?;
+
+        // Read input file
+        let content = std::fs::read_to_string(&args.input)
+            .map_err(|e| CliError::FileReadError(args.input.clone(), e.to_string()))?;
+
+        // Verify input is ODPS format
+        if !is_odps_format(&content) {
+            return Err(CliError::InvalidArgument(
+                "Input file is not ODPS format. ODPS export only accepts ODPS input files.\n\
+                ODCS and ODPS are separate native formats and cannot be converted between each other.\n\
+                Use 'import odps' for ODPS files or 'export odcs' for ODCS files."
+                    .to_string(),
+            ));
+        }
+
+        // Import ODPS file
+        use crate::import::ODPSImporter;
+
+        let importer = ODPSImporter::new();
+        let product = importer
+            .import(&content)
+            .map_err(|e| CliError::InvalidArgument(format!("Failed to import ODPS file: {e}")))?;
+
+        // Export to ODPS YAML (validation happens inside exporter if feature enabled)
+        let exporter = ODPSExporter;
+        let yaml = exporter.export(&product).map_err(CliError::ExportError)?;
+
+        // Write output
+        write_export_output(&args.output, &yaml)?;
+        println!(
+            "✅ Exported ODPS data product to: {}",
+            args.output.display()
+        );
+
+        Ok(())
+    }
 }

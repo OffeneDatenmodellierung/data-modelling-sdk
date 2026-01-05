@@ -123,9 +123,11 @@ version: 1.0.0
 status: active
 inputPorts:
   - name: input
+    version: 1.0.0
     contractId: contract-123
 outputPorts:
   - name: output
+    version: 1.0.0
     contractId: contract-456
 "#;
 
@@ -192,6 +194,7 @@ tags:
   - test
 inputPorts:
   - name: input
+    version: 1.0.0
     contractId: contract-123
 "#;
 

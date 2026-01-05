@@ -96,6 +96,24 @@ data-modelling-cli import avro schema.avsc
 data-modelling-cli import json-schema schema.json
 ```
 
+### Import ODPS (Open Data Product Standard)
+
+```bash
+# Import ODPS YAML file (with validation if odps-validation feature enabled)
+data-modelling-cli import odps product.odps.yaml
+
+# Import with pretty output
+data-modelling-cli import odps product.odps.yaml --pretty
+
+# Skip validation (if odps-validation feature enabled)
+data-modelling-cli import odps product.odps.yaml --no-validate
+
+# Import from stdin
+cat product.odps.yaml | data-modelling-cli import odps -
+```
+
+**Note**: ODPS import validates against the ODPS JSON Schema when the `odps-validation` feature is enabled. ODPS files are standalone and do not automatically generate `.odcs.yaml` files (unlike other import formats).
+
 ### Import Protobuf
 
 ```bash
@@ -133,6 +151,18 @@ data-modelling-cli import odcs table.odcs.yaml
 ```bash
 data-modelling-cli export odcs input.odcs.yaml output.odcs.yaml
 ```
+
+### Export to ODPS (Open Data Product Standard)
+
+```bash
+# Export ODPS file (round-trip: import and re-export)
+data-modelling-cli export odps input.odps.yaml output.odps.yaml
+
+# Export with force overwrite
+data-modelling-cli export odps input.odps.yaml output.odps.yaml --force
+```
+
+**Note**: ODPS export only accepts ODPS input files. ODCS and ODPS are separate native formats and cannot be converted between each other. The exported ODPS file is validated against the ODPS JSON Schema when the `odps-validation` feature is enabled.
 
 ### Export to AVRO
 
@@ -183,6 +213,7 @@ Formats:
   protobuf     - Protocol Buffer .proto files
   openapi      - OpenAPI 3.1.1 YAML/JSON files
   odcs         - ODCS v3.1.0 YAML files
+  odps         - ODPS (Open Data Product Standard) YAML files
 
 Options:
   --dialect <dialect>           SQL dialect (postgres|mysql|sqlite|generic|databricks)

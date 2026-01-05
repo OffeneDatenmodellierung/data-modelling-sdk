@@ -5,14 +5,14 @@ use clap::{Parser, Subcommand};
 #[cfg(feature = "cli")]
 use data_modelling_sdk::cli::commands::export::{
     ExportArgs, ExportFormat, handle_export_avro, handle_export_json_schema, handle_export_odcs,
-    handle_export_protobuf, handle_export_protobuf_descriptor,
+    handle_export_odps, handle_export_protobuf, handle_export_protobuf_descriptor,
 };
 #[cfg(all(feature = "cli", feature = "openapi"))]
 use data_modelling_sdk::cli::commands::import::handle_import_openapi;
 #[cfg(feature = "cli")]
 use data_modelling_sdk::cli::commands::import::{
     ImportArgs, ImportFormat, InputSource, handle_import_avro, handle_import_json_schema,
-    handle_import_odcs, handle_import_protobuf, handle_import_sql,
+    handle_import_odcs, handle_import_odps, handle_import_protobuf, handle_import_sql,
 };
 #[cfg(feature = "cli")]
 use std::path::PathBuf;
@@ -92,6 +92,7 @@ enum ImportFormatArg {
     Protobuf,
     Openapi,
     Odcs,
+    Odps,
 }
 
 #[cfg(feature = "cli")]
@@ -102,6 +103,7 @@ enum ExportFormatArg {
     JsonSchema,
     Protobuf,
     ProtobufDescriptor,
+    Odps,
 }
 
 #[cfg(feature = "cli")]
@@ -113,6 +115,7 @@ fn convert_import_format(format: ImportFormatArg) -> ImportFormat {
         ImportFormatArg::Protobuf => ImportFormat::Protobuf,
         ImportFormatArg::Openapi => ImportFormat::OpenApi,
         ImportFormatArg::Odcs => ImportFormat::Odcs,
+        ImportFormatArg::Odps => ImportFormat::Odps,
     }
 }
 
@@ -124,6 +127,7 @@ fn convert_export_format(format: ExportFormatArg) -> ExportFormat {
         ExportFormatArg::JsonSchema => ExportFormat::JsonSchema,
         ExportFormatArg::Protobuf => ExportFormat::Protobuf,
         ExportFormatArg::ProtobufDescriptor => ExportFormat::ProtobufDescriptor,
+        ExportFormatArg::Odps => ExportFormat::Odps,
     }
 }
 
@@ -190,6 +194,20 @@ fn main() {
                     }
                 }
                 ImportFormat::Odcs => handle_import_odcs(&args),
+                ImportFormat::Odps => {
+                    #[cfg(feature = "odps-validation")]
+                    {
+                        handle_import_odps(&args)
+                    }
+                    #[cfg(not(feature = "odps-validation"))]
+                    {
+                        use data_modelling_sdk::cli::error::CliError;
+                        Err(CliError::InvalidArgument(
+                            "ODPS support not enabled. Enable 'odps-validation' feature."
+                                .to_string(),
+                        ))
+                    }
+                }
             }
         }
         Commands::Export {
@@ -217,6 +235,7 @@ fn main() {
                 ExportFormat::JsonSchema => handle_export_json_schema(&args),
                 ExportFormat::Protobuf => handle_export_protobuf(&args),
                 ExportFormat::ProtobufDescriptor => handle_export_protobuf_descriptor(&args),
+                ExportFormat::Odps => handle_export_odps(&args),
             }
         }
     };

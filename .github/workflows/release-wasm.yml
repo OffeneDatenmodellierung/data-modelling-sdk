@@ -1,0 +1,160 @@
+name: Release WASM
+
+on:
+  workflow_dispatch:  # Allow manual triggering
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (e.g., v1.7.0)
+    branches:
+      - 'release/*'  # Trigger on release branches for dev releases
+      - 'main'  # Allow dev releases from main branch
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build-wasm:
+    name: Build WASM SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cache cargo build artifacts
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ runner.os }}-cargo-target-wasm-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-wasm-
+
+      - name: Build WASM with wasm and openapi features
+        run: |
+          wasm-pack build --target web --out-dir pkg --features wasm,openapi,odps-validation
+
+      - name: Get version from tag or branch
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # Tag release: use tag version
+            VERSION=${GITHUB_REF#refs/tags/v}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_dev=false" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/heads/* ]]; then
+            # Branch release: use Cargo.toml version with dev postfix
+            BASE_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            VERSION="${BASE_VERSION}-dev.${SHORT_SHA}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_dev=true" >> $GITHUB_OUTPUT
+          else
+            # Manual run: use Cargo.toml version with dev postfix
+            BASE_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+            VERSION="${BASE_VERSION}-dev"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_dev=true" >> $GITHUB_OUTPUT
+          fi
+          echo "Building WASM version: ${{ steps.version.outputs.version }}"
+
+      - name: Create WASM archive
+        shell: bash
+        run: |
+          ARCHIVE_NAME="data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz"
+          tar -czf $ARCHIVE_NAME -C pkg .
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create checksum
+        shell: bash
+        run: |
+          ARCHIVE_NAME="data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$ARCHIVE_NAME" > "${ARCHIVE_NAME}.sha256"
+          elif command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$ARCHIVE_NAME" | awk '{print $1}' > "${ARCHIVE_NAME}.sha256"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-sdk
+          path: |
+            data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz
+            data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz.sha256
+          retention-days: 90
+
+  create-release:
+    name: Create/Update GitHub Release
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-sdk
+          path: artifacts
+
+      - name: Create/Update Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: SDK v${{ steps.version.outputs.version }}
+          body: |
+            ## Data Modelling SDK v${{ steps.version.outputs.version }}
+
+            ### WASM Package
+
+            **WebAssembly SDK** (for browser/web applications)
+            - Archive: [data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz)
+            - SHA256: See checksum file
+
+            ### Installation
+
+            **For Cloudflare Pages / Web Applications:**
+            ```bash
+            # Download and extract
+            curl -L -o wasm.tar.gz https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz
+            tar -xzf wasm.tar.gz
+            # Copy to your frontend/public/wasm/ directory
+            cp -r pkg/* frontend/public/wasm/
+            ```
+
+            ### Features
+
+            Built with `wasm` and `openapi` features enabled:
+            - Core WASM functionality for ODCS, ODPS, CADS, SQL, AVRO, Protobuf, JSON Schema operations
+            - OpenAPI/Swagger import/export functionality
+
+          files: |
+            artifacts/**
+          draft: false
+          prerelease: false

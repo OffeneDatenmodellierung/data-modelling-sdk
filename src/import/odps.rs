@@ -59,6 +59,45 @@ impl ODPSImporter {
     /// assert_eq!(product.name, Some("customer-data-product".to_string()));
     /// ```
     pub fn import(&self, yaml_content: &str) -> Result<ODPSDataProduct, ImportError> {
+        // Validate against ODPS schema before parsing (if feature enabled)
+        #[cfg(feature = "odps-validation")]
+        {
+            #[cfg(feature = "cli")]
+            {
+                use crate::cli::validation::validate_odps_internal;
+                validate_odps_internal(yaml_content).map_err(ImportError::ValidationError)?;
+            }
+            #[cfg(not(feature = "cli"))]
+            {
+                // Inline validation when CLI feature is not enabled
+                use jsonschema::Validator;
+                use serde_json::Value;
+
+                let schema_content = include_str!("../../schemas/odps-json-schema-latest.json");
+                let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
+                    ImportError::ValidationError(format!("Failed to load ODPS schema: {}", e))
+                })?;
+
+                let validator = Validator::new(&schema).map_err(|e| {
+                    ImportError::ValidationError(format!("Failed to compile ODPS schema: {}", e))
+                })?;
+
+                let data: Value = serde_yaml::from_str(yaml_content).map_err(|e| {
+                    ImportError::ValidationError(format!("Failed to parse YAML: {}", e))
+                })?;
+
+                if let Err(errors) = validator.validate(&data) {
+                    let error_messages: Vec<String> = errors
+                        .map(|e| format!("{}: {}", e.instance_path, e))
+                        .collect();
+                    return Err(ImportError::ValidationError(format!(
+                        "ODPS validation failed:\n{}",
+                        error_messages.join("\n")
+                    )));
+                }
+            }
+        }
+
         let yaml_value: YamlValue = serde_yaml::from_str(yaml_content)
             .map_err(|e| ImportError::ParseError(format!("Failed to parse YAML: {}", e)))?;
 
@@ -236,11 +275,8 @@ impl ODPSImporter {
                     });
                 }
             }
-            if !defs.is_empty() {
-                Ok(Some(defs))
-            } else {
-                Ok(None)
-            }
+            // Preserve empty arrays as Some(vec![]) to maintain structure
+            Ok(Some(defs))
         } else {
             Ok(None)
         }
@@ -267,11 +303,8 @@ impl ODPSImporter {
                     });
                 }
             }
-            if !props.is_empty() {
-                Ok(Some(props))
-            } else {
-                Ok(None)
-            }
+            // Preserve empty arrays as Some(vec![]) to maintain structure
+            Ok(Some(props))
         } else {
             Ok(None)
         }
@@ -312,11 +345,8 @@ impl ODPSImporter {
                     });
                 }
             }
-            if !ports.is_empty() {
-                Ok(Some(ports))
-            } else {
-                Ok(None)
-            }
+            // Preserve empty arrays as Some(vec![]) to maintain structure
+            Ok(Some(ports))
         } else {
             Ok(None)
         }
@@ -421,11 +451,8 @@ impl ODPSImporter {
                     });
                 }
             }
-            if !ports.is_empty() {
-                Ok(Some(ports))
-            } else {
-                Ok(None)
-            }
+            // Preserve empty arrays as Some(vec![]) to maintain structure
+            Ok(Some(ports))
         } else {
             Ok(None)
         }
@@ -469,11 +496,8 @@ impl ODPSImporter {
                     });
                 }
             }
-            if !ports.is_empty() {
-                Ok(Some(ports))
-            } else {
-                Ok(None)
-            }
+            // Preserve empty arrays as Some(vec![]) to maintain structure
+            Ok(Some(ports))
         } else {
             Ok(None)
         }
@@ -517,11 +541,8 @@ impl ODPSImporter {
                     });
                 }
             }
-            if !supports.is_empty() {
-                Ok(Some(supports))
-            } else {
-                Ok(None)
-            }
+            // Preserve empty arrays as Some(vec![]) to maintain structure
+            Ok(Some(supports))
         } else {
             Ok(None)
         }

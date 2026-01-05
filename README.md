@@ -10,14 +10,26 @@ The SDK includes a command-line interface (CLI) for importing and exporting sche
 
 **Quick Start:**
 ```bash
-# Build the CLI (with OpenAPI support)
-cargo build --release --bin data-modelling-cli --features cli,openapi
+# Build the CLI (with OpenAPI and ODPS validation support)
+cargo build --release --bin data-modelling-cli --features cli,openapi,odps-validation
 
 # Run it
 ./target/release/data-modelling-cli --help
 ```
 
-**Note:** The CLI now includes OpenAPI support by default in GitHub releases. For local builds, include the `openapi` feature to enable OpenAPI import/export.
+**Note:** The CLI now includes OpenAPI support by default in GitHub releases. For local builds, include the `openapi` feature to enable OpenAPI import/export. Include `odps-validation` to enable ODPS schema validation.
+
+**ODPS Import/Export Examples:**
+```bash
+# Import ODPS YAML file
+data-modelling-cli import odps product.odps.yaml
+
+# Export ODCS to ODPS format
+data-modelling-cli export odps input.odcs.yaml output.odps.yaml
+
+# Test ODPS round-trip (requires odps-validation feature)
+cargo run --bin test-odps --features odps-validation,cli -- product.odps.yaml --verbose
+```
 
 ## Features
 
@@ -151,6 +163,8 @@ console.log('Exported YAML:', exportedYaml);
 - `importFromProtobuf(protobufContent: string): string` - Import from Protobuf
 - `importFromCads(yamlContent: string): string` - Import CADS (Compute Asset Description Specification) YAML
 - `importFromOdps(yamlContent: string): string` - Import ODPS (Open Data Product Standard) YAML
+- `exportToOdps(productJson: string): string` - Export ODPS data product to YAML format
+- `validateOdps(yamlContent: string): void` - Validate ODPS YAML content against ODPS JSON Schema (requires `odps-validation` feature)
 - `importBpmnModel(domainId: string, xmlContent: string, modelName?: string): string` - Import BPMN 2.0 XML model
 - `importDmnModel(domainId: string, xmlContent: string, modelName?: string): string` - Import DMN 1.3 XML model
 - `importOpenapiSpec(domainId: string, content: string, apiName?: string): string` - Import OpenAPI 3.1.1 specification

@@ -10,8 +10,8 @@ use crate::cli::validation::{
 };
 use crate::export::odcs::ODCSExporter;
 use crate::import::{
-    AvroImporter, ColumnData, ImportResult, JSONSchemaImporter, ODCSImporter, ProtobufImporter,
-    SQLImporter, TableData,
+    AvroImporter, ColumnData, ImportResult, JSONSchemaImporter, ODCSImporter, ODPSImporter,
+    ProtobufImporter, SQLImporter, TableData,
 };
 use crate::models::{Column, Table};
 use serde_json::Value as JsonValue;
@@ -51,6 +51,7 @@ pub enum ImportFormat {
     Protobuf,
     OpenApi,
     Odcs,
+    Odps,
 }
 
 /// Load input content from InputSource
@@ -691,6 +692,202 @@ pub fn handle_import_openapi(args: &ImportArgs) -> Result<(), CliError> {
             _ => None,
         };
         write_odcs_files(&result, base_path, args.uuid_override.as_deref())?;
+    }
+
+    Ok(())
+}
+
+/// Handle ODPS import command
+#[cfg(feature = "odps-validation")]
+pub fn handle_import_odps(args: &ImportArgs) -> Result<(), CliError> {
+    use crate::cli::validation::validate_odps;
+
+    // Load ODPS input
+    let odps_content = load_input(&args.input)?;
+
+    // Validate if enabled
+    if args.validate {
+        validate_odps(&odps_content)?;
+    }
+
+    // Import ODPS
+    let importer = ODPSImporter::new();
+    let product = importer
+        .import(&odps_content)
+        .map_err(CliError::ImportError)?;
+
+    // Display results
+    if args.pretty {
+        println!("ODPS Data Product");
+        println!("=================");
+        println!("ID:              {}", product.id);
+        if let Some(name) = &product.name {
+            println!("Name:            {}", name);
+        }
+        if let Some(version) = &product.version {
+            println!("Version:         {}", version);
+        }
+        println!("Status:          {:?}", product.status);
+        if let Some(domain) = &product.domain {
+            println!("Domain:          {}", domain);
+        }
+        if let Some(tenant) = &product.tenant {
+            println!("Tenant:          {}", tenant);
+        }
+        // Tags
+        if !product.tags.is_empty() {
+            println!("\nTags:");
+            for tag in &product.tags {
+                println!("  - {}", tag);
+            }
+        }
+
+        // Description
+        if let Some(description) = &product.description {
+            println!("\nDescription:");
+            if let Some(purpose) = &description.purpose {
+                println!("  Purpose:       {}", purpose);
+            }
+            if let Some(usage) = &description.usage {
+                println!("  Usage:         {}", usage);
+            }
+            if let Some(limitations) = &description.limitations {
+                println!("  Limitations:   {}", limitations);
+            }
+        }
+
+        if let Some(input_ports) = &product.input_ports {
+            println!("\nInput Ports ({}):", input_ports.len());
+            for port in input_ports {
+                println!(
+                    "  - {} v{} (contract: {})",
+                    port.name, port.version, port.contract_id
+                );
+            }
+        }
+        if let Some(output_ports) = &product.output_ports {
+            println!("\nOutput Ports ({}):", output_ports.len());
+            for port in output_ports {
+                println!("  - {} v{}", port.name, port.version);
+            }
+        }
+        if let Some(management_ports) = &product.management_ports {
+            println!("\nManagement Ports ({}):", management_ports.len());
+            for port in management_ports {
+                println!("  - {} ({})", port.name, port.content);
+            }
+        }
+        if let Some(support) = &product.support {
+            println!("\nSupport Channels ({}):", support.len());
+            for s in support {
+                println!("  - {}: {}", s.channel, s.url);
+            }
+        }
+        if let Some(team) = &product.team {
+            println!("\nTeam:");
+            if let Some(name) = &team.name {
+                println!("  Name:          {}", name);
+            }
+            if let Some(members) = &team.members {
+                println!("  Members:       {}", members.len());
+            }
+        }
+    } else {
+        println!("Imported ODPS Data Product:");
+        println!("  ID: {}", product.id);
+        if let Some(name) = &product.name {
+            println!("  Name: {}", name);
+        }
+        if let Some(version) = &product.version {
+            println!("  Version: {}", version);
+        }
+        println!("  Status: {:?}", product.status);
+
+        // Tags
+        if !product.tags.is_empty() {
+            let tags_str: Vec<String> = product.tags.iter().map(|t| t.to_string()).collect();
+            println!("  Tags: {}", tags_str.join(", "));
+        }
+
+        // Description
+        if let Some(description) = &product.description {
+            let mut desc_parts = Vec::new();
+            if description.purpose.is_some()
+                || description.usage.is_some()
+                || description.limitations.is_some()
+            {
+                desc_parts.push("present");
+            }
+            if !desc_parts.is_empty() {
+                println!("  Description: {}", desc_parts.join(", "));
+            }
+        }
+
+        // Input Ports
+        if let Some(input_ports) = &product.input_ports {
+            println!("  Input Ports: {}", input_ports.len());
+        }
+
+        // Output Ports
+        if let Some(output_ports) = &product.output_ports {
+            println!("  Output Ports: {}", output_ports.len());
+        }
+
+        // Management Ports
+        if let Some(management_ports) = &product.management_ports {
+            println!("  Management Ports: {}", management_ports.len());
+        }
+
+        // Support
+        if let Some(support) = &product.support
+            && !support.is_empty()
+        {
+            println!("  Support Channels: {}", support.len());
+        }
+
+        // Team
+        if let Some(team) = &product.team {
+            if let Some(name) = &team.name {
+                println!("  Team: {}", name);
+            } else if team.members.is_some() {
+                println!("  Team: present");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "odps-validation"))]
+pub fn handle_import_odps(args: &ImportArgs) -> Result<(), CliError> {
+    // Load ODPS input
+    let odps_content = load_input(&args.input)?;
+
+    // Import ODPS (without validation if feature not enabled)
+    let importer = ODPSImporter::new();
+    let product = importer
+        .import(&odps_content)
+        .map_err(CliError::ImportError)?;
+
+    // Display results (same as above)
+    if args.pretty {
+        println!("ODPS Data Product");
+        println!("=================");
+        println!("ID:              {}", product.id);
+        if let Some(name) = &product.name {
+            println!("Name:            {}", name);
+        }
+        if let Some(version) = &product.version {
+            println!("Version:         {}", version);
+        }
+        println!("Status:          {:?}", product.status);
+    } else {
+        println!("Imported ODPS Data Product:");
+        println!("  ID: {}", product.id);
+        if let Some(name) = &product.name {
+            println!("  Name: {}", name);
+        }
+        println!("  Status: {:?}", product.status);
     }
 
     Ok(())

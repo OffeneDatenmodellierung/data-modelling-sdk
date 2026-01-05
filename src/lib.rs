@@ -372,6 +372,61 @@ mod wasm {
         }
     }
 
+    /// Validate ODPS YAML content against the ODPS JSON Schema.
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - ODPS YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// Empty string on success, or error message string
+    #[cfg(feature = "odps-validation")]
+    #[wasm_bindgen]
+    pub fn validate_odps(yaml_content: &str) -> Result<(), JsValue> {
+        #[cfg(feature = "cli")]
+        {
+            use crate::cli::validation::validate_odps_internal;
+            validate_odps_internal(yaml_content).map_err(|e| JsValue::from_str(&e.to_string()))
+        }
+        #[cfg(not(feature = "cli"))]
+        {
+            // Inline validation when CLI feature is not enabled
+            use jsonschema::Validator;
+            use serde_json::Value;
+
+            let schema_content = include_str!("../schemas/odps-json-schema-latest.json");
+            let schema: Value = serde_json::from_str(schema_content)
+                .map_err(|e| JsValue::from_str(&format!("Failed to load ODPS schema: {}", e)))?;
+
+            let validator = Validator::new(&schema)
+                .map_err(|e| JsValue::from_str(&format!("Failed to compile ODPS schema: {}", e)))?;
+
+            let data: Value = serde_yaml::from_str(yaml_content)
+                .map_err(|e| JsValue::from_str(&format!("Failed to parse YAML: {}", e)))?;
+
+            if let Err(errors) = validator.validate(&data) {
+                let error_messages: Vec<String> = errors
+                    .map(|e| format!("{}: {}", e.instance_path, e))
+                    .collect();
+                return Err(JsValue::from_str(&format!(
+                    "ODPS validation failed:\n{}",
+                    error_messages.join("\n")
+                )));
+            }
+
+            Ok(())
+        }
+    }
+
+    #[cfg(not(feature = "odps-validation"))]
+    #[wasm_bindgen]
+    pub fn validate_odps(_yaml_content: &str) -> Result<(), JsValue> {
+        // Validation disabled - feature not enabled
+        // Return success to maintain backward compatibility
+        Ok(())
+    }
+
     /// Create a new business domain.
     ///
     /// # Arguments

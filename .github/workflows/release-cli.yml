@@ -64,7 +64,7 @@ jobs:
       - name: Build CLI binary
         shell: bash
         run: |
-          cargo build --release --bin data-modelling-cli --features cli,openapi --target ${{ matrix.target }}
+          cargo build --release --bin data-modelling-cli --features cli,openapi,odps-validation --target ${{ matrix.target }}
 
       - name: Get version from tag or branch
         id: version
