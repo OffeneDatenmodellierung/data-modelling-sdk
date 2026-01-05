@@ -4,11 +4,26 @@ Shared SDK for model operations across platforms (API, WASM, Native).
 
 Copyright (c) 2025 Mark Olliver - Licensed under MIT
 
+## CLI Tool
+
+The SDK includes a command-line interface (CLI) for importing and exporting schemas. See [CLI.md](CLI.md) for detailed usage instructions.
+
+**Quick Start:**
+```bash
+# Build the CLI (with OpenAPI support)
+cargo build --release --bin data-modelling-cli --features cli,openapi
+
+# Run it
+./target/release/data-modelling-cli --help
+```
+
+**Note:** The CLI now includes OpenAPI support by default in GitHub releases. For local builds, include the `openapi` feature to enable OpenAPI import/export.
+
 ## Features
 
 - **Storage Backends**: File system, browser storage (IndexedDB/localStorage), and HTTP API
 - **Model Loading/Saving**: Load and save models from various storage backends
-- **Import/Export**: Import from SQL (PostgreSQL, MySQL, SQLite, Generic, Databricks), ODCS, ODCL, JSON Schema, AVRO, Protobuf, CADS, ODPS, BPMN, DMN, OpenAPI; Export to various formats
+- **Import/Export**: Import from SQL (PostgreSQL, MySQL, SQLite, Generic, Databricks), ODCS, ODCL, JSON Schema, AVRO, Protobuf (proto2/proto3), CADS, ODPS, BPMN, DMN, OpenAPI; Export to various formats
 - **Business Domain Schema**: Organize systems, CADS nodes, and ODCS nodes within business domains
 - **Universal Converter**: Convert any format to ODCS v3.1.0 format
 - **OpenAPI to ODCS Converter**: Convert OpenAPI schema components to ODCS table definitions

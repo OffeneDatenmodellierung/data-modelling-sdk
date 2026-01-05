@@ -9,8 +9,8 @@ Auto-generated from all feature plans. Last updated: 2026-01-02
 - Domain-based file structure using `StorageBackend` trait (already implemented) (004-bpmn-dmn-openapi)
 - Rust 1.75+ (Rust 2024 edition) + sqlparser 0.53, regex 1.0 (005-databricks-sql-support)
 - N/A (parsing only, no storage operations) (005-databricks-sql-support)
-
 - Rust 1.75+ (edition 2024) + wasm-bindgen 0.2, wasm-bindgen-futures 0.4, serde 1.0, serde_json 1.0, serde_yaml 0.9 (001-wasm-exports)
+- Rust 1.75+ (Rust 2024 edition) + clap 4.x, reqwest 0.12, zip crate (006-cli-wrapper)
 
 ## Project Structure
 
@@ -28,6 +28,7 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 1.75+ (edition 2024): Follow standard conventions
 
 ## Recent Changes
+- 006-cli-wrapper: Added Rust 1.75+ (Rust 2024 edition) + clap 4.x, reqwest 0.12, zip crate
 - 005-databricks-sql-support: Added Rust 1.75+ (Rust 2024 edition) + sqlparser 0.53, regex 1.0
 - 004-bpmn-dmn-openapi: Added Rust 1.75+ (edition 2024)
 - 003-odcs-field-preservation: Added Rust 2024 edition

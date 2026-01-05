@@ -49,7 +49,7 @@ impl ProtobufExporter {
     ///
     /// # Returns
     ///
-    /// An `ExportResult` containing Protobuf `.proto` file content.
+    /// An `ExportResult` containing Protobuf `.proto` file content (proto3 by default).
     ///
     /// # Example
     ///
@@ -67,7 +67,31 @@ impl ProtobufExporter {
     /// assert!(result.content.contains("syntax = \"proto3\""));
     /// ```
     pub fn export(&self, tables: &[Table]) -> Result<ExportResult, ExportError> {
-        let proto = Self::export_model_from_tables(tables);
+        self.export_with_version(tables, "proto3")
+    }
+
+    /// Export tables to Protobuf format with specified version.
+    ///
+    /// # Arguments
+    ///
+    /// * `tables` - Slice of tables to export
+    /// * `version` - Protobuf syntax version ("proto2" or "proto3")
+    ///
+    /// # Returns
+    ///
+    /// An `ExportResult` containing Protobuf `.proto` file content.
+    pub fn export_with_version(
+        &self,
+        tables: &[Table],
+        version: &str,
+    ) -> Result<ExportResult, ExportError> {
+        if version != "proto2" && version != "proto3" {
+            return Err(ExportError::InvalidArgument(format!(
+                "Invalid protobuf version: {}. Must be 'proto2' or 'proto3'",
+                version
+            )));
+        }
+        let proto = Self::export_model_from_tables_with_version(tables, version);
         Ok(ExportResult {
             content: proto,
             format: "protobuf".to_string(),
@@ -75,12 +99,20 @@ impl ProtobufExporter {
     }
 
     fn export_model_from_tables(tables: &[Table]) -> String {
+        Self::export_model_from_tables_with_version(tables, "proto3")
+    }
+
+    fn export_model_from_tables_with_version(tables: &[Table], version: &str) -> String {
         let mut proto = String::new();
-        proto.push_str("syntax = \"proto3\";\n\n");
+        proto.push_str(&format!("syntax = \"{}\";\n\n", version));
         proto.push_str("package com.datamodel;\n\n");
         let mut field_number = 0u32;
         for table in tables {
-            proto.push_str(&Self::export_table(table, &mut field_number));
+            proto.push_str(&Self::export_table_with_version(
+                table,
+                &mut field_number,
+                version,
+            ));
             proto.push('\n');
         }
         proto
@@ -121,13 +153,22 @@ impl ProtobufExporter {
     /// let proto = ProtobufExporter::export_table(&table, &mut field_number);
     /// assert!(proto.contains("message User"));
     /// ```
+    /// Export a table to Protobuf message format (proto3 by default).
     pub fn export_table(table: &Table, field_number: &mut u32) -> String {
+        Self::export_table_with_version(table, field_number, "proto3")
+    }
+
+    /// Export a table to Protobuf message format with specified version.
+    pub fn export_table_with_version(
+        table: &Table,
+        field_number: &mut u32,
+        version: &str,
+    ) -> String {
         let mut proto = String::new();
 
         let message_name = Self::sanitize_identifier(&table.name);
         proto.push_str(&format!("message {} {{\n", message_name));
 
-        // Add tags as comments if present
         if !table.tags.is_empty() {
             proto.push_str(&Self::export_tags_as_comments(&table.tags));
         }
@@ -136,24 +177,31 @@ impl ProtobufExporter {
             *field_number += 1;
 
             let proto_type = Self::map_data_type_to_protobuf(&column.data_type);
-            let repeated = if column.data_type.to_lowercase().contains("array") {
-                "repeated "
-            } else {
-                ""
-            };
+            let is_repeated = column.data_type.to_lowercase().contains("array");
+            let repeated = if is_repeated { "repeated " } else { "" };
 
             let field_name = Self::sanitize_identifier(&column.name);
 
+            // Handle field labels based on proto version
+            let field_label = if is_repeated {
+                "" // Repeated fields don't need optional/required
+            } else if version == "proto2" {
+                // proto2: all fields need a label
+                if column.nullable {
+                    "optional "
+                } else {
+                    "required "
+                }
+            } else {
+                // proto3: optional only for nullable fields
+                if column.nullable { "optional " } else { "" }
+            };
+
             proto.push_str(&format!(
                 "  {}{}{} {} = {};",
-                if column.nullable { "optional " } else { "" },
-                repeated,
-                proto_type,
-                field_name,
-                field_number
+                field_label, repeated, proto_type, field_name, field_number
             ));
 
-            // Sanitize description for comments (remove newlines)
             if !column.description.is_empty() {
                 let desc = column.description.replace('\n', " ").replace('\r', "");
                 proto.push_str(&format!(" // {}", desc));
@@ -199,13 +247,8 @@ impl ProtobufExporter {
         sanitized
     }
 
-    /// Export a data model to Protobuf format (legacy method for compatibility).
+    /// Export a data model to Protobuf format (legacy method for compatibility, proto3).
     pub fn export_model(model: &DataModel, table_ids: Option<&[uuid::Uuid]>) -> String {
-        let mut proto = String::new();
-
-        proto.push_str("syntax = \"proto3\";\n\n");
-        proto.push_str("package com.datamodel;\n\n");
-
         let tables_to_export: Vec<&Table> = if let Some(ids) = table_ids {
             model
                 .tables
@@ -216,13 +259,9 @@ impl ProtobufExporter {
             model.tables.iter().collect()
         };
 
-        let mut field_number = 0u32;
-        for table in tables_to_export {
-            proto.push_str(&Self::export_table(table, &mut field_number));
-            proto.push('\n');
-        }
-
-        proto
+        // Convert Vec<&Table> to &[Table] by cloning
+        let tables: Vec<Table> = tables_to_export.iter().map(|t| (*t).clone()).collect();
+        Self::export_model_from_tables_with_version(&tables, "proto3")
     }
 
     /// Map SQL/ODCL data types to Protobuf types.

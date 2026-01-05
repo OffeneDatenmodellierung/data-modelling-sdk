@@ -46,6 +46,8 @@ pub enum ExportError {
     SerializationError(String),
     #[error("Validation error: {0}")]
     ValidationError(String),
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
     #[error("IO error: {0}")]
     IoError(String),
     #[error("Export error: {0}")]

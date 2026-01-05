@@ -104,6 +104,9 @@ jobs:
       - name: Build library
         run: cargo build --release --all-features
 
+      - name: Build CLI binary
+        run: cargo build --release --bin data-modelling-cli --features cli,openapi
+
   # WASM build verification
   build-wasm:
     name: Build Check (WASM)
