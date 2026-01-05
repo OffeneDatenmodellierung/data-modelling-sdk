@@ -5,6 +5,9 @@ on:
   push:
     tags:
       - 'v*'  # Trigger on version tags (e.g., v1.6.2)
+    branches:
+      - 'release/*'  # Trigger on release branches for dev releases
+      - 'main'  # Allow dev releases from main branch
 
 env:
   CARGO_TERM_COLOR: always
@@ -47,7 +50,7 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Cache cargo registry
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -59,54 +62,80 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build CLI binary
+        shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cargo build --release --bin data-modelling-cli --features cli,openapi --target ${{ matrix.target }}
-          else
-            cargo build --release --bin data-modelling-cli --features cli,openapi --target ${{ matrix.target }}
-          fi
+          cargo build --release --bin data-modelling-cli --features cli,openapi --target ${{ matrix.target }}
 
-      - name: Get version from tag
+      - name: Get version from tag or branch
         id: version
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # Tag release: use tag version
             VERSION=${GITHUB_REF#refs/tags/v}
             echo "version=$VERSION" >> $GITHUB_OUTPUT
-          else
-            # Extract from Cargo.toml for manual runs
-            VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+            echo "is_dev=false" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/heads/* ]]; then
+            # Branch release: use Cargo.toml version with dev postfix
+            BASE_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            VERSION="${BASE_VERSION}-dev.${SHORT_SHA}"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_dev=true" >> $GITHUB_OUTPUT
+          else
+            # Manual run: use Cargo.toml version with dev postfix
+            BASE_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+            VERSION="${BASE_VERSION}-dev"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_dev=true" >> $GITHUB_OUTPUT
           fi
           echo "Building CLI version: ${{ steps.version.outputs.version }}"
 
-      - name: Prepare binary for upload
-        id: prepare
+      - name: Prepare binary for upload (Unix)
+        if: matrix.os != 'windows-latest'
+        id: prepare-unix
         shell: bash
         run: |
           BINARY_NAME="data-modelling-cli${{ matrix.binary_ext }}"
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            BINARY_PATH="target/${{ matrix.target }}/release/$BINARY_NAME"
-          else
-            BINARY_PATH="target/${{ matrix.target }}/release/$BINARY_NAME"
-          fi
-
-          # Create archive
+          BINARY_PATH="target/${{ matrix.target }}/release/$BINARY_NAME"
           ARCHIVE_NAME="${{ matrix.artifact_name }}-v${{ steps.version.outputs.version }}.tar.gz"
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Use zip for Windows
-            ARCHIVE_NAME="${{ matrix.artifact_name }}-v${{ steps.version.outputs.version }}.zip"
-            cd target/${{ matrix.target }}/release
-            zip -r ../../../../$ARCHIVE_NAME $BINARY_NAME
-            cd ../../..
-          else
-            tar -czf $ARCHIVE_NAME -C target/${{ matrix.target }}/release $BINARY_NAME
-          fi
-
+          tar -czf $ARCHIVE_NAME -C target/${{ matrix.target }}/release $BINARY_NAME
           echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
           echo "binary_path=$BINARY_PATH" >> $GITHUB_OUTPUT
 
+      - name: Prepare binary for upload (Windows)
+        if: matrix.os == 'windows-latest'
+        id: prepare-windows
+        shell: pwsh
+        run: |
+          $BINARY_NAME = "data-modelling-cli${{ matrix.binary_ext }}"
+          $BINARY_PATH = "target/${{ matrix.target }}/release/$BINARY_NAME"
+          $ARCHIVE_NAME = "${{ matrix.artifact_name }}-v${{ steps.version.outputs.version }}.zip"
+          $SOURCE_DIR = "target/${{ matrix.target }}/release"
+          Compress-Archive -Path "$SOURCE_DIR\$BINARY_NAME" -DestinationPath $ARCHIVE_NAME -Force
+          echo "archive_name=$ARCHIVE_NAME" >> $env:GITHUB_OUTPUT
+          echo "binary_path=$BINARY_PATH" >> $env:GITHUB_OUTPUT
+
+      - name: Set prepare outputs
+        id: prepare
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "archive_name=${{ steps.prepare-windows.outputs.archive_name }}" >> $GITHUB_OUTPUT
+            echo "binary_path=${{ steps.prepare-windows.outputs.binary_path }}" >> $GITHUB_OUTPUT
+          else
+            echo "archive_name=${{ steps.prepare-unix.outputs.archive_name }}" >> $GITHUB_OUTPUT
+            echo "binary_path=${{ steps.prepare-unix.outputs.binary_path }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Output version info
+        shell: bash
+        run: |
+          echo "Version: ${{ steps.version.outputs.version }}"
+          echo "Is Dev: ${{ steps.version.outputs.is_dev }}"
+
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ steps.prepare.outputs.archive_name }}
@@ -128,17 +157,25 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: '*'
+          merge-multiple: true
 
       - name: Create checksums
         shell: bash
         run: |
           cd artifacts
-          find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) | while read file; do
-            sha256sum "$file" > "${file}.sha256"
-          done
+          if command -v sha256sum >/dev/null 2>&1; then
+            find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) | while read file; do
+              sha256sum "$file" > "${file}.sha256"
+            done
+          elif command -v shasum >/dev/null 2>&1; then
+            find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) | while read file; do
+              shasum -a 256 "$file" | awk '{print $1}' > "${file}.sha256"
+            done
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
