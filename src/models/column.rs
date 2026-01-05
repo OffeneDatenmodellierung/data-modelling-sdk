@@ -12,6 +12,16 @@ pub struct ForeignKey {
     pub column_name: String,
 }
 
+/// ODCS v3.1.0 Relationship at property level
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PropertyRelationship {
+    /// Relationship type (e.g., "foreignKey", "parent", "child")
+    #[serde(rename = "type")]
+    pub relationship_type: String,
+    /// Target reference (e.g., "definitions/order_id", "schema/id/properties/id")
+    pub to: String,
+}
+
 /// Column model representing a field in a table
 ///
 /// A column defines a single field with a data type, constraints, and optional metadata.
@@ -28,8 +38,13 @@ pub struct ForeignKey {
 pub struct Column {
     /// Column name
     pub name: String,
-    /// Data type (e.g., "INT", "VARCHAR(100)", "TIMESTAMP")
+    /// Data type / logical type (e.g., "number", "string", "integer")
+    /// For ODCS this maps to logicalType
     pub data_type: String,
+    /// Physical type - the actual database type (e.g., "DOUBLE", "VARCHAR(100)", "BIGINT")
+    /// For ODCS this maps to physicalType. Optional as not all formats distinguish logical/physical types.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub physical_type: Option<String>,
     /// Whether the column allows NULL values (default: true)
     #[serde(default = "default_true")]
     pub nullable: bool,
@@ -57,15 +72,19 @@ pub struct Column {
     /// Quality rules and checks
     #[serde(default)]
     pub quality: Vec<HashMap<String, serde_json::Value>>,
-    /// JSON Schema $ref reference path
-    #[serde(skip_serializing_if = "Option::is_none", rename = "$ref")]
-    pub ref_path: Option<String>,
+    /// ODCS v3.1.0 relationships (property-level references)
+    /// Replaces the legacy $ref field - all $ref values are now converted to relationships on import
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relationships: Vec<PropertyRelationship>,
     /// Enum values if this column is an enumeration type
     #[serde(default)]
     pub enum_values: Vec<String>,
     /// Display order for UI rendering
     #[serde(default)]
     pub column_order: i32,
+    /// Nested data type for ARRAY<STRUCT> or MAP types (overrides schema parsing)
+    #[serde(skip_serializing_if = "Option::is_none", rename = "nestedData")]
+    pub nested_data: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -91,10 +110,12 @@ impl Column {
     ///
     /// let col = Column::new("user_id".to_string(), "BIGINT".to_string());
     /// ```
+    #[allow(deprecated)]
     pub fn new(name: String, data_type: String) -> Self {
         Self {
             name,
             data_type: normalize_data_type(&data_type),
+            physical_type: None,
             nullable: true,
             primary_key: false,
             secondary_key: false,
@@ -104,9 +125,10 @@ impl Column {
             description: String::new(),
             errors: Vec::new(),
             quality: Vec::new(),
-            ref_path: None,
+            relationships: Vec::new(),
             enum_values: Vec::new(),
             column_order: 0,
+            nested_data: None,
         }
     }
 }

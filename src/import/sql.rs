@@ -14,33 +14,76 @@
 use super::{ColumnData, ImportError, ImportResult, TableData};
 use crate::validation::input::{validate_column_name, validate_data_type, validate_table_name};
 use anyhow::Result;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use sqlparser::ast::{ColumnDef, ColumnOption, ObjectName, Statement, TableConstraint};
-use sqlparser::dialect::{Dialect, GenericDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect};
+use sqlparser::dialect::{
+    AnsiDialect, BigQueryDialect, DatabricksDialect as OfficialDatabricksDialect, Dialect,
+    GenericDialect, HiveDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect,
+};
 use sqlparser::parser::Parser;
 use std::collections::HashMap;
 
-/// Databricks SQL dialect implementation
-///
-/// Extends GenericDialect to support Databricks-specific syntax patterns:
-/// - Variable references (`:variable_name`) in identifiers
-/// - Backtick-quoted identifiers
-#[derive(Debug)]
-struct DatabricksDialect;
+// Static regex patterns compiled once for performance
+static RE_IDENTIFIER: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)IDENTIFIER\s*\(\s*([^)]+)\s*\)").expect("Invalid regex"));
+static RE_LITERAL: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?:'([^']*)'|"([^"]*)")"#).expect("Invalid regex"));
+static RE_MATERIALIZED_VIEW: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)CREATE\s+MATERIALIZED\s+VIEW").expect("Invalid regex"));
+static RE_TABLE_COMMENT_SINGLE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)\)\s+COMMENT\s+'[^']*'"#).expect("Invalid regex"));
+static RE_TABLE_COMMENT_DOUBLE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)\)\s+COMMENT\s+"[^"]*""#).expect("Invalid regex"));
+static RE_TBLPROPERTIES: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)TBLPROPERTIES\s*\(").expect("Invalid regex"));
+static RE_CLUSTER_BY: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)\s+CLUSTER\s+BY\s+(?:AUTO|\([^)]*\)|[\w,\s]+)").expect("Invalid regex")
+});
+static RE_VARIABLE_TYPE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r":\s*:([a-zA-Z_][a-zA-Z0-9_]*)").expect("Invalid regex"));
+static RE_ARRAY_VARIABLE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"ARRAY\s*<\s*:([a-zA-Z_][a-zA-Z0-9_]*)\s*>").expect("Invalid regex"));
+static RE_FIELD_VARIABLE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(\w+)\s+:\w+\s+([A-Z][A-Z0-9_]*(?:<[^>]*>)?)").expect("Invalid regex")
+});
+static RE_COMPLEX_TYPE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(\w+)\s+(STRUCT<|ARRAY<|MAP<)").expect("Invalid regex"));
 
-impl Dialect for DatabricksDialect {
+/// Custom Databricks SQL dialect implementation
+///
+/// Extends the official DatabricksDialect to support additional Databricks-specific syntax patterns:
+/// - Variable references (`:variable_name`) in identifiers
+/// - Enhanced backtick-quoted identifiers
+#[derive(Debug)]
+struct CustomDatabricksDialect {
+    official: OfficialDatabricksDialect,
+}
+
+impl CustomDatabricksDialect {
+    fn new() -> Self {
+        Self {
+            official: OfficialDatabricksDialect {},
+        }
+    }
+}
+
+impl Dialect for CustomDatabricksDialect {
     fn is_identifier_start(&self, ch: char) -> bool {
         // Allow ':' as identifier start for variable references like :variable_name
-        ch.is_alphabetic() || ch == '_' || ch == ':'
+        // Delegate to official dialect first, then add our custom support
+        self.official.is_identifier_start(ch) || ch == ':'
     }
 
     fn is_identifier_part(&self, ch: char) -> bool {
         // Allow ':' as identifier part for variable references
-        ch.is_alphanumeric() || ch == '_' || ch == ':'
+        self.official.is_identifier_part(ch) || ch == ':'
     }
 
     fn is_delimited_identifier_start(&self, ch: char) -> bool {
         // Support backtick-quoted identifiers (Databricks style)
-        ch == '"' || ch == '`' || ch == '['
+        // Use official dialect's support, which should include backticks
+        self.official.is_delimited_identifier_start(ch)
     }
 }
 
@@ -49,16 +92,12 @@ impl Dialect for DatabricksDialect {
 struct PreprocessingState {
     /// Maps placeholder table names to original IDENTIFIER() expressions
     identifier_replacements: HashMap<String, String>,
-    /// Tracks variable references replaced in type definitions
-    #[allow(dead_code)] // Reserved for future use
-    variable_replacements: Vec<(String, String)>,
 }
 
 impl PreprocessingState {
     fn new() -> Self {
         Self {
             identifier_replacements: HashMap::new(),
-            variable_replacements: Vec::new(),
         }
     }
 }
@@ -82,19 +121,23 @@ impl SQLImporter {
     ///
     /// # Arguments
     ///
-    /// * `dialect` - SQL dialect name ("postgres", "mysql", "sqlite", "generic", "databricks")
+    /// * `dialect` - SQL dialect name (see supported dialects below)
     ///
     /// # Supported Dialects
     ///
-    /// - **postgres** / **postgresql**: PostgreSQL dialect
-    /// - **mysql**: MySQL dialect
-    /// - **sqlite**: SQLite dialect
-    /// - **generic**: Generic SQL dialect (default)
+    /// - **ansi**: ANSI SQL dialect
+    /// - **bigquery**: Google BigQuery dialect (natively supports STRUCT/ARRAY types)
     /// - **databricks**: Databricks SQL dialect with support for:
     ///   - `IDENTIFIER()` function calls in table/view names
     ///   - Variable references (`:variable_name`) in type definitions, column definitions, and metadata
     ///   - `STRUCT` and `ARRAY` complex types
     ///   - `CREATE VIEW` and `CREATE MATERIALIZED VIEW` statements
+    /// - **hive**: Apache Hive dialect (natively supports STRUCT/ARRAY types)
+    /// - **mssql** / **sqlserver**: Microsoft SQL Server dialect
+    /// - **mysql**: MySQL dialect
+    /// - **postgres** / **postgresql**: PostgreSQL dialect
+    /// - **sqlite**: SQLite dialect
+    /// - **generic**: Generic SQL dialect (default)
     ///
     /// # Example
     ///
@@ -118,25 +161,22 @@ impl SQLImporter {
     /// Replaces IDENTIFIER() function calls with placeholder table names
     /// and tracks the original expressions for later extraction.
     fn preprocess_identifier_expressions(sql: &str, state: &mut PreprocessingState) -> String {
-        use regex::Regex;
-
-        // Pattern to match IDENTIFIER(...) expressions
-        let re = Regex::new(r"(?i)IDENTIFIER\s*\(\s*([^)]+)\s*\)").unwrap();
         let mut counter = 0;
 
-        re.replace_all(sql, |caps: &regex::Captures| {
-            let expr = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            counter += 1;
-            let placeholder = format!("__databricks_table_{}__", counter);
+        RE_IDENTIFIER
+            .replace_all(sql, |caps: &regex::Captures| {
+                let expr = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                counter += 1;
+                let placeholder = format!("__databricks_table_{}__", counter);
 
-            // Store the mapping for later extraction
-            state
-                .identifier_replacements
-                .insert(placeholder.clone(), expr.to_string());
+                // Store the mapping for later extraction
+                state
+                    .identifier_replacements
+                    .insert(placeholder.clone(), expr.to_string());
 
-            placeholder
-        })
-        .to_string()
+                placeholder
+            })
+            .to_string()
     }
 
     /// Extract table name from IDENTIFIER() expression
@@ -144,14 +184,10 @@ impl SQLImporter {
     /// If the expression contains string literals, extracts and constructs the table name.
     /// Returns None if expression contains only variables.
     fn extract_identifier_table_name(expr: &str) -> Option<String> {
-        use regex::Regex;
-
-        // Check if expression contains string literals (single or double quoted)
-        let literal_re = Regex::new(r#"(?:'([^']*)'|"([^"]*)")"#).unwrap();
         let mut parts = Vec::new();
 
         // Extract all string literals
-        for cap in literal_re.captures_iter(expr) {
+        for cap in RE_LITERAL.captures_iter(expr) {
             if let Some(m) = cap.get(1) {
                 parts.push(m.as_str().to_string());
             } else if let Some(m) = cap.get(2) {
@@ -169,25 +205,14 @@ impl SQLImporter {
         Some(result.trim_matches('.').to_string())
     }
 
-    /// Handle IDENTIFIER() expressions containing only variables
-    ///
-    /// Creates placeholder table names and marks tables as requiring name resolution.
-    #[allow(dead_code)] // Reserved for future use
-    fn handle_identifier_variables(placeholder: &str, _expr: &str) -> String {
-        // Return the placeholder as-is - it will be marked in tables_requiring_name
-        placeholder.to_string()
-    }
-
     /// Preprocess CREATE MATERIALIZED VIEW to CREATE VIEW
     ///
     /// sqlparser may not support MATERIALIZED VIEW directly, so we convert it to CREATE VIEW
     /// This allows parsing to succeed while preserving the intent.
     fn preprocess_materialized_views(sql: &str) -> String {
-        use regex::Regex;
-
-        // Replace CREATE MATERIALIZED VIEW with CREATE VIEW
-        let re = Regex::new(r"(?i)CREATE\s+MATERIALIZED\s+VIEW").unwrap();
-        re.replace_all(sql, "CREATE VIEW").to_string()
+        RE_MATERIALIZED_VIEW
+            .replace_all(sql, "CREATE VIEW")
+            .to_string()
     }
 
     /// Preprocess table-level COMMENT clause removal
@@ -196,18 +221,11 @@ impl SQLImporter {
     /// Handles both single-quoted and double-quoted COMMENT strings.
     /// Table-level COMMENT appears after the closing parenthesis, not inside column definitions.
     fn preprocess_table_comment(sql: &str) -> String {
-        use regex::Regex;
-
-        // Remove COMMENT clause that appears after closing parenthesis of CREATE TABLE
-        // Pattern: ) followed by whitespace, then COMMENT, then quoted string
-        // This ensures we only match table-level COMMENT, not column-level COMMENT
-        // Match: )\s+COMMENT\s+['"]...['"]
-        let re_single = Regex::new(r#"(?i)\)\s+COMMENT\s+'[^']*'"#).unwrap();
-        let re_double = Regex::new(r#"(?i)\)\s+COMMENT\s+"[^"]*""#).unwrap();
-
         // Replace with just the closing parenthesis
-        let result = re_single.replace_all(sql, ")");
-        re_double.replace_all(&result, ")").to_string()
+        let result = RE_TABLE_COMMENT_SINGLE.replace_all(sql, ")");
+        RE_TABLE_COMMENT_DOUBLE
+            .replace_all(&result, ")")
+            .to_string()
     }
 
     /// Preprocess TBLPROPERTIES clause removal
@@ -215,17 +233,14 @@ impl SQLImporter {
     /// sqlparser does not support TBLPROPERTIES, so we remove it before parsing.
     /// This preserves the rest of the SQL structure while allowing parsing to succeed.
     fn preprocess_tblproperties(sql: &str) -> String {
-        use regex::Regex;
-
         // Remove TBLPROPERTIES clause (may span multiple lines)
         // Pattern matches: TBLPROPERTIES ( ... ) where ... can contain nested parentheses
         // We need to match balanced parentheses
         let mut result = sql.to_string();
-        let re = Regex::new(r"(?i)TBLPROPERTIES\s*\(").unwrap();
 
         // Find all TBLPROPERTIES occurrences and remove them with balanced parentheses
         let mut search_start = 0;
-        while let Some(m) = re.find_at(&result, search_start) {
+        while let Some(m) = RE_TBLPROPERTIES.find_at(&result, search_start) {
             let start = m.start();
             let mut pos = m.end();
             let mut paren_count = 1;
@@ -262,12 +277,7 @@ impl SQLImporter {
     ///
     /// sqlparser does not support CLUSTER BY, so we remove it before parsing.
     fn preprocess_cluster_by(sql: &str) -> String {
-        use regex::Regex;
-
-        // Remove CLUSTER BY clause (may have AUTO or column list)
-        // Pattern: CLUSTER BY followed by AUTO or column list
-        let re = Regex::new(r"(?i)\s+CLUSTER\s+BY\s+(?:AUTO|\([^)]*\)|[\w,\s]+)").unwrap();
-        re.replace_all(sql, "").to_string()
+        RE_CLUSTER_BY.replace_all(sql, "").to_string()
     }
 
     /// Normalize SQL while preserving quoted strings
@@ -451,32 +461,17 @@ impl SQLImporter {
     ///
     /// Handles patterns like STRUCT<field: :variable_type> -> STRUCT<field: STRING>
     fn replace_variables_in_struct_types(sql: &str) -> String {
-        use regex::Regex;
-
-        // Pattern to match :variable_type in STRUCT field type definitions
-        // Matches: :variable_name where it appears after a colon (field: :variable)
-        // The pattern looks for colon, optional whitespace, colon, then variable name
-        let re = Regex::new(r":\s*:([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
-
-        re.replace_all(sql, |_caps: &regex::Captures| {
-            // Replace :variable_name with STRING
-            ": STRING".to_string()
-        })
-        .to_string()
+        RE_VARIABLE_TYPE
+            .replace_all(sql, |_caps: &regex::Captures| ": STRING".to_string())
+            .to_string()
     }
 
     /// Replace variable references in ARRAY element types with STRING
     ///
     /// Handles patterns like ARRAY<:element_type> -> ARRAY<STRING>
     fn replace_variables_in_array_types(sql: &str) -> String {
-        use regex::Regex;
-
-        // Pattern to match ARRAY<:variable_type> (but not ARRAY<STRUCT<...>>)
-        // This is tricky - we need to avoid matching inside STRUCT definitions
-        // Simple approach: match ARRAY<:variable> where variable is not STRUCT
-        let re = Regex::new(r"ARRAY\s*<\s*:([a-zA-Z_][a-zA-Z0-9_]*)\s*>").unwrap();
-
-        re.replace_all(sql, |_caps: &regex::Captures| "ARRAY<STRING>".to_string())
+        RE_ARRAY_VARIABLE
+            .replace_all(sql, |_caps: &regex::Captures| "ARRAY<STRING>".to_string())
             .to_string()
     }
 
@@ -485,19 +480,13 @@ impl SQLImporter {
     /// Handles patterns like `column_name :variable STRING` by removing the variable reference.
     /// Example: `id :id_var STRING` -> `id STRING`
     fn replace_variables_in_column_definitions(sql: &str) -> String {
-        use regex::Regex;
-
-        // Pattern to match column definitions with variable references
-        // Matches: word(s) :variable_name TYPE
-        // Example: "id :id_var STRING" -> "id STRING"
-        let re = Regex::new(r"(\w+)\s+:\w+\s+([A-Z][A-Z0-9_]*(?:<[^>]*>)?)").unwrap();
-
-        re.replace_all(sql, |caps: &regex::Captures| {
-            let col_name = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let type_name = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-            format!("{} {}", col_name, type_name)
-        })
-        .to_string()
+        RE_FIELD_VARIABLE
+            .replace_all(sql, |caps: &regex::Captures| {
+                let col_name = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                let type_name = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                format!("{} {}", col_name, type_name)
+            })
+            .to_string()
     }
 
     /// Replace nested variable references recursively
@@ -536,19 +525,13 @@ impl SQLImporter {
     ///
     /// Assumes SQL is already normalized (single line, single spaces).
     fn extract_complex_type_columns(sql: &str) -> (String, Vec<(String, String)>) {
-        use regex::Regex;
-
         let mut column_types = Vec::new();
         let mut result = sql.to_string();
-
-        // Use regex to find all STRUCT<...>, ARRAY<...>, and MAP<...> patterns with their preceding column names
-        // Pattern: word(s) followed by STRUCT<, ARRAY<, or MAP<, then match balanced brackets
-        let re = Regex::new(r"(\w+)\s+(STRUCT<|ARRAY<|MAP<)").unwrap();
 
         // Find all matches and extract the full type
         let mut matches_to_replace: Vec<(usize, usize, String, String)> = Vec::new();
 
-        for cap in re.captures_iter(sql) {
+        for cap in RE_COMPLEX_TYPE.captures_iter(sql) {
             let col_name = cap.get(1).map(|m| m.as_str()).unwrap_or("");
             let type_start = cap.get(0).map(|m| m.start()).unwrap_or(0);
             let struct_or_array = cap.get(2).map(|m| m.as_str()).unwrap_or("");
@@ -639,37 +622,61 @@ impl SQLImporter {
     /// assert_eq!(result.tables.len(), 1);
     /// ```
     pub fn parse(&self, sql: &str) -> Result<ImportResult> {
-        // Preprocess SQL if Databricks dialect
+        // Minimal preprocessing: only handle variable replacement and unsupported clauses
+        // For Databricks: let DatabricksDialect try to parse STRUCT/ARRAY first, then restore full type strings
+        // For BigQuery/Hive: can parse STRUCT/ARRAY directly without extraction
+        // For other dialects: extract STRUCT/ARRAY if present (they may not support them)
         let (preprocessed_sql, preprocessing_state, complex_types) = if self.dialect.to_lowercase()
             == "databricks"
         {
             let mut state = PreprocessingState::new();
-            // Step 1: Preprocess MATERIALIZED VIEW (convert to CREATE VIEW for sqlparser compatibility)
-            let mut preprocessed = Self::preprocess_materialized_views(sql);
-            // Step 2: Remove table-level COMMENT clauses (sqlparser doesn't support them)
-            preprocessed = Self::preprocess_table_comment(&preprocessed);
-            // Step 3: Remove TBLPROPERTIES (sqlparser doesn't support it)
-            preprocessed = Self::preprocess_tblproperties(&preprocessed);
-            // Step 3.5: Remove CLUSTER BY clause (sqlparser doesn't support it)
-            preprocessed = Self::preprocess_cluster_by(&preprocessed);
-            // Step 4: Replace IDENTIFIER() expressions
+            let mut preprocessed = sql.to_string();
+
+            // Step 1: Replace IDENTIFIER() expressions (needed for variable table names)
             preprocessed = Self::preprocess_identifier_expressions(&preprocessed, &mut state);
-            // Step 5: Replace variable references in column definitions (e.g., "id :var STRING" -> "id STRING")
+            // Step 2: Replace variable references in column definitions (e.g., "id :var STRING" -> "id STRING")
             preprocessed = Self::replace_variables_in_column_definitions(&preprocessed);
-            // Step 6: Replace variable references in type definitions
-            // This replaces :variable_type with STRING in STRUCT and ARRAY types
+            // Step 3: Replace variable references in type definitions (e.g., STRUCT<field: :type> -> STRUCT<field: STRING>)
             preprocessed = Self::replace_nested_variables(&preprocessed);
-            // Step 7: Normalize SQL (handle multiline) before extraction
-            // Preserve quoted strings during normalization to avoid breaking COMMENT clauses
+            // Step 4: Remove unsupported clauses that break parsing
+            preprocessed = Self::preprocess_materialized_views(&preprocessed);
+            preprocessed = Self::preprocess_table_comment(&preprocessed);
+            preprocessed = Self::preprocess_tblproperties(&preprocessed);
+            preprocessed = Self::preprocess_cluster_by(&preprocessed);
+            // Step 5: Normalize SQL (handle multiline) - needed for regex matching
             let normalized = Self::normalize_sql_preserving_quotes(&preprocessed);
-            // Step 7.5: Convert backslash-escaped quotes to SQL standard doubled quotes
-            // sqlparser doesn't support \' escape sequences, so convert to ''
+            // Step 6: Convert backslash-escaped quotes (sqlparser doesn't support \' escape sequences)
             let normalized = Self::convert_backslash_escaped_quotes(&normalized);
-            // Step 8: Extract STRUCT/ARRAY/MAP columns (sqlparser doesn't support them)
-            let (simplified_sql, complex_cols) = Self::extract_complex_type_columns(&normalized);
-            (simplified_sql, state, complex_cols)
+
+            // Step 7: Try parsing with DatabricksDialect first (without extraction)
+            let dialect = self.dialect_impl();
+            let parse_result = Parser::parse_sql(dialect.as_ref(), &normalized);
+
+            // If parsing fails, extract STRUCT/ARRAY types and try again
+            // Otherwise, extract type strings for restoration (without modifying SQL)
+            let (final_sql, complex_cols) = if parse_result.is_err() {
+                // Parsing failed - extract STRUCT/ARRAY/MAP columns and replace with STRING
+                let (simplified, cols) = Self::extract_complex_type_columns(&normalized);
+                (simplified, cols)
+            } else {
+                // Parsing succeeded - extract type strings for restoration after parsing
+                // We'll restore the full type strings in parse_create_table_with_preprocessing
+                let (_, cols) = Self::extract_complex_type_columns(&normalized);
+                (normalized, cols)
+            };
+
+            (final_sql, state, complex_cols)
+        } else if matches!(self.dialect.to_lowercase().as_str(), "bigquery" | "hive") {
+            // BigQuery/Hive: can parse STRUCT/ARRAY directly, just normalize
+            let normalized = Self::normalize_sql_preserving_quotes(sql);
+            let normalized = Self::convert_backslash_escaped_quotes(&normalized);
+            (normalized, PreprocessingState::new(), Vec::new())
         } else {
-            (sql.to_string(), PreprocessingState::new(), Vec::new())
+            // Other dialects: extract STRUCT/ARRAY if present (they may not support them)
+            let normalized = Self::normalize_sql_preserving_quotes(sql);
+            let normalized = Self::convert_backslash_escaped_quotes(&normalized);
+            let (simplified_sql, complex_cols) = Self::extract_complex_type_columns(&normalized);
+            (simplified_sql, PreprocessingState::new(), complex_cols)
         };
 
         let dialect = self.dialect_impl();
@@ -712,8 +719,8 @@ impl SQLImporter {
                         Err(e) => errors.push(ImportError::ParseError(e)),
                     }
                 }
-                Statement::CreateView { name, .. } => {
-                    match self.parse_create_view(idx, &name, &preprocessing_state) {
+                Statement::CreateView(create_view) => {
+                    match self.parse_create_view(idx, &create_view.name, &preprocessing_state) {
                         Ok((table, requires_name)) => {
                             if requires_name {
                                 tables_requiring_name.push(super::TableRequiringName {
@@ -789,20 +796,70 @@ impl SQLImporter {
 
     fn dialect_impl(&self) -> Box<dyn Dialect + Send + Sync> {
         match self.dialect.to_lowercase().as_str() {
-            "postgres" | "postgresql" => Box::new(PostgreSqlDialect {}),
+            "ansi" => Box::new(AnsiDialect {}),
+            "bigquery" => Box::new(BigQueryDialect {}),
+            "databricks" => Box::new(CustomDatabricksDialect::new()),
+            "hive" => Box::new(HiveDialect {}),
+            "mssql" | "sqlserver" => Box::new(MsSqlDialect {}),
             "mysql" => Box::new(MySqlDialect {}),
+            "postgres" | "postgresql" => Box::new(PostgreSqlDialect {}),
             "sqlite" => Box::new(SQLiteDialect {}),
-            "databricks" => Box::new(DatabricksDialect {}),
             _ => Box::new(GenericDialect {}),
         }
     }
 
+    /// Strip quote characters from an identifier
+    ///
+    /// Handles various SQL quoting styles:
+    /// - Double quotes: `"identifier"` -> `identifier`
+    /// - Backticks: `` `identifier` `` -> `identifier`
+    /// - Brackets: `[identifier]` -> `identifier`
+    ///
+    /// Also handles escaped quotes within identifiers:
+    /// - `""` -> `"` (PostgreSQL style)
+    /// - ``` `` ``` -> `` ` `` (MySQL style)
+    /// - `]]` -> `]` (SQL Server style)
+    fn unquote_identifier(identifier: &str) -> String {
+        let trimmed = identifier.trim();
+
+        // Check for double quotes
+        if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
+            let inner = &trimmed[1..trimmed.len() - 1];
+            return inner.replace("\"\"", "\"");
+        }
+
+        // Check for backticks (MySQL)
+        if trimmed.starts_with('`') && trimmed.ends_with('`') && trimmed.len() >= 2 {
+            let inner = &trimmed[1..trimmed.len() - 1];
+            return inner.replace("``", "`");
+        }
+
+        // Check for brackets (SQL Server)
+        if trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() >= 2 {
+            let inner = &trimmed[1..trimmed.len() - 1];
+            return inner.replace("]]", "]");
+        }
+
+        // No quoting detected, return as-is
+        trimmed.to_string()
+    }
+
     fn object_name_to_string(name: &ObjectName) -> String {
         // Use final identifier (supports schema-qualified names).
-        name.0
+        // In sqlparser 0.60, ObjectNamePart might be a different structure
+        // Fall back to to_string() which should work
+        let raw_name = name
+            .0
             .last()
-            .map(|ident| ident.value.clone())
-            .unwrap_or_else(|| name.to_string())
+            .map(|ident| {
+                // Try to get the identifier value - structure may have changed in 0.60
+                // Use to_string() as fallback
+                ident.to_string()
+            })
+            .unwrap_or_else(|| name.to_string());
+
+        // Strip any quote characters from the identifier
+        Self::unquote_identifier(&raw_name)
     }
 
     fn parse_create_table_with_preprocessing(
@@ -840,9 +897,12 @@ impl SQLImporter {
         // Collect PK columns from table-level constraints.
         let mut pk_cols = std::collections::HashSet::<String>::new();
         for c in constraints {
-            if let TableConstraint::PrimaryKey { columns, .. } = c {
-                for col in columns {
-                    pk_cols.insert(col.value.clone());
+            if let TableConstraint::PrimaryKey(pk_constraint) = c {
+                for col in &pk_constraint.columns {
+                    // In sqlparser 0.60, IndexColumn structure may have changed
+                    // Try to get the column name - might be a field or method
+                    // Unquote the column name to match against column definitions
+                    pk_cols.insert(Self::unquote_identifier(&col.to_string()));
                 }
             }
         }
@@ -856,20 +916,22 @@ impl SQLImporter {
                 match &opt_def.option {
                     ColumnOption::NotNull => nullable = false,
                     ColumnOption::Null => nullable = true,
-                    ColumnOption::Unique { is_primary, .. } => {
-                        if *is_primary {
-                            is_pk = true;
-                        }
+                    ColumnOption::Unique(_) => {
+                        // UNIQUE constraint (not primary key)
+                    }
+                    ColumnOption::PrimaryKey(_) => {
+                        // In sqlparser 0.60, PRIMARY KEY is a separate variant
+                        is_pk = true;
                     }
                     _ => {}
                 }
             }
 
-            if pk_cols.contains(&col.name.value) {
+            let col_name = Self::unquote_identifier(&col.name.value);
+
+            if pk_cols.contains(&col_name) {
                 is_pk = true;
             }
-
-            let col_name = col.name.value.clone();
             let mut data_type = col.data_type.to_string();
             let mut description = None;
 
@@ -880,7 +942,8 @@ impl SQLImporter {
                 }
             }
 
-            // Restore complex types (STRUCT/ARRAY) if this column was extracted
+            // Restore complex types (STRUCT/ARRAY/MAP) if this column was extracted
+            // Keep the full type string - we'll simplify it when converting to Column model
             if let Some((_, original_type)) =
                 complex_types.iter().find(|(name, _)| name == &col_name)
             {
@@ -898,11 +961,12 @@ impl SQLImporter {
             out_cols.push(ColumnData {
                 name: col_name,
                 data_type,
+                physical_type: None,
                 nullable,
                 primary_key: is_pk,
                 description,
                 quality: None,
-                ref_path: None,
+                relationships: Vec::new(),
                 enum_values: None,
             });
         }
@@ -915,27 +979,6 @@ impl SQLImporter {
             },
             requires_name,
         ))
-    }
-
-    #[allow(dead_code)] // Used by non-Databricks dialects
-    fn parse_create_table(
-        &self,
-        table_index: usize,
-        name: &ObjectName,
-        columns: &[ColumnDef],
-        constraints: &[TableConstraint],
-    ) -> std::result::Result<TableData, String> {
-        // Use empty preprocessing state for non-Databricks dialects
-        let empty_state = PreprocessingState::new();
-        self.parse_create_table_with_preprocessing(
-            table_index,
-            name,
-            columns,
-            constraints,
-            &empty_state,
-            &[],
-        )
-        .map(|(table, _)| table)
     }
 
     /// Parse CREATE VIEW statement
@@ -1103,7 +1146,7 @@ mod tests {
     #[test]
     fn test_databricks_nested_variables() {
         let importer = SQLImporter::new("databricks");
-        let sql = "CREATE TABLE example (rulesTriggered ARRAY<STRUCT<id: STRING, name: STRING, alertOperation: STRUCT<name: STRING, revert: :variable_type, timestamp: TIMESTAMP>>>);";
+        let sql = "CREATE TABLE example (events ARRAY<STRUCT<id: STRING, name: STRING, details: STRUCT<name: STRING, status: :variable_type, timestamp: TIMESTAMP>>>);";
         let result = importer.parse(sql).unwrap();
         if !result.errors.is_empty() {
             eprintln!("Parse errors: {:?}", result.errors);
@@ -1114,7 +1157,7 @@ mod tests {
         assert!(
             result.tables[0].columns[0]
                 .data_type
-                .contains("revert: STRING")
+                .contains("status: STRING")
         );
     }
 

@@ -98,11 +98,6 @@ impl ProtobufExporter {
         })
     }
 
-    #[allow(dead_code)]
-    fn export_model_from_tables(tables: &[Table]) -> String {
-        Self::export_model_from_tables_with_version(tables, "proto3")
-    }
-
     fn export_model_from_tables_with_version(tables: &[Table], version: &str) -> String {
         let mut proto = String::new();
         proto.push_str(&format!("syntax = \"{}\";\n\n", version));

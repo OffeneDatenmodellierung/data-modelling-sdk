@@ -6,7 +6,7 @@ use crate::cli::reference::resolve_reference;
 #[cfg(feature = "openapi")]
 use crate::cli::validation::validate_openapi;
 use crate::cli::validation::{
-    validate_avro, validate_json_schema, validate_odcs, validate_protobuf,
+    validate_avro, validate_json_schema, validate_odcl, validate_odcs, validate_protobuf,
 };
 use crate::export::odcs::ODCSExporter;
 use crate::import::{
@@ -51,6 +51,7 @@ pub enum ImportFormat {
     Protobuf,
     OpenApi,
     Odcs,
+    Odcl,
     Odps,
 }
 
@@ -72,22 +73,112 @@ pub fn load_input(input: &InputSource) -> Result<String, CliError> {
 
 /// Convert ColumnData to Column
 fn column_data_to_column(col_data: &ColumnData) -> Column {
+    let data_type_upper = col_data.data_type.to_uppercase();
+    let is_array_struct =
+        data_type_upper.starts_with("ARRAY<") && data_type_upper.contains("STRUCT<");
+    let is_map = data_type_upper.starts_with("MAP<");
+
+    // For ARRAY<STRUCT> or MAP types, append full type to description and use simplified data_type
+    // Always use "ARRAY" as the data_type (not "ARRAY<STRUCT<...>>")
+    let (data_type, description) = if is_array_struct || is_map {
+        let simplified_type = if is_array_struct {
+            "ARRAY".to_string()
+        } else {
+            "MAP".to_string()
+        };
+        let base_description = col_data.description.clone().unwrap_or_default();
+        let full_description = if base_description.is_empty() {
+            col_data.data_type.clone()
+        } else {
+            format!("{} || {}", base_description, col_data.data_type)
+        };
+        (simplified_type, full_description)
+    } else {
+        (
+            col_data.data_type.clone(),
+            col_data.description.clone().unwrap_or_default(),
+        )
+    };
+
     Column {
         name: col_data.name.clone(),
-        data_type: col_data.data_type.clone(),
+        data_type,
+        physical_type: col_data.physical_type.clone(),
         nullable: col_data.nullable,
         primary_key: col_data.primary_key,
         secondary_key: false,
         composite_key: None,
         foreign_key: None,
         constraints: Vec::new(),
-        description: col_data.description.clone().unwrap_or_default(),
+        description,
         errors: Vec::new(),
         quality: col_data.quality.clone().unwrap_or_default(),
-        ref_path: col_data.ref_path.clone(),
+        relationships: col_data.relationships.clone(),
         enum_values: col_data.enum_values.clone().unwrap_or_default(),
         column_order: 0,
+        nested_data: None,
     }
+}
+
+/// Parse STRUCT type from data_type string and create nested columns
+/// This ensures STRUCT columns from SQL imports are properly expanded into nested columns
+fn parse_struct_columns(parent_name: &str, data_type: &str, col_data: &ColumnData) -> Vec<Column> {
+    use crate::import::odcs::ODCSImporter;
+
+    let importer = ODCSImporter::new();
+
+    // Try to parse STRUCT type using ODCS importer's logic
+    // Create a dummy field_data object for parsing
+    let field_data = serde_json::Map::new();
+
+    match importer.parse_struct_type_from_string(parent_name, data_type, &field_data) {
+        Ok(nested_cols) if !nested_cols.is_empty() => {
+            // parse_struct_type_from_string returns only nested columns, not the parent
+            // So we need to add the parent column first
+            let mut all_cols = Vec::new();
+
+            // Add parent column
+            let parent_data_type = if data_type.to_uppercase().starts_with("ARRAY<") {
+                "ARRAY<STRUCT<...>>".to_string()
+            } else {
+                "STRUCT<...>".to_string()
+            };
+
+            all_cols.push(Column {
+                name: parent_name.to_string(),
+                data_type: parent_data_type,
+                physical_type: col_data.physical_type.clone(),
+                nullable: col_data.nullable,
+                primary_key: col_data.primary_key,
+                secondary_key: false,
+                composite_key: None,
+                foreign_key: None,
+                constraints: Vec::new(),
+                description: col_data.description.clone().unwrap_or_default(),
+                errors: Vec::new(),
+                quality: col_data.quality.clone().unwrap_or_default(),
+                relationships: col_data.relationships.clone(),
+                enum_values: col_data.enum_values.clone().unwrap_or_default(),
+                column_order: 0,
+                nested_data: None,
+            });
+
+            // Add nested columns
+            all_cols.extend(nested_cols);
+            return all_cols;
+        }
+        Ok(_) => {
+            // Parsing succeeded but returned empty - this shouldn't happen for valid STRUCT
+            // Fall through to return empty
+        }
+        Err(_) => {
+            // Parsing failed - silently fall through to return empty
+            // This allows fallback to simple column
+        }
+    }
+
+    // If parsing fails or returns empty, return empty (will fall back to simple column)
+    Vec::new()
 }
 
 /// Convert TableData to Table
@@ -97,13 +188,37 @@ fn table_data_to_table(table_data: &TableData, uuid: Option<Uuid>) -> Table {
         .clone()
         .unwrap_or_else(|| format!("table_{}", table_data.table_index));
 
-    let columns: Vec<Column> = table_data
-        .columns
-        .iter()
-        .map(column_data_to_column)
-        .collect();
+    let mut all_columns = Vec::new();
 
-    let mut table = Table::new(table_name, columns);
+    // Convert columns - do NOT parse ARRAY<STRUCT> or MAP types (store in nestedData instead)
+    for col_data in &table_data.columns {
+        let data_type_upper = col_data.data_type.to_uppercase();
+        let is_array_struct =
+            data_type_upper.starts_with("ARRAY<") && data_type_upper.contains("STRUCT<");
+        let is_map = data_type_upper.starts_with("MAP<");
+
+        // Skip parsing for ARRAY<STRUCT> or MAP - they go in nestedData
+        if is_array_struct || is_map {
+            all_columns.push(column_data_to_column(col_data));
+            continue;
+        }
+
+        // For regular STRUCT (not ARRAY<STRUCT>), try to parse and create nested columns
+        let is_struct = data_type_upper.contains("STRUCT<") || data_type_upper == "STRUCT";
+        if is_struct {
+            // Try to parse STRUCT and create nested columns
+            let struct_cols = parse_struct_columns(&col_data.name, &col_data.data_type, col_data);
+            if !struct_cols.is_empty() {
+                all_columns.extend(struct_cols);
+                continue;
+            }
+        }
+
+        // Regular column (non-STRUCT or STRUCT parsing failed)
+        all_columns.push(column_data_to_column(col_data));
+    }
+
+    let mut table = Table::new(table_name, all_columns);
 
     // Override UUID if provided
     if let Some(uuid_val) = uuid {
@@ -140,6 +255,14 @@ fn write_odcs_files(
 
         let table = table_data_to_table(table_data, uuid);
         let odcs_yaml = ODCSExporter::export_table(&table, "odcs_v3_1_0");
+
+        // Validate exported ODCS YAML before writing (if validation enabled)
+        #[cfg(feature = "schema-validation")]
+        {
+            validate_odcs(&odcs_yaml).map_err(|e| {
+                CliError::ValidationError(format!("Exported ODCS file failed validation: {}", e))
+            })?;
+        }
 
         // Determine output file path
         let table_name = table_data.name.as_deref().unwrap_or("table");
@@ -221,18 +344,103 @@ pub fn handle_import_sql(args: &ImportArgs) -> Result<(), CliError> {
     Ok(())
 }
 
+/// Resolve external references in AVRO content
+///
+/// AVRO schemas can reference other schemas via:
+/// - Named types (type references to other records in the same namespace)
+/// - External file references (non-standard but common in some tooling)
+///
+/// This function resolves external file/URL references in the schema.
+fn resolve_avro_references(
+    content: &str,
+    source_file: Option<&PathBuf>,
+    resolve_refs: bool,
+) -> Result<String, CliError> {
+    if !resolve_refs {
+        return Ok(content.to_string());
+    }
+
+    let mut schema: JsonValue = serde_json::from_str(content)
+        .map_err(|e| CliError::InvalidArgument(format!("Invalid AVRO JSON: {}", e)))?;
+
+    // Resolve external references in the schema
+    let source_path = source_file.map(|p| p.as_path());
+    resolve_avro_refs_recursive(&mut schema, source_path)?;
+
+    serde_json::to_string_pretty(&schema).map_err(|e| {
+        CliError::InvalidArgument(format!("Failed to serialize resolved AVRO schema: {}", e))
+    })
+}
+
+/// Recursively resolve references in AVRO schema
+///
+/// Handles:
+/// - "$ref" fields pointing to external schemas
+/// - "type" fields that are URLs or file paths
+fn resolve_avro_refs_recursive(
+    value: &mut JsonValue,
+    source_file: Option<&std::path::Path>,
+) -> Result<(), CliError> {
+    match value {
+        JsonValue::Object(obj) => {
+            // Check for $ref field (non-standard but used by some tools)
+            if let Some(ref_val) = obj.get("$ref").and_then(|v| v.as_str()) {
+                // Only resolve external references (file paths or URLs)
+                if ref_val.starts_with("http://")
+                    || ref_val.starts_with("https://")
+                    || ref_val.ends_with(".avsc")
+                    || ref_val.ends_with(".json")
+                {
+                    let resolved_content = resolve_reference(ref_val, source_file)?;
+                    let resolved: JsonValue =
+                        serde_json::from_str(&resolved_content).map_err(|e| {
+                            CliError::ReferenceResolutionError(format!(
+                                "Failed to parse resolved AVRO reference '{}': {}",
+                                ref_val, e
+                            ))
+                        })?;
+
+                    // Replace the entire object with resolved content
+                    *value = resolved;
+                    return Ok(());
+                }
+            }
+
+            // Recursively process all values
+            for v in obj.values_mut() {
+                resolve_avro_refs_recursive(v, source_file)?;
+            }
+        }
+        JsonValue::Array(arr) => {
+            for item in arr.iter_mut() {
+                resolve_avro_refs_recursive(item, source_file)?;
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
 /// Handle AVRO import command
 pub fn handle_import_avro(args: &ImportArgs) -> Result<(), CliError> {
     // Load AVRO input
-    let avro_content = load_input(&args.input)?;
+    let mut avro_content = load_input(&args.input)?;
+
+    // Resolve external references if enabled
+    if args.resolve_references {
+        let source_file = match &args.input {
+            InputSource::File(path) => Some(path),
+            _ => None,
+        };
+        avro_content =
+            resolve_avro_references(&avro_content, source_file, args.resolve_references)?;
+    }
 
     // Validate if enabled
     if args.validate {
         validate_avro(&avro_content)?;
     }
-
-    // TODO: Resolve external references if enabled
-    // For AVRO, references are typically embedded, but could be in $ref fields
 
     // Import AVRO
     let importer = AvroImporter::new();
@@ -643,11 +851,12 @@ pub fn handle_import_openapi(args: &ImportArgs) -> Result<(), CliError> {
                             .map(|col| crate::import::ColumnData {
                                 name: col.name.clone(),
                                 data_type: col.data_type.clone(),
+                                physical_type: col.physical_type.clone(),
                                 nullable: col.nullable,
                                 primary_key: col.primary_key,
                                 description: Some(col.description.clone()),
                                 quality: None,
-                                ref_path: col.ref_path.clone(),
+                                relationships: col.relationships.clone(),
                                 enum_values: if col.enum_values.is_empty() {
                                     None
                                 } else {
@@ -924,6 +1133,50 @@ pub fn handle_import_odcs(args: &ImportArgs) -> Result<(), CliError> {
     print!("{}", output);
 
     // Write ODCS files unless --no-odcs is specified
+    if !args.no_odcs {
+        let base_path = match &args.input {
+            InputSource::File(path) => path.parent(),
+            _ => None,
+        };
+        write_odcs_files(&result, base_path, args.uuid_override.as_deref())?;
+    }
+
+    Ok(())
+}
+
+/// Handle ODCL import command (legacy format, converted to ODCS)
+pub fn handle_import_odcl(args: &ImportArgs) -> Result<(), CliError> {
+    // Load ODCL input
+    let odcl_content = load_input(&args.input)?;
+
+    // Validate if enabled
+    if args.validate {
+        validate_odcl(&odcl_content)?;
+    }
+
+    // Import ODCL (ODCSImporter handles ODCL formats internally)
+    // ODCL files are automatically converted to ODCS v3.1.0 format during import
+    let mut importer = ODCSImporter::new();
+    let mut result = importer
+        .import(&odcl_content)
+        .map_err(CliError::ImportError)?;
+
+    // Apply UUID override if provided
+    if let Some(ref uuid) = args.uuid_override {
+        apply_uuid_override(&mut result, uuid)?;
+    }
+
+    // Display results
+    let mappings = collect_type_mappings(&result);
+    let output = if args.pretty {
+        format_pretty_output(&result, &mappings)
+    } else {
+        format_compact_output(&result)
+    };
+    print!("{}", output);
+
+    // Write ODCS files unless --no-odcs is specified
+    // ODCL imports are converted to ODCS format
     if !args.no_odcs {
         let base_path = match &args.input {
             InputSource::File(path) => path.parent(),

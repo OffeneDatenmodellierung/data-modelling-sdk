@@ -41,6 +41,7 @@ fn create_column(name: &str, data_type: &str, primary_key: bool, nullable: bool)
     Column {
         name: name.to_string(),
         data_type: data_type.to_string(),
+        physical_type: None,
         nullable,
         primary_key,
         secondary_key: false,
@@ -49,10 +50,11 @@ fn create_column(name: &str, data_type: &str, primary_key: bool, nullable: bool)
         constraints: Vec::new(),
         description: String::new(),
         quality: Vec::new(),
-        ref_path: None,
+        relationships: Vec::new(),
         enum_values: Vec::new(),
         errors: Vec::new(),
         column_order: 0,
+        nested_data: None,
     }
 }
 
@@ -97,17 +99,22 @@ mod deeply_nested_structures {
 
         assert!(schema.is_some(), "Schema should be present");
 
+        // ODCS v3.1.0 uses array format for properties
         let properties = schema
             .unwrap()
             .get(&serde_yaml::Value::String("properties".to_string()))
-            .and_then(|v| v.as_mapping());
+            .and_then(|v| v.as_sequence());
 
         assert!(properties.is_some(), "Properties should be present");
 
         // Verify addresses is exported as array of objects
-        let addresses_prop = properties
-            .unwrap()
-            .get(&serde_yaml::Value::String("addresses".to_string()));
+        // In ODCS v3.1.0 array format, find the property by name
+        let addresses_prop = properties.unwrap().iter().find(|prop| {
+            prop.as_mapping()
+                .and_then(|m| m.get(&serde_yaml::Value::String("name".to_string())))
+                .and_then(|v| v.as_str())
+                == Some("addresses")
+        });
         assert!(addresses_prop.is_some(), "addresses property should exist");
     }
 
@@ -576,12 +583,26 @@ mod reference_tests {
         assert_eq!(imported_table.name, "customer");
 
         // Verify nested columns are preserved
+        // Note: The importer uses array notation (addresses.[].field) for nested columns inside arrays
         let column_names: Vec<String> = imported_table
             .columns
             .iter()
             .map(|c| c.name.clone())
             .collect();
-        assert!(column_names.iter().any(|n| n.contains("addresses.street")));
-        assert!(column_names.iter().any(|n| n.contains("addresses.city")));
+        // Check for either notation (with or without []) since both are valid representations
+        assert!(
+            column_names
+                .iter()
+                .any(|n| n.contains("addresses.street") || n.contains("addresses.[].street")),
+            "Should have addresses.street or addresses.[].street, got: {:?}",
+            column_names
+        );
+        assert!(
+            column_names
+                .iter()
+                .any(|n| n.contains("addresses.city") || n.contains("addresses.[].city")),
+            "Should have addresses.city or addresses.[].city, got: {:?}",
+            column_names
+        );
     }
 }

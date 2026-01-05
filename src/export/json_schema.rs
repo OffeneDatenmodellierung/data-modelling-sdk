@@ -1,8 +1,21 @@
 //! JSON Schema exporter for generating JSON Schema from data models.
 
 use super::{ExportError, ExportResult};
-use crate::models::{DataModel, Table};
+use crate::models::{Column, DataModel, Table};
 use serde_json::{Value, json};
+
+/// Extract $ref path from column relationships.
+/// Returns the first foreignKey relationship as a $ref path.
+fn get_ref_path_from_relationships(column: &Column) -> Option<String> {
+    column.relationships.iter().find_map(|rel| {
+        if rel.relationship_type == "foreignKey" {
+            // Convert back to $ref format
+            Some(format!("#/{}", rel.to))
+        } else {
+            None
+        }
+    })
+}
 
 /// Exporter for JSON Schema format.
 pub struct JSONSchemaExporter;
@@ -35,9 +48,38 @@ impl JSONSchemaExporter {
     /// ```
     pub fn export(&self, tables: &[Table]) -> Result<ExportResult, ExportError> {
         let schema = Self::export_model_from_tables(tables);
+        let content = serde_json::to_string_pretty(&schema)
+            .map_err(|e| ExportError::SerializationError(e.to_string()))?;
+
+        // Validate exported JSON Schema (if feature enabled)
+        #[cfg(feature = "schema-validation")]
+        {
+            #[cfg(feature = "cli")]
+            {
+                use crate::cli::validation::validate_json_schema;
+                validate_json_schema(&content).map_err(|e| {
+                    ExportError::ValidationError(format!("JSON Schema validation failed: {}", e))
+                })?;
+            }
+            #[cfg(not(feature = "cli"))]
+            {
+                // Inline validation when CLI feature is not enabled
+                use jsonschema::Validator;
+                use serde_json::Value;
+
+                let schema_value: Value = serde_json::from_str(&content).map_err(|e| {
+                    ExportError::ValidationError(format!("Failed to parse JSON Schema: {}", e))
+                })?;
+
+                // Try to compile the schema (this validates the schema itself)
+                Validator::new(&schema_value).map_err(|e| {
+                    ExportError::ValidationError(format!("Invalid JSON Schema: {}", e))
+                })?;
+            }
+        }
+
         Ok(ExportResult {
-            content: serde_json::to_string_pretty(&schema)
-                .map_err(|e| ExportError::SerializationError(e.to_string()))?,
+            content,
             format: "json_schema".to_string(),
         })
     }
@@ -105,8 +147,8 @@ impl JSONSchemaExporter {
                 property.insert("description".to_string(), json!(column.description));
             }
 
-            // Export $ref if present
-            if let Some(ref_path) = &column.ref_path {
+            // Export $ref if present (from relationships)
+            if let Some(ref_path) = get_ref_path_from_relationships(column) {
                 property.insert("$ref".to_string(), json!(ref_path));
             }
 

@@ -74,6 +74,7 @@ impl AvroImporter {
                             .map(|c| super::ColumnData {
                                 name: c.name.clone(),
                                 data_type: c.data_type.clone(),
+                                physical_type: c.physical_type.clone(),
                                 nullable: c.nullable,
                                 primary_key: c.primary_key,
                                 description: if c.description.is_empty() {
@@ -86,7 +87,7 @@ impl AvroImporter {
                                 } else {
                                     Some(c.quality.clone())
                                 },
-                                ref_path: c.ref_path.clone(),
+                                relationships: c.relationships.clone(),
                                 enum_values: if c.enum_values.is_empty() {
                                     None
                                 } else {
@@ -339,6 +340,7 @@ impl AvroImporter {
             columns.push(Column {
                 name: field_name,
                 data_type,
+                physical_type: None,
                 nullable,
                 primary_key: false,
                 secondary_key: false,
@@ -347,10 +349,11 @@ impl AvroImporter {
                 constraints: Vec::new(),
                 description,
                 quality: Vec::new(),
-                ref_path: None,
+                relationships: Vec::new(),
                 enum_values: Vec::new(),
                 errors: Vec::new(),
                 column_order: 0,
+                nested_data: None,
             });
         } else if let Some(type_obj) = avro_type.as_object() {
             // Complex type (record, array, map)
@@ -431,6 +434,7 @@ impl AvroImporter {
                 columns.push(Column {
                     name: field_name,
                     data_type,
+                    physical_type: None,
                     nullable,
                     primary_key: false,
                     secondary_key: false,
@@ -439,16 +443,18 @@ impl AvroImporter {
                     constraints: Vec::new(),
                     description,
                     quality: Vec::new(),
-                    ref_path: None,
+                    relationships: Vec::new(),
                     enum_values: Vec::new(),
                     errors: Vec::new(),
                     column_order: 0,
+                    nested_data: None,
                 });
             } else {
                 // Other complex types - default to STRUCT
                 columns.push(Column {
                     name: field_name,
                     data_type: "STRUCT".to_string(),
+                    physical_type: None,
                     nullable,
                     primary_key: false,
                     secondary_key: false,
@@ -457,10 +463,11 @@ impl AvroImporter {
                     constraints: Vec::new(),
                     description,
                     quality: Vec::new(),
-                    ref_path: None,
+                    relationships: Vec::new(),
                     enum_values: Vec::new(),
                     errors: Vec::new(),
                     column_order: 0,
+                    nested_data: None,
                 });
             }
         } else {

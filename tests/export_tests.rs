@@ -39,6 +39,7 @@ fn create_column(name: &str, data_type: &str, primary_key: bool, nullable: bool)
     Column {
         name: name.to_string(),
         data_type: data_type.to_string(),
+        physical_type: None,
         nullable,
         primary_key,
         secondary_key: false,
@@ -47,10 +48,11 @@ fn create_column(name: &str, data_type: &str, primary_key: bool, nullable: bool)
         constraints: Vec::new(),
         description: String::new(),
         quality: Vec::new(),
-        ref_path: None,
+        relationships: Vec::new(),
         enum_values: Vec::new(),
         errors: Vec::new(),
         column_order: 0,
+        nested_data: None,
     }
 }
 

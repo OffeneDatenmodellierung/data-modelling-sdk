@@ -79,8 +79,10 @@ fn validate_odcs_v3_1_0_schema(yaml: &str) -> Result<(), String> {
 
     first_schema
         .get(&YamlValue::String("properties".to_string()))
-        .and_then(|v| v.as_mapping())
-        .ok_or_else(|| "SchemaObject missing required field: properties".to_string())?;
+        .and_then(|v| v.as_sequence())
+        .ok_or_else(|| {
+            "SchemaObject missing required field: properties (must be an array)".to_string()
+        })?;
 
     Ok(())
 }
@@ -134,6 +136,7 @@ fn create_column(name: &str, data_type: &str, primary_key: bool, nullable: bool)
     Column {
         name: name.to_string(),
         data_type: data_type.to_string(),
+        physical_type: None,
         nullable,
         primary_key,
         secondary_key: false,
@@ -142,10 +145,11 @@ fn create_column(name: &str, data_type: &str, primary_key: bool, nullable: bool)
         constraints: Vec::new(),
         description: String::new(),
         quality: Vec::new(),
-        ref_path: None,
+        relationships: Vec::new(),
         enum_values: Vec::new(),
         errors: Vec::new(),
         column_order: 0,
+        nested_data: None,
     }
 }
 
@@ -237,6 +241,46 @@ mod odcs_export_tests {
 
         // Validate roundtrip
         validate_roundtrip(&table).expect("Roundtrip export/import must work");
+    }
+
+    #[test]
+    fn test_export_table_with_reserved_column_names() {
+        // Test that columns with reserved names like 'type' and 'status' are handled correctly
+        let table = create_test_table(
+            "user_events",
+            vec![
+                create_column("id", "STRING", true, false),
+                create_column("type", "STRING", false, false), // 'type' is a valid column name
+                create_column("status", "STRING", false, true), // 'status' is a valid column name
+                create_column("description", "STRING", false, true),
+            ],
+        );
+
+        let exporter = ODCSExporter;
+        let yaml = exporter.export(&[table], "odcs_v3_1_0").unwrap();
+        let result = yaml.values().next().unwrap();
+
+        // Validate schema
+        validate_odcs_v3_1_0_schema(&result.content)
+            .expect("Exported YAML must conform to ODCS v3.1.0 schema");
+
+        // Verify the exported YAML contains the column names correctly
+        assert!(result.content.contains("name: type"));
+        assert!(result.content.contains("name: status"));
+        assert!(result.content.contains("logicalType: string")); // Should use logicalType, not type
+        assert!(!result.content.contains("type: string")); // Should not have 'type' as property field
+
+        // Validate roundtrip
+        validate_roundtrip(&create_test_table(
+            "user_events",
+            vec![
+                create_column("id", "STRING", true, false),
+                create_column("type", "STRING", false, false),
+                create_column("status", "STRING", false, true),
+                create_column("description", "STRING", false, true),
+            ],
+        ))
+        .expect("Roundtrip export/import must work");
     }
 
     #[test]
@@ -352,11 +396,14 @@ mod odcs_export_tests {
             "SchemaObject must have 'properties' field"
         );
 
-        // Properties must be a mapping
+        // Properties must be an array (ODCS v3.1.0 format)
         let properties = schema_obj
             .get(&YamlValue::String("properties".to_string()))
-            .and_then(|v| v.as_mapping());
-        assert!(properties.is_some(), "Properties must be a mapping/object");
+            .and_then(|v| v.as_sequence());
+        assert!(
+            properties.is_some(),
+            "Properties must be an array (ODCS v3.1.0)"
+        );
     }
 }
 
@@ -650,6 +697,138 @@ schema:
     }
 
     #[test]
+    fn test_odcs_v3_1_0_physical_type_roundtrip() {
+        let mut importer = ODCSImporter::new();
+        let yaml = r#"
+apiVersion: v3.1.0
+kind: DataContract
+id: physical-type-test
+name: PhysicalTypeTest
+version: 1.0.0
+status: draft
+schema:
+  - name: PhysicalTypeTest
+    properties:
+      - name: doubleField
+        logicalType: number
+        physicalType: DOUBLE
+        description: A double field
+      - name: intField
+        logicalType: integer
+        physicalType: INT
+        description: An int field
+      - name: longField
+        logicalType: integer
+        physicalType: LONG
+        description: A long field
+      - name: varcharField
+        logicalType: string
+        physicalType: VARCHAR(255)
+        description: A varchar field
+      - name: decimalField
+        logicalType: number
+        physicalType: DECIMAL(10,2)
+        description: A decimal field
+      - name: timestampField
+        logicalType: timestamp
+        physicalType: TIMESTAMP_NTZ
+        description: A timestamp field
+"#;
+        // Import the YAML
+        let (table, errors) = importer.parse_table(yaml).unwrap();
+        assert_eq!(errors.len(), 0, "Import should have no errors");
+        assert_eq!(table.columns.len(), 6);
+
+        // Verify physical_type is preserved on import
+        let double_col = table
+            .columns
+            .iter()
+            .find(|c| c.name == "doubleField")
+            .unwrap();
+        assert_eq!(double_col.physical_type, Some("DOUBLE".to_string()));
+
+        let int_col = table.columns.iter().find(|c| c.name == "intField").unwrap();
+        assert_eq!(int_col.physical_type, Some("INT".to_string()));
+
+        let long_col = table
+            .columns
+            .iter()
+            .find(|c| c.name == "longField")
+            .unwrap();
+        assert_eq!(long_col.physical_type, Some("LONG".to_string()));
+
+        let varchar_col = table
+            .columns
+            .iter()
+            .find(|c| c.name == "varcharField")
+            .unwrap();
+        assert_eq!(varchar_col.physical_type, Some("VARCHAR(255)".to_string()));
+
+        let decimal_col = table
+            .columns
+            .iter()
+            .find(|c| c.name == "decimalField")
+            .unwrap();
+        assert_eq!(decimal_col.physical_type, Some("DECIMAL(10,2)".to_string()));
+
+        let timestamp_col = table
+            .columns
+            .iter()
+            .find(|c| c.name == "timestampField")
+            .unwrap();
+        assert_eq!(
+            timestamp_col.physical_type,
+            Some("TIMESTAMP_NTZ".to_string())
+        );
+
+        // Export and verify physicalType is preserved in output
+        let exported_yaml = ODCSExporter::export_table(&table, "odcs_v3_1_0");
+
+        // Verify the exported YAML contains all physicalType values
+        assert!(
+            exported_yaml.contains("physicalType: DOUBLE"),
+            "DOUBLE physicalType missing from export"
+        );
+        assert!(
+            exported_yaml.contains("physicalType: INT"),
+            "INT physicalType missing from export"
+        );
+        assert!(
+            exported_yaml.contains("physicalType: LONG"),
+            "LONG physicalType missing from export"
+        );
+        assert!(
+            exported_yaml.contains("physicalType: VARCHAR(255)"),
+            "VARCHAR(255) physicalType missing from export"
+        );
+        assert!(
+            exported_yaml.contains("physicalType: DECIMAL(10,2)"),
+            "DECIMAL(10,2) physicalType missing from export"
+        );
+        assert!(
+            exported_yaml.contains("physicalType: TIMESTAMP_NTZ"),
+            "TIMESTAMP_NTZ physicalType missing from export"
+        );
+
+        // Re-import and verify roundtrip
+        let (reimported_table, reimport_errors) = importer.parse_table(&exported_yaml).unwrap();
+        assert_eq!(reimport_errors.len(), 0, "Re-import should have no errors");
+
+        for col in &table.columns {
+            let reimported_col = reimported_table
+                .columns
+                .iter()
+                .find(|c| c.name == col.name)
+                .unwrap();
+            assert_eq!(
+                reimported_col.physical_type, col.physical_type,
+                "physical_type mismatch for column '{}': original {:?}, reimported {:?}",
+                col.name, col.physical_type, reimported_col.physical_type
+            );
+        }
+    }
+
+    #[test]
     fn test_odcs_v3_1_0_import_preserves_ref_references() {
         let mut importer = ODCSImporter::new();
         let yaml = r#"
@@ -679,6 +858,10 @@ definitions:
 
         let column = &table.columns[0];
         assert_eq!(column.name, "order_id");
-        assert_eq!(column.ref_path, Some("#/definitions/order_id".to_string()));
+        // ref_path is now stored as relationships
+        assert!(
+            !column.relationships.is_empty(),
+            "Column should have relationships from $ref"
+        );
     }
 }

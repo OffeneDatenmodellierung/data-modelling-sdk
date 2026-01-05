@@ -102,7 +102,11 @@ pub fn validate_table_name(name: &str) -> ValidationResult<()> {
     }
 
     // Must start with a letter or underscore
-    let first_char = name.chars().next().unwrap();
+    // Note: unwrap is safe here due to the empty check above, but we use match for clarity
+    let first_char = match name.chars().next() {
+        Some(c) => c,
+        None => return Err(ValidationError::Empty("table name")),
+    };
     if !first_char.is_alphabetic() && first_char != '_' {
         return Err(ValidationError::InvalidFormat(
             "table name",
@@ -165,7 +169,11 @@ pub fn validate_column_name(name: &str) -> ValidationResult<()> {
     }
 
     // Must start with a letter or underscore
-    let first_char = name.chars().next().unwrap();
+    // Note: unwrap is safe here due to the empty check above, but we use match for clarity
+    let first_char = match name.chars().next() {
+        Some(c) => c,
+        None => return Err(ValidationError::Empty("column name")),
+    };
     if !first_char.is_alphabetic() && first_char != '_' {
         return Err(ValidationError::InvalidFormat(
             "column name",

@@ -25,8 +25,10 @@ use crate::import::{cads::CADSImporter, odcs::ODCSImporter, odps::ODPSImporter};
 use crate::models::bpmn::BPMNModel;
 #[cfg(feature = "dmn")]
 use crate::models::dmn::DMNModel;
+use crate::models::domain_config::DomainConfig;
 #[cfg(feature = "openapi")]
 use crate::models::openapi::{OpenAPIFormat, OpenAPIModel};
+use crate::models::workspace::Workspace;
 use crate::models::{cads::CADSAsset, domain::Domain, odps::ODPSDataProduct, table::Table};
 use crate::storage::{StorageBackend, StorageError};
 use anyhow::Result;
@@ -607,9 +609,11 @@ impl<B: StorageBackend> ModelLoader<B> {
             .unwrap_or(file_name)
             .to_string();
 
-        // Parse domain ID from domain directory name (assuming it's a UUID)
-        // For now, we'll use a placeholder - in practice, this should come from the domain.yaml
-        let domain_id = Uuid::new_v4(); // TODO: Extract from domain.yaml
+        // Get domain ID from domain.yaml, or generate a new one if not found
+        let domain_id = self
+            .get_domain_id(domain_dir)
+            .await?
+            .unwrap_or_else(Uuid::new_v4);
 
         // Import using BPMNImporter
         let mut importer = BPMNImporter::new();
@@ -690,9 +694,11 @@ impl<B: StorageBackend> ModelLoader<B> {
             .unwrap_or(file_name)
             .to_string();
 
-        // Parse domain ID from domain directory name (assuming it's a UUID)
-        // For now, we'll use a placeholder - in practice, this should come from the domain.yaml
-        let domain_id = Uuid::new_v4(); // TODO: Extract from domain.yaml
+        // Get domain ID from domain.yaml, or generate a new one if not found
+        let domain_id = self
+            .get_domain_id(domain_dir)
+            .await?
+            .unwrap_or_else(Uuid::new_v4);
 
         // Import using DMNImporter
         let mut importer = DMNImporter::new();
@@ -780,9 +786,11 @@ impl<B: StorageBackend> ModelLoader<B> {
             .unwrap_or(file_name)
             .to_string();
 
-        // Parse domain ID from domain directory name (assuming it's a UUID)
-        // For now, we'll use a placeholder - in practice, this should come from the domain.yaml
-        let domain_id = Uuid::new_v4(); // TODO: Extract from domain.yaml
+        // Get domain ID from domain.yaml, or generate a new one if not found
+        let domain_id = self
+            .get_domain_id(domain_dir)
+            .await?
+            .unwrap_or_else(Uuid::new_v4);
 
         // Import using OpenAPIImporter
         let mut importer = OpenAPIImporter::new();
@@ -832,6 +840,186 @@ impl<B: StorageBackend> ModelLoader<B> {
             "OpenAPI spec '{}.openapi.{{yaml,json}}' not found in domain '{}'",
             api_name, domain_name
         )))
+    }
+
+    // ==================== Workspace and Domain Config Loading ====================
+
+    /// Load workspace configuration from workspace.yaml
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_path` - Path to the workspace directory
+    ///
+    /// # Returns
+    ///
+    /// The Workspace configuration if found, or None if workspace.yaml doesn't exist
+    pub async fn load_workspace(
+        &self,
+        workspace_path: &str,
+    ) -> Result<Option<Workspace>, StorageError> {
+        let workspace_file = format!("{}/workspace.yaml", workspace_path);
+
+        if !self.storage.file_exists(&workspace_file).await? {
+            return Ok(None);
+        }
+
+        let content = self.storage.read_file(&workspace_file).await?;
+        let yaml_content = String::from_utf8(content)
+            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
+
+        let workspace: Workspace = serde_yaml::from_str(&yaml_content).map_err(|e| {
+            StorageError::SerializationError(format!("Failed to parse workspace.yaml: {}", e))
+        })?;
+
+        Ok(Some(workspace))
+    }
+
+    /// Save workspace configuration to workspace.yaml
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_path` - Path to the workspace directory
+    /// * `workspace` - The Workspace configuration to save
+    pub async fn save_workspace(
+        &self,
+        workspace_path: &str,
+        workspace: &Workspace,
+    ) -> Result<(), StorageError> {
+        let workspace_file = format!("{}/workspace.yaml", workspace_path);
+
+        let yaml_content = serde_yaml::to_string(workspace).map_err(|e| {
+            StorageError::SerializationError(format!("Failed to serialize workspace: {}", e))
+        })?;
+
+        self.storage
+            .write_file(&workspace_file, yaml_content.as_bytes())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Load domain configuration from domain.yaml
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_dir` - Path to the domain directory
+    ///
+    /// # Returns
+    ///
+    /// The DomainConfig if found, or None if domain.yaml doesn't exist
+    pub async fn load_domain_config(
+        &self,
+        domain_dir: &str,
+    ) -> Result<Option<DomainConfig>, StorageError> {
+        let domain_file = format!("{}/domain.yaml", domain_dir);
+
+        if !self.storage.file_exists(&domain_file).await? {
+            return Ok(None);
+        }
+
+        let content = self.storage.read_file(&domain_file).await?;
+        let yaml_content = String::from_utf8(content)
+            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
+
+        let config: DomainConfig = serde_yaml::from_str(&yaml_content).map_err(|e| {
+            StorageError::SerializationError(format!("Failed to parse domain.yaml: {}", e))
+        })?;
+
+        Ok(Some(config))
+    }
+
+    /// Save domain configuration to domain.yaml
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_dir` - Path to the domain directory
+    /// * `config` - The DomainConfig to save
+    pub async fn save_domain_config(
+        &self,
+        domain_dir: &str,
+        config: &DomainConfig,
+    ) -> Result<(), StorageError> {
+        let domain_file = format!("{}/domain.yaml", domain_dir);
+
+        let yaml_content = serde_yaml::to_string(config).map_err(|e| {
+            StorageError::SerializationError(format!("Failed to serialize domain config: {}", e))
+        })?;
+
+        self.storage
+            .write_file(&domain_file, yaml_content.as_bytes())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Load domain configuration by name from a workspace
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_path` - Path to the workspace directory
+    /// * `domain_name` - Name of the domain (folder name)
+    ///
+    /// # Returns
+    ///
+    /// The DomainConfig if found
+    pub async fn load_domain_config_by_name(
+        &self,
+        workspace_path: &str,
+        domain_name: &str,
+    ) -> Result<Option<DomainConfig>, StorageError> {
+        let sanitized_domain_name = sanitize_filename(domain_name);
+        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
+        self.load_domain_config(&domain_dir).await
+    }
+
+    /// Get domain ID from domain.yaml, or None if not found
+    ///
+    /// This is a helper method used by BPMN/DMN/OpenAPI loaders to get the domain ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_dir` - Path to the domain directory
+    ///
+    /// # Returns
+    ///
+    /// The domain UUID if found in domain.yaml, or None
+    pub async fn get_domain_id(&self, domain_dir: &str) -> Result<Option<Uuid>, StorageError> {
+        match self.load_domain_config(domain_dir).await? {
+            Some(config) => Ok(Some(config.id)),
+            None => Ok(None),
+        }
+    }
+
+    /// Load all domain configurations from a workspace
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_path` - Path to the workspace directory
+    ///
+    /// # Returns
+    ///
+    /// A vector of all DomainConfig found in the workspace
+    pub async fn load_all_domain_configs(
+        &self,
+        workspace_path: &str,
+    ) -> Result<Vec<DomainConfig>, StorageError> {
+        let mut configs = Vec::new();
+
+        // List all directories in the workspace
+        let entries = self.storage.list_files(workspace_path).await?;
+
+        for entry in entries {
+            // Skip files, only process directories
+            let entry_path = format!("{}/{}", workspace_path, entry);
+            if self.storage.dir_exists(&entry_path).await? {
+                // Try to load domain.yaml from each directory
+                if let Ok(Some(config)) = self.load_domain_config(&entry_path).await {
+                    configs.push(config);
+                }
+            }
+        }
+
+        Ok(configs)
     }
 }
 

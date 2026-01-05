@@ -12,7 +12,8 @@ use data_modelling_sdk::cli::commands::import::handle_import_openapi;
 #[cfg(feature = "cli")]
 use data_modelling_sdk::cli::commands::import::{
     ImportArgs, ImportFormat, InputSource, handle_import_avro, handle_import_json_schema,
-    handle_import_odcs, handle_import_odps, handle_import_protobuf, handle_import_sql,
+    handle_import_odcl, handle_import_odcs, handle_import_odps, handle_import_protobuf,
+    handle_import_sql,
 };
 #[cfg(feature = "cli")]
 use std::path::PathBuf;
@@ -92,6 +93,7 @@ enum ImportFormatArg {
     Protobuf,
     Openapi,
     Odcs,
+    Odcl,
     Odps,
 }
 
@@ -115,6 +117,7 @@ fn convert_import_format(format: ImportFormatArg) -> ImportFormat {
         ImportFormatArg::Protobuf => ImportFormat::Protobuf,
         ImportFormatArg::Openapi => ImportFormat::OpenApi,
         ImportFormatArg::Odcs => ImportFormat::Odcs,
+        ImportFormatArg::Odcl => ImportFormat::Odcl,
         ImportFormatArg::Odps => ImportFormat::Odps,
     }
 }
@@ -188,12 +191,14 @@ fn main() {
                     }
                     #[cfg(not(feature = "openapi"))]
                     {
+                        use data_modelling_sdk::cli::error::CliError;
                         Err(CliError::InvalidArgument(
                             "OpenAPI support not enabled. Enable 'openapi' feature.".to_string(),
                         ))
                     }
                 }
                 ImportFormat::Odcs => handle_import_odcs(&args),
+                ImportFormat::Odcl => handle_import_odcl(&args),
                 ImportFormat::Odps => {
                     #[cfg(feature = "odps-validation")]
                     {
