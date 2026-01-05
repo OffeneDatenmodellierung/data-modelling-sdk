@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-01-05
+
+### Fixed
+
+- **fix(wasm)**: Fixed WASM build compatibility issues
+  - Upgraded jsonschema from 0.20 to 0.38.1 with `default-features = false` to avoid reqwest dependency in WASM builds
+  - Updated validation error handling to use new jsonschema 0.38.1 API (single ValidationError instead of iterator)
+  - Configured getrandom 0.3.4 with `wasm_js` feature for proper WASM support
+  - Added `.cargo/config.toml` with `getrandom_backend="wasm_js"` configuration
+  - WASM builds now work correctly with `wasm,openapi,odps-validation` features
+
 ## [1.8.0] - 2026-01-05
 
 ### Added

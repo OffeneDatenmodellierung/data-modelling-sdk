@@ -49,13 +49,10 @@ impl ODPSExporter {
                     ExportError::ValidationError(format!("Failed to parse YAML: {}", e))
                 })?;
 
-                if let Err(errors) = validator.validate(&data) {
-                    let error_messages: Vec<String> = errors
-                        .map(|e| format!("{}: {}", e.instance_path, e))
-                        .collect();
+                if let Err(error) = validator.validate(&data) {
                     return Err(ExportError::ValidationError(format!(
-                        "ODPS validation failed:\n{}",
-                        error_messages.join("\n")
+                        "ODPS validation failed: {}",
+                        error
                     )));
                 }
             }

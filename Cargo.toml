@@ -1,6 +1,6 @@
 [package]
 name = "data-modelling-sdk"
-version = "1.8.0"
+version = "1.8.1"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"
@@ -74,8 +74,13 @@ wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["IdbDatabase", "IdbFactory", "IdbObjectStore", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbOpenDbRequest", "IdbVersionChangeEvent", "Window", "Storage", "console"] }
 js-sys = { version = "0.3", optional = true }
-# Enable js feature for getrandom (required by transitive dependencies like ahash)
-getrandom = { version = "0.2", features = ["js"] }
+# Enable wasm_js feature for getrandom 0.3.4 (required for WASM targets)
+# The getrandom_backend="wasm_js" cfg flag is set in .cargo/config.toml
+getrandom = { version = "0.3", features = ["wasm_js"] }
+# Override reqwest for WASM targets (used by jsonschema)
+# Note: jsonschema uses reqwest::blocking which doesn't work in WASM
+# We need to ensure jsonschema doesn't try to use HTTP resolution in WASM
+reqwest = { version = "0.12", features = ["json"], default-features = false, optional = true }
 # UUID with js feature for WASM (must override main dependency for WASM target)
 uuid = { version = "1.0", features = ["v4", "v5", "serde", "js"] }
 # petgraph is available for WASM (tracing is already in main dependencies)
@@ -99,9 +104,19 @@ dmn = ["quick-xml"]  # Enable DMN 1.3 import/export support
 openapi = []  # Enable OpenAPI 3.1.1 import/export support (uses existing jsonschema)
 cli = ["clap", "zip", "api-backend"]  # Enable CLI binary support (requires api-backend for HTTP reference resolution)
 
+# jsonschema for all targets - disable default features to avoid reqwest dependency
 [dependencies.jsonschema]
-version = "0.20"
+version = "0.38.1"
 optional = true
+default-features = false
+
+# jsonschema for WASM targets (same configuration - no HTTP resolution)
+[target.'cfg(target_arch = "wasm32")'.dependencies.jsonschema]
+version = "0.38.1"
+optional = true
+default-features = false
+# Explicitly disable resolve-http and resolve-file features for WASM
+# This prevents reqwest from being pulled in
 
 [[example]]
 name = "test_sql"

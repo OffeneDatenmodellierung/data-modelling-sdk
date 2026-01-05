@@ -21,13 +21,10 @@ pub fn validate_odcs(content: &str) -> Result<(), CliError> {
         .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?;
 
     // Validate
-    if let Err(errors) = validator.validate(&data) {
-        let error_messages: Vec<String> = errors
-            .map(|e| format!("{}: {}", e.instance_path, e))
-            .collect();
+    if let Err(error) = validator.validate(&data) {
         return Err(CliError::ValidationError(format!(
-            "ODCS validation failed:\n{}",
-            error_messages.join("\n")
+            "ODCS validation failed: {}",
+            error
         )));
     }
 
@@ -65,13 +62,10 @@ pub fn validate_openapi(content: &str) -> Result<(), CliError> {
     };
 
     // Validate
-    if let Err(errors) = validator.validate(&data) {
-        let error_messages: Vec<String> = errors
-            .map(|e| format!("{}: {}", e.instance_path, e))
-            .collect();
+    if let Err(error) = validator.validate(&data) {
         return Err(CliError::ValidationError(format!(
-            "OpenAPI validation failed:\n{}",
-            error_messages.join("\n")
+            "OpenAPI validation failed: {}",
+            error
         )));
     }
 
@@ -171,14 +165,8 @@ pub(crate) fn validate_odps_internal(content: &str) -> Result<(), String> {
         serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
     // Validate
-    if let Err(errors) = validator.validate(&data) {
-        let error_messages: Vec<String> = errors
-            .map(|e| format!("{}: {}", e.instance_path, e))
-            .collect();
-        return Err(format!(
-            "ODPS validation failed:\n{}",
-            error_messages.join("\n")
-        ));
+    if let Err(error) = validator.validate(&data) {
+        return Err(format!("ODPS validation failed: {}", error));
     }
 
     Ok(())

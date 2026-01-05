@@ -180,13 +180,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let data: Value = serde_yaml::from_str(&content)
                 .map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
-            if let Err(errors) = validator.validate(&data) {
-                let error_messages: Vec<String> = errors
-                    .map(|e| format!("{}: {}", e.instance_path, e))
-                    .collect();
-                return Err(
-                    format!("ODPS validation failed:\n{}", error_messages.join("\n")).into(),
-                );
+            if let Err(error) = validator.validate(&data) {
+                return Err(format!("ODPS validation failed: {}", error).into());
             }
         }
         println!("✅ Validation passed");
@@ -237,15 +232,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let data: Value = serde_yaml::from_str(&exported_yaml)
                 .map_err(|e| format!("Failed to parse exported YAML: {}", e))?;
 
-            if let Err(errors) = validator.validate(&data) {
-                let error_messages: Vec<String> = errors
-                    .map(|e| format!("{}: {}", e.instance_path, e))
-                    .collect();
-                return Err(format!(
-                    "Exported YAML validation failed:\n{}",
-                    error_messages.join("\n")
-                )
-                .into());
+            if let Err(error) = validator.validate(&data) {
+                return Err(format!("Exported YAML validation failed: {}", error).into());
             }
         }
         println!("✅ Exported YAML validation passed");
