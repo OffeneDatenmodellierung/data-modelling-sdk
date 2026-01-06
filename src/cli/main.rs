@@ -36,8 +36,9 @@ enum Commands {
         /// Format to import from
         #[arg(value_enum)]
         format: ImportFormatArg,
-        /// Input source (file path, '-' for stdin, or SQL string)
-        input: String,
+        /// Input source (file path, '-' for stdin, or SQL string). Optional when --jar is provided.
+        #[arg(required_unless_present = "jar")]
+        input: Option<String>,
         /// SQL dialect (required for SQL format)
         #[arg(short, long)]
         dialect: Option<String>,
@@ -56,12 +57,15 @@ enum Commands {
         /// Pretty-print output with detailed information
         #[arg(short, long)]
         pretty: bool,
-        /// JAR file path (for Protobuf JAR imports)
+        /// JAR file path (for Protobuf JAR imports). When provided, input is optional.
         #[arg(long)]
         jar: Option<PathBuf>,
         /// Filter by message type (for Protobuf JAR imports)
         #[arg(long)]
         message_type: Option<String>,
+        /// Specify the root message for JAR imports. If not provided, auto-detects based on dependency analysis.
+        #[arg(long)]
+        root_message: Option<String>,
     },
     /// Export schemas to various formats
     Export {
@@ -162,9 +166,13 @@ fn main() {
             pretty,
             jar,
             message_type,
+            root_message,
         } => {
             let import_format = convert_import_format(format);
-            let input_source = parse_input_source(&input, &import_format);
+
+            // When --jar is provided, input is optional. Use a placeholder if not provided.
+            let input_str = input.unwrap_or_else(|| "-".to_string());
+            let input_source = parse_input_source(&input_str, &import_format);
 
             let args = ImportArgs {
                 format: import_format,
@@ -177,6 +185,7 @@ fn main() {
                 jar_path: jar,
                 message_type,
                 no_odcs,
+                root_message,
             };
 
             match args.format {

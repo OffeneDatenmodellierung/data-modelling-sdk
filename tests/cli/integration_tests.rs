@@ -30,6 +30,7 @@ fn test_cli_sql_import_all_dialects() {
             jar_path: None,
             message_type: None,
             no_odcs: true, // Skip ODCS file creation in tests
+            root_message: None,
         };
 
         let result = handle_import_sql(&args);

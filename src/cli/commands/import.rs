@@ -39,7 +39,8 @@ pub struct ImportArgs {
     pub pretty: bool,
     pub jar_path: Option<PathBuf>,
     pub message_type: Option<String>,
-    pub no_odcs: bool, // If true, don't write .odcs.yaml file
+    pub no_odcs: bool,                // If true, don't write .odcs.yaml file
+    pub root_message: Option<String>, // Root message for JAR imports (auto-detected if not provided)
 }
 
 /// Import format enum
@@ -475,6 +476,7 @@ pub fn handle_import_avro(args: &ImportArgs) -> Result<(), CliError> {
 }
 
 /// Filter proto files by message type
+#[allow(dead_code)]
 fn filter_proto_by_message_type(
     proto_contents: Vec<(String, String)>,
     message_type: &str,
@@ -674,8 +676,414 @@ pub fn handle_import_protobuf(args: &ImportArgs) -> Result<(), CliError> {
     Ok(())
 }
 
-/// Handle Protobuf import from JAR file
+/// Parsed protobuf message with its fields and dependencies
+#[derive(Debug, Clone)]
+struct ParsedProtoMessage {
+    name: String,
+    full_name: String, // Including package prefix
+    fields: Vec<ParsedProtoField>,
+    #[allow(dead_code)]
+    source_file: String,
+}
+
+/// Parsed protobuf field
+#[derive(Debug, Clone)]
+struct ParsedProtoField {
+    name: String,
+    field_type: String,
+    repeated: bool,
+    optional: bool,
+}
+
+/// Extract all message definitions from proto content
+fn extract_proto_messages(file_name: &str, content: &str) -> Vec<ParsedProtoMessage> {
+    let mut messages = Vec::new();
+    let mut current_package = String::new();
+    let mut current_message: Option<(String, Vec<ParsedProtoField>)> = None;
+    let mut brace_depth = 0;
+    let mut in_message = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Skip comments and empty lines
+        if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("/*") {
+            continue;
+        }
+
+        // Extract package name
+        if trimmed.starts_with("package ") {
+            current_package = trimmed
+                .strip_prefix("package ")
+                .unwrap_or("")
+                .trim_end_matches(';')
+                .trim()
+                .to_string();
+            continue;
+        }
+
+        // Check for message start
+        if trimmed.starts_with("message ") && !in_message {
+            let msg_name = trimmed
+                .strip_prefix("message ")
+                .and_then(|s| {
+                    let s = s.trim();
+                    if let Some(idx) = s.find('{') {
+                        Some(s[..idx].trim())
+                    } else {
+                        s.split_whitespace().next()
+                    }
+                })
+                .unwrap_or("")
+                .to_string();
+
+            if !msg_name.is_empty() {
+                current_message = Some((msg_name, Vec::new()));
+                in_message = true;
+                brace_depth = 1;
+                if trimmed.matches('{').count() > trimmed.matches('}').count() {
+                    // Opening brace on same line
+                } else if !trimmed.contains('{') {
+                    brace_depth = 0; // Brace on next line
+                }
+            }
+            continue;
+        }
+
+        // Track brace depth
+        if in_message {
+            brace_depth += trimmed.matches('{').count();
+            brace_depth = brace_depth.saturating_sub(trimmed.matches('}').count());
+
+            // Parse fields (only at top level of message, brace_depth == 1)
+            if brace_depth == 1
+                && !trimmed.starts_with("message ")
+                && !trimmed.starts_with("enum ")
+                && !trimmed.starts_with("oneof ")
+                && !trimmed.starts_with("reserved ")
+                && !trimmed.starts_with("option ")
+                && let Some((_, ref mut fields)) = current_message
+                && let Some(field) = parse_proto_field_simple(trimmed)
+            {
+                fields.push(field);
+            }
+
+            // End of message
+            if brace_depth == 0 {
+                if let Some((msg_name, fields)) = current_message.take() {
+                    let full_name = if current_package.is_empty() {
+                        msg_name.clone()
+                    } else {
+                        format!("{}.{}", current_package, msg_name)
+                    };
+                    messages.push(ParsedProtoMessage {
+                        name: msg_name,
+                        full_name,
+                        fields,
+                        source_file: file_name.to_string(),
+                    });
+                }
+                in_message = false;
+            }
+        }
+    }
+
+    messages
+}
+
+/// Parse a simple proto field line
+fn parse_proto_field_simple(line: &str) -> Option<ParsedProtoField> {
+    let line = line.split("//").next().unwrap_or(line).trim();
+    if line.is_empty() || line == "}" || line == "{" {
+        return None;
+    }
+
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 3 {
+        return None;
+    }
+
+    let mut idx = 0;
+    let mut repeated = false;
+    let mut optional = false;
+
+    // Check for repeated/optional keywords
+    while idx < parts.len() {
+        match parts[idx] {
+            "repeated" => {
+                repeated = true;
+                idx += 1;
+            }
+            "optional" => {
+                optional = true;
+                idx += 1;
+            }
+            _ => break,
+        }
+    }
+
+    if idx + 2 > parts.len() {
+        return None;
+    }
+
+    let field_type = parts[idx].to_string();
+    let field_name = parts[idx + 1]
+        .trim_end_matches(';')
+        .trim_end_matches('=')
+        .trim()
+        .to_string();
+
+    if field_name.is_empty() || field_name.starts_with('=') {
+        return None;
+    }
+
+    Some(ParsedProtoField {
+        name: field_name,
+        field_type,
+        repeated,
+        optional,
+    })
+}
+
+/// Check if a type is a scalar protobuf type
+fn is_scalar_proto_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "int32"
+            | "int64"
+            | "uint32"
+            | "uint64"
+            | "sint32"
+            | "sint64"
+            | "fixed32"
+            | "fixed64"
+            | "sfixed32"
+            | "sfixed64"
+            | "float"
+            | "double"
+            | "bool"
+            | "string"
+            | "bytes"
+    )
+}
+
+/// Build a dependency graph from parsed messages
+/// Returns: (message_name -> set of message names it references)
+fn build_dependency_graph(
+    messages: &[ParsedProtoMessage],
+) -> std::collections::HashMap<String, std::collections::HashSet<String>> {
+    use std::collections::{HashMap, HashSet};
+
+    let message_names: HashSet<String> = messages.iter().map(|m| m.name.clone()).collect();
+    let full_names: HashSet<String> = messages.iter().map(|m| m.full_name.clone()).collect();
+
+    let mut graph: HashMap<String, HashSet<String>> = HashMap::new();
+
+    for msg in messages {
+        let mut deps = HashSet::new();
+        for field in &msg.fields {
+            let field_type = field.field_type.trim_start_matches('.');
+            // Check if the field type references another message
+            if !is_scalar_proto_type(field_type) {
+                // Try exact match first
+                if message_names.contains(field_type) {
+                    deps.insert(field_type.to_string());
+                } else if full_names.contains(field_type) {
+                    // Extract just the message name from full name
+                    if let Some(name) = field_type.rsplit('.').next()
+                        && message_names.contains(name)
+                    {
+                        deps.insert(name.to_string());
+                    }
+                } else {
+                    // Try matching just the last component
+                    if let Some(name) = field_type.rsplit('.').next()
+                        && message_names.contains(name)
+                    {
+                        deps.insert(name.to_string());
+                    }
+                }
+            }
+        }
+        graph.insert(msg.name.clone(), deps);
+    }
+
+    graph
+}
+
+/// Find the root message (most outgoing references, no or fewest incoming references)
+fn find_root_message(
+    messages: &[ParsedProtoMessage],
+    graph: &std::collections::HashMap<String, std::collections::HashSet<String>>,
+) -> Option<String> {
+    use std::collections::HashMap;
+
+    if messages.is_empty() {
+        return None;
+    }
+
+    // Count incoming references for each message
+    let mut incoming_count: HashMap<String, usize> = HashMap::new();
+    for msg in messages {
+        incoming_count.insert(msg.name.clone(), 0);
+    }
+
+    for deps in graph.values() {
+        for dep in deps {
+            if let Some(count) = incoming_count.get_mut(dep) {
+                *count += 1;
+            }
+        }
+    }
+
+    // Find messages with no incoming references (root candidates)
+    let root_candidates: Vec<&String> = incoming_count
+        .iter()
+        .filter(|(_, count)| **count == 0)
+        .map(|(name, _)| name)
+        .collect();
+
+    if root_candidates.len() == 1 {
+        return Some(root_candidates[0].clone());
+    }
+
+    // If multiple candidates or none, pick the one with most outgoing references
+    let mut best_candidate: Option<String> = None;
+    let mut max_outgoing = 0;
+
+    for msg in messages {
+        let outgoing = graph.get(&msg.name).map(|deps| deps.len()).unwrap_or(0);
+        let incoming = incoming_count.get(&msg.name).copied().unwrap_or(0);
+
+        // Prefer messages with no incoming refs and most outgoing refs
+        if incoming == 0 && outgoing > max_outgoing {
+            max_outgoing = outgoing;
+            best_candidate = Some(msg.name.clone());
+        }
+    }
+
+    // If still no candidate, just pick the message with most outgoing refs
+    if best_candidate.is_none() {
+        for msg in messages {
+            let outgoing = graph.get(&msg.name).map(|deps| deps.len()).unwrap_or(0);
+            if outgoing > max_outgoing {
+                max_outgoing = outgoing;
+                best_candidate = Some(msg.name.clone());
+            }
+        }
+    }
+
+    // Last resort: return first message
+    best_candidate.or_else(|| messages.first().map(|m| m.name.clone()))
+}
+
+/// Map proto type to SQL type
+fn map_proto_to_sql_type(proto_type: &str) -> String {
+    match proto_type {
+        "int32" | "sint32" | "sfixed32" => "INTEGER".to_string(),
+        "int64" | "sint64" | "sfixed64" => "BIGINT".to_string(),
+        "uint32" | "fixed32" => "INTEGER".to_string(),
+        "uint64" | "fixed64" => "BIGINT".to_string(),
+        "float" => "FLOAT".to_string(),
+        "double" => "DOUBLE".to_string(),
+        "bool" => "BOOLEAN".to_string(),
+        "string" => "STRING".to_string(),
+        "bytes" => "BYTES".to_string(),
+        _ => "STRING".to_string(), // Default for unknown/message types
+    }
+}
+
+/// Flatten a message and all its dependencies into columns with dot notation
+fn flatten_message_to_columns(
+    root_message: &ParsedProtoMessage,
+    all_messages: &[ParsedProtoMessage],
+    prefix: &str,
+    visited: &mut std::collections::HashSet<String>,
+    max_depth: usize,
+) -> Vec<ColumnData> {
+    let mut columns = Vec::new();
+
+    if max_depth == 0 {
+        return columns;
+    }
+
+    // Prevent infinite recursion for circular references
+    if visited.contains(&root_message.name) {
+        return columns;
+    }
+    visited.insert(root_message.name.clone());
+
+    for field in &root_message.fields {
+        let column_name = if prefix.is_empty() {
+            field.name.clone()
+        } else {
+            format!("{}.{}", prefix, field.name)
+        };
+
+        if is_scalar_proto_type(&field.field_type) {
+            // Scalar type - add as column
+            let data_type = if field.repeated {
+                format!("ARRAY<{}>", map_proto_to_sql_type(&field.field_type))
+            } else {
+                map_proto_to_sql_type(&field.field_type)
+            };
+
+            columns.push(ColumnData {
+                name: column_name,
+                data_type,
+                physical_type: None,
+                nullable: field.optional || field.repeated,
+                primary_key: false,
+                description: None,
+                quality: None,
+                relationships: Vec::new(),
+                enum_values: None,
+            });
+        } else {
+            // Message type - find and flatten recursively
+            let type_name = field
+                .field_type
+                .rsplit('.')
+                .next()
+                .unwrap_or(&field.field_type);
+            if let Some(nested_msg) = all_messages.iter().find(|m| m.name == type_name) {
+                let nested_columns = flatten_message_to_columns(
+                    nested_msg,
+                    all_messages,
+                    &column_name,
+                    visited,
+                    max_depth - 1,
+                );
+                columns.extend(nested_columns);
+            } else {
+                // Unknown message type - add as STRING
+                let data_type = if field.repeated {
+                    "ARRAY<STRING>".to_string()
+                } else {
+                    "STRING".to_string()
+                };
+                columns.push(ColumnData {
+                    name: column_name,
+                    data_type,
+                    physical_type: None,
+                    nullable: field.optional || field.repeated,
+                    primary_key: false,
+                    description: Some(format!("Unknown message type: {}", field.field_type)),
+                    quality: None,
+                    relationships: Vec::new(),
+                    enum_values: None,
+                });
+            }
+        }
+    }
+
+    visited.remove(&root_message.name);
+    columns
+}
+
+/// Handle Protobuf import from JAR file with dependency graph analysis
 fn handle_import_protobuf_from_jar(args: &ImportArgs, jar_path: &PathBuf) -> Result<(), CliError> {
+    use std::collections::HashSet;
     use std::io::Read;
     use zip::ZipArchive;
 
@@ -709,32 +1117,111 @@ fn handle_import_protobuf_from_jar(args: &ImportArgs, jar_path: &PathBuf) -> Res
         ));
     }
 
-    // Filter by message type if specified
-    let filtered_contents = if let Some(ref message_type) = args.message_type {
-        filter_proto_by_message_type(proto_contents, message_type)?
+    // Parse all proto files and extract messages
+    let mut all_messages: Vec<ParsedProtoMessage> = Vec::new();
+    for (file_name, content) in &proto_contents {
+        let messages = extract_proto_messages(file_name, content);
+        all_messages.extend(messages);
+    }
+
+    if all_messages.is_empty() {
+        return Err(CliError::InvalidArgument(
+            "No message definitions found in proto files".to_string(),
+        ));
+    }
+
+    // Build dependency graph
+    let graph = build_dependency_graph(&all_messages);
+
+    // Determine root message
+    let root_message_name = if let Some(ref specified_root) = args.root_message {
+        // Use specified root message
+        if !all_messages.iter().any(|m| &m.name == specified_root) {
+            return Err(CliError::InvalidArgument(format!(
+                "Specified root message '{}' not found. Available messages: {}",
+                specified_root,
+                all_messages
+                    .iter()
+                    .map(|m| m.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+        }
+        specified_root.clone()
+    } else if let Some(ref filter_type) = args.message_type {
+        // Use message_type as root if specified
+        if !all_messages.iter().any(|m| &m.name == filter_type) {
+            return Err(CliError::InvalidArgument(format!(
+                "Specified message type '{}' not found. Available messages: {}",
+                filter_type,
+                all_messages
+                    .iter()
+                    .map(|m| m.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+        }
+        filter_type.clone()
     } else {
-        proto_contents
+        // Auto-detect root message
+        find_root_message(&all_messages, &graph).ok_or_else(|| {
+            CliError::InvalidArgument("Could not determine root message".to_string())
+        })?
     };
 
-    // Merge proto files if multiple
-    let merged_proto = if filtered_contents.len() == 1 {
-        filtered_contents[0].1.clone()
-    } else {
-        // Simple merge - concatenate with newlines
-        filtered_contents
-            .iter()
-            .map(|(_, content)| content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n")
+    // Find the root message
+    let root_message = all_messages
+        .iter()
+        .find(|m| m.name == root_message_name)
+        .ok_or_else(|| {
+            CliError::InvalidArgument(format!("Root message '{}' not found", root_message_name))
+        })?;
+
+    // Print dependency analysis in pretty mode
+    if args.pretty {
+        eprintln!("\n=== Protobuf JAR Analysis ===");
+        eprintln!(
+            "Found {} proto files with {} message definitions",
+            proto_contents.len(),
+            all_messages.len()
+        );
+        eprintln!("\nMessages found:");
+        for msg in &all_messages {
+            let deps = graph.get(&msg.name).map(|d| d.len()).unwrap_or(0);
+            eprintln!("  - {} ({} dependencies)", msg.name, deps);
+        }
+        eprintln!("\nRoot message: {}", root_message_name);
+        if let Some(deps) = graph.get(&root_message_name)
+            && !deps.is_empty()
+        {
+            eprintln!(
+                "Dependencies: {}",
+                deps.iter().cloned().collect::<Vec<_>>().join(", ")
+            );
+        }
+        eprintln!("=============================\n");
+    }
+
+    // Flatten root message and all dependencies into columns
+    let mut visited = HashSet::new();
+    let columns = flatten_message_to_columns(root_message, &all_messages, "", &mut visited, 10);
+
+    // Create a single table from flattened columns
+    let table_data = TableData {
+        table_index: 0,
+        name: Some(root_message_name.clone()),
+        columns,
     };
 
-    // Import merged proto
-    let importer = ProtobufImporter::new();
-    let mut result = importer
-        .import(&merged_proto)
-        .map_err(CliError::ImportError)?;
+    let result = ImportResult {
+        tables: vec![table_data],
+        tables_requiring_name: Vec::new(),
+        errors: Vec::new(),
+        ai_suggestions: None,
+    };
 
     // Apply UUID override if provided
+    let mut result = result;
     if let Some(ref uuid) = args.uuid_override {
         apply_uuid_override(&mut result, uuid)?;
     }
@@ -750,11 +1237,11 @@ fn handle_import_protobuf_from_jar(args: &ImportArgs, jar_path: &PathBuf) -> Res
 
     // Write ODCS files unless --no-odcs is specified
     if !args.no_odcs {
-        let base_path = match &args.input {
-            InputSource::File(path) => path.parent(),
-            _ => None,
-        };
-        write_odcs_files(&result, base_path, args.uuid_override.as_deref())?;
+        write_odcs_files(
+            &result,
+            Some(jar_path.parent().unwrap_or(std::path::Path::new("."))),
+            args.uuid_override.as_deref(),
+        )?;
     }
 
     Ok(())

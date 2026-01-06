@@ -34,6 +34,7 @@ fn test_cli_import_sql_from_file() {
         jar_path: None,
         message_type: None,
         no_odcs: true, // Skip ODCS file creation in tests
+        root_message: None,
     };
 
     let result = handle_import_sql(&args);
@@ -58,6 +59,7 @@ fn test_cli_import_sql_with_views() {
         jar_path: None,
         message_type: None,
         no_odcs: true, // Skip ODCS file creation in tests
+        root_message: None,
     };
 
     let result = handle_import_sql(&args);
@@ -86,6 +88,7 @@ fn test_cli_import_avro() {
         jar_path: None,
         message_type: None,
         no_odcs: true, // Skip ODCS file creation in tests
+        root_message: None,
     };
 
     let result = handle_import_avro(&args);
@@ -114,6 +117,7 @@ fn test_cli_import_avro_with_uuid_override() {
         jar_path: None,
         message_type: None,
         no_odcs: true, // Skip ODCS file creation in tests
+        root_message: None,
     };
 
     let result = handle_import_avro(&args);
@@ -145,6 +149,7 @@ fn test_cli_import_json_schema() {
         jar_path: None,
         message_type: None,
         no_odcs: true, // Skip ODCS file creation in tests
+        root_message: None,
     };
 
     let result = handle_import_json_schema(&args);
@@ -173,6 +178,7 @@ fn test_cli_import_protobuf() {
         jar_path: None,
         message_type: None,
         no_odcs: true, // Skip ODCS file creation in tests
+        root_message: None,
     };
 
     let result = handle_import_protobuf(&args);
@@ -209,6 +215,7 @@ schema:
         jar_path: None,
         message_type: None,
         no_odcs: true, // Skip ODCS file creation in tests
+        root_message: None,
     };
 
     let result = handle_import_odcs(&args);
@@ -237,6 +244,7 @@ fn test_cli_import_multiple_tables_with_uuid_error() {
         jar_path: None,
         message_type: None,
         no_odcs: true, // Skip ODCS file creation in tests
+        root_message: None,
     };
 
     let result = handle_import_sql(&args);
@@ -285,6 +293,7 @@ version: 1.0.0"#
             jar_path: None,
             message_type: None,
             no_odcs: true,
+            root_message: None,
         };
 
         let result = handle_import_odps(&args);
@@ -316,6 +325,7 @@ status: active"#
             jar_path: None,
             message_type: None,
             no_odcs: true,
+            root_message: None,
         };
 
         let result = handle_import_odps(&args);
@@ -350,6 +360,7 @@ status: invalid-status-value"#
             jar_path: None,
             message_type: None,
             no_odcs: true,
+            root_message: None,
         };
 
         let result = handle_import_odps(&args);
@@ -387,6 +398,7 @@ support:
             jar_path: None,
             message_type: None,
             no_odcs: true,
+            root_message: None,
         };
 
         let result = handle_import_odps(&args);
@@ -426,6 +438,7 @@ support:
             jar_path: None,
             message_type: None,
             no_odcs: true,
+            root_message: None,
         };
 
         let result = handle_import_odps(&args);
@@ -460,6 +473,7 @@ status: active"#
             jar_path: None,
             message_type: None,
             no_odcs: true,
+            root_message: None,
         };
 
         let result = handle_import_odps(&args);
