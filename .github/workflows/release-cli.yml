@@ -74,27 +74,26 @@ jobs:
       - name: Get version
         id: version
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
+          if [ -n "$INPUT_VERSION" ]; then
             # Version passed from workflow_call
-            VERSION="${{ inputs.version }}"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="$INPUT_VERSION"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             # Tag release: use tag version
             VERSION=${GITHUB_REF#refs/tags/v}
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/heads/* ]]; then
-            # Branch release: use Cargo.toml version with dev postfix
+          elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
+            # Release branch: use Cargo.toml version with dev postfix
             BASE_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
             VERSION="${BASE_VERSION}-dev.${SHORT_SHA}"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
           else
             # Manual run: use Cargo.toml version with dev postfix
             BASE_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
             VERSION="${BASE_VERSION}-dev"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
           fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building CLI version: $VERSION"
 
       - name: Prepare binary for upload (Unix)
@@ -186,27 +185,26 @@ jobs:
       - name: Get version
         id: version
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
+          if [ -n "$INPUT_VERSION" ]; then
             # Version passed from workflow_call
-            VERSION="${{ inputs.version }}"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="$INPUT_VERSION"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             # Tag release: use tag version
             VERSION=${GITHUB_REF#refs/tags/v}
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/heads/* ]]; then
-            # Branch release: use Cargo.toml version with dev postfix
+          elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
+            # Release branch: use Cargo.toml version with dev postfix
             BASE_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
             VERSION="${BASE_VERSION}-dev.${SHORT_SHA}"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
           else
             # Manual run: use Cargo.toml version with dev postfix
             BASE_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
             VERSION="${BASE_VERSION}-dev"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
           fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building WASM version: $VERSION"
 
       - name: Create WASM archive
@@ -234,9 +232,11 @@ jobs:
 
       - name: Get version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
           elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/v}
           else
