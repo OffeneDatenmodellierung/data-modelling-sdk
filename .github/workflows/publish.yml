@@ -178,5 +178,6 @@ jobs:
     uses: ./.github/workflows/release-cli.yml
     with:
       version: ${{ needs.publish.outputs.version }}
+    secrets: inherit
     permissions:
       contents: write
