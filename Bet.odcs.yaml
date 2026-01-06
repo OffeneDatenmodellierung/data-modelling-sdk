@@ -1,0 +1,65 @@
+apiVersion: v3.1.0
+kind: DataContract
+id: af80a77d-834f-4ffc-be69-eb1ec9df87ac
+name: Bet
+version: 1.0.0
+status: draft
+schema:
+- name: Bet
+  properties:
+  - logicalType: string
+    physicalType: STRING
+    id: betid_obj
+    name: betId
+  - logicalType: integer
+    physicalType: BIGINT
+    id: bettime_obj
+    name: betTime
+  - logicalType: number
+    physicalType: DOUBLE
+    id: totalstake_obj
+    name: totalStake
+  - logicalType: string
+    physicalType: STRING
+    required: true
+    id: currency_obj
+    name: currency
+  - logicalType: string
+    physicalType: STRING
+    required: true
+    id: bettype_obj
+    name: betType
+  - logicalType: string
+    physicalType: STRING
+    required: true
+    id: betaction_obj
+    name: betAction
+  - logicalType: number
+    physicalType: DOUBLE
+    id: cumulativepercentageofnoncumulativemaxbet_obj
+    name: cumulativePercentageOfNonCumulativeMaxBet
+  - logicalType: number
+    physicalType: DOUBLE
+    id: noncumulativepercentageofcumulativemaxbet_obj
+    name: nonCumulativePercentageOfCumulativeMaxBet
+  - logicalType: number
+    physicalType: DOUBLE
+    id: stakeperline_obj
+    name: stakePerLine
+  - logicalType: number
+    physicalType: DOUBLE
+    id: liabilityamount_obj
+    name: liabilityAmount
+  - logicalType: integer
+    physicalType: INTEGER
+    id: totallegs_obj
+    name: totalLegs
+  - logicalType: string
+    physicalType: STRING
+    id: betbreakdown_obj
+    name: betBreakdown
+  - logicalType: integer
+    physicalType: INTEGER
+    id: totalsubbets_obj
+    name: totalSubbets
+contractCreatedTs: 2026-01-06T14:42:15.115317+00:00

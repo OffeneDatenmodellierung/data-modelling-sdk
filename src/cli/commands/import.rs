@@ -855,12 +855,10 @@ fn extract_proto_content(file_name: &str, content: &str) -> ParsedProtoContent {
                 && !trimmed.starts_with("option ")
                 && !trimmed.starts_with("}")
                 && !trimmed.starts_with("{")
+                && let Some(field) = parse_proto_field_simple(trimmed)
+                && let Some((_, fields, _)) = message_stack.last_mut()
             {
-                if let Some(field) = parse_proto_field_simple(trimmed) {
-                    if let Some((_, fields, _)) = message_stack.last_mut() {
-                        fields.push(field);
-                    }
-                }
+                fields.push(field);
             }
         }
 
@@ -1198,10 +1196,10 @@ fn is_enum_type(type_name: &str, enum_names: &std::collections::HashSet<String>)
         return true;
     }
     // Check just the simple name (last part after dot)
-    if let Some(simple_name) = type_name.rsplit('.').next() {
-        if enum_names.contains(simple_name) {
-            return true;
-        }
+    if let Some(simple_name) = type_name.rsplit('.').next()
+        && enum_names.contains(simple_name)
+    {
+        return true;
     }
     false
 }
@@ -1281,7 +1279,11 @@ fn flatten_message_to_columns(
             let nested_msg = all_messages
                 .iter()
                 .find(|m| m.name == type_name)
-                .or_else(|| all_messages.iter().find(|m| m.full_name == field.field_type))
+                .or_else(|| {
+                    all_messages
+                        .iter()
+                        .find(|m| m.full_name == field.field_type)
+                })
                 .or_else(|| {
                     all_messages
                         .iter()
