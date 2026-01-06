@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.5] - 2025-01-06
+
+### Added
+
+- **feat(cli)**: Improved protobuf JAR import with dependency graph analysis
+  - Made `INPUT` argument optional when `--jar` is provided
+  - Added `--root-message` flag to specify root message for JAR imports
+  - Implemented dependency graph analysis to auto-detect root message
+  - Flattens all referenced messages into single unified schema with dot notation
+  - Outputs single combined ODCS file instead of multiple files
+  - Root message detection: prefers messages with no incoming refs and most outgoing refs
+  - Pretty mode shows JAR analysis with message list and dependencies
+
+- **feat(ci)**: Added optional macOS code signing and notarization to release workflow
+  - Signing is skipped gracefully if secrets are not configured
+  - Supports Developer ID Application certificates
+  - Supports Apple notarization for Gatekeeper approval
+
 ## [1.8.4] - 2025-01-06
 
 ### Fixed
