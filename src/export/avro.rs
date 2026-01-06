@@ -36,9 +36,27 @@ impl AvroExporter {
     /// ```
     pub fn export(&self, tables: &[Table]) -> Result<ExportResult, ExportError> {
         let schema = Self::export_model_from_tables(tables);
+        let content = serde_json::to_string_pretty(&schema)
+            .map_err(|e| ExportError::SerializationError(e.to_string()))?;
+
+        // Validate exported AVRO schema
+        #[cfg(feature = "cli")]
+        {
+            use crate::cli::validation::validate_avro;
+            validate_avro(&content).map_err(|e| {
+                ExportError::ValidationError(format!("AVRO validation failed: {}", e))
+            })?;
+        }
+        #[cfg(not(feature = "cli"))]
+        {
+            // Basic validation - parse as JSON and check for required AVRO fields
+            let _value: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+                ExportError::ValidationError(format!("Failed to parse AVRO JSON: {}", e))
+            })?;
+        }
+
         Ok(ExportResult {
-            content: serde_json::to_string_pretty(&schema)
-                .map_err(|e| ExportError::SerializationError(e.to_string()))?,
+            content,
             format: "avro".to_string(),
         })
     }

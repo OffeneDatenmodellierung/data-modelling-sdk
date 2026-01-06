@@ -14,7 +14,9 @@ pub mod cads;
 #[cfg(feature = "dmn")]
 pub mod dmn;
 pub mod json_schema;
+pub mod odcl;
 pub mod odcs;
+pub mod odcs_shared;
 pub mod odps;
 #[cfg(feature = "openapi")]
 pub mod openapi;
@@ -76,6 +78,10 @@ pub struct TableData {
 pub struct ColumnData {
     pub name: String,
     pub data_type: String,
+    /// Physical type - the actual database type (e.g., "DOUBLE", "VARCHAR(100)")
+    /// For ODCS this maps to physicalType. Optional as not all formats distinguish logical/physical types.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub physical_type: Option<String>,
     pub nullable: bool,
     pub primary_key: bool,
     /// Column description/documentation (from ODCS/ODCL description field)
@@ -84,9 +90,10 @@ pub struct ColumnData {
     /// Quality rules and validation checks (from ODCS/ODCL quality array)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<Vec<std::collections::HashMap<String, serde_json::Value>>>,
-    /// JSON Schema $ref reference path (from ODCS/ODCL $ref field)
-    #[serde(skip_serializing_if = "Option::is_none", rename = "$ref")]
-    pub ref_path: Option<String>,
+    /// ODCS v3.1.0 relationships (property-level references)
+    /// All $ref values are converted to relationships on import
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relationships: Vec<crate::models::PropertyRelationship>,
     /// Enum values if this column is an enumeration type
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enum_values: Option<Vec<String>>,
@@ -96,7 +103,9 @@ pub struct ColumnData {
 pub use avro::AvroImporter;
 pub use cads::CADSImporter;
 pub use json_schema::JSONSchemaImporter;
+pub use odcl::ODCLImporter;
 pub use odcs::ODCSImporter;
+pub use odcs_shared::ParserError;
 pub use odps::ODPSImporter;
 pub use protobuf::ProtobufImporter;
 pub use sql::SQLImporter;

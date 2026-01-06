@@ -12,6 +12,7 @@ pub mod data_model;
 #[cfg(feature = "dmn")]
 pub mod dmn;
 pub mod domain;
+pub mod domain_config;
 pub mod enums;
 pub mod odps;
 #[cfg(feature = "openapi")]
@@ -19,6 +20,7 @@ pub mod openapi;
 pub mod relationship;
 pub mod table;
 pub mod tag;
+pub mod workspace;
 
 #[cfg(feature = "bpmn")]
 pub use bpmn::{BPMNModel, BPMNModelFormat};
@@ -31,7 +33,7 @@ pub use cads::{
     CADSRuntimeResources, CADSSLA, CADSSLAProperty, CADSStatus, CADSTeamMember,
     CADSValidationProfile, CADSValidationProfileAppliesTo,
 };
-pub use column::{Column, ForeignKey};
+pub use column::{Column, ForeignKey, PropertyRelationship};
 pub use cross_domain::{CrossDomainConfig, CrossDomainRelationshipRef, CrossDomainTableRef};
 pub use data_model::DataModel;
 #[cfg(feature = "dmn")]
@@ -40,6 +42,7 @@ pub use domain::{
     CADSNode, CrowsfeetCardinality, Domain, NodeConnection, ODCSNode, SharedNodeReference, System,
     SystemConnection,
 };
+pub use domain_config::{DomainConfig, DomainOwner, ViewPosition};
 pub use enums::*;
 pub use odps::{
     ODPSApiVersion, ODPSAuthoritativeDefinition, ODPSCustomProperty, ODPSDataProduct,
@@ -53,6 +56,7 @@ pub use relationship::{
 };
 pub use table::{ContactDetails, Position, SlaProperty, Table};
 pub use tag::Tag;
+pub use workspace::{DomainReference, Workspace};
 
 use serde::{Deserialize, Serialize};
 

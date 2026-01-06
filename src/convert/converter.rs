@@ -4,10 +4,10 @@
 
 use crate::export::{ExportError, ODCSExporter};
 use crate::import::{
-    AvroImporter, CADSImporter, ImportError, JSONSchemaImporter, ODCSImporter, ODPSImporter,
-    ProtobufImporter, SQLImporter,
+    AvroImporter, CADSImporter, ColumnData, ImportError, ImportResult, JSONSchemaImporter,
+    ODCSImporter, ODPSImporter, ProtobufImporter, SQLImporter, TableData,
 };
-use crate::models::{DataModel, Domain};
+use crate::models::{Column, DataModel, Domain, Table};
 
 /// Error during format conversion
 #[derive(Debug, thiserror::Error)]
@@ -28,6 +28,59 @@ pub enum ConversionError {
     OpenAPISchemaInvalid(String),
     #[error("Nested object conversion failed: {0}")]
     NestedObjectConversionFailed(String),
+}
+
+/// Reconstruct a Table from TableData
+///
+/// Converts import-format TableData/ColumnData into full Table/Column structs
+/// suitable for export operations.
+fn table_data_to_table(table_data: &TableData) -> Table {
+    let table_name = table_data
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("table_{}", table_data.table_index));
+
+    let columns: Vec<Column> = table_data
+        .columns
+        .iter()
+        .map(column_data_to_column)
+        .collect();
+
+    Table::new(table_name, columns)
+}
+
+/// Convert ColumnData to Column
+fn column_data_to_column(col_data: &ColumnData) -> Column {
+    Column {
+        name: col_data.name.clone(),
+        data_type: col_data.data_type.clone(),
+        physical_type: col_data.physical_type.clone(),
+        nullable: col_data.nullable,
+        primary_key: col_data.primary_key,
+        secondary_key: false,
+        composite_key: None,
+        foreign_key: None,
+        constraints: Vec::new(),
+        description: col_data.description.clone().unwrap_or_default(),
+        errors: Vec::new(),
+        quality: col_data.quality.clone().unwrap_or_default(),
+        relationships: col_data.relationships.clone(),
+        enum_values: col_data.enum_values.clone().unwrap_or_default(),
+        column_order: 0,
+        nested_data: None,
+    }
+}
+
+/// Reconstruct full Table structs from ImportResult
+///
+/// This function converts the flat TableData/ColumnData structures from imports
+/// into complete Table/Column model structs that can be used for export.
+pub fn reconstruct_tables(import_result: &ImportResult) -> Vec<Table> {
+    import_result
+        .tables
+        .iter()
+        .map(table_data_to_table)
+        .collect()
 }
 
 /// Convert any import format to ODCS v3.1.0 YAML format.
@@ -176,33 +229,48 @@ pub fn convert_to_odcs(input: &str, format: Option<&str>) -> Result<String, Conv
         }
     };
 
-    // Convert ImportResult to DataModel
-    // For conversion purposes, we create a temporary DataModel
-    // The actual table reconstruction from ColumnData would require additional logic
-    // For now, we'll create a minimal DataModel and export each table individually
-    let model = DataModel::new(
-        "converted_model".to_string(),
-        "".to_string(),
-        "".to_string(),
-    );
-
-    // If we have tables, export them using ODCSExporter
-    // Note: This is a simplified version - full implementation would reconstruct
-    // Table structs from TableData/ColumnData
+    // Check for empty input
     if import_result.tables.is_empty() {
         return Err(ConversionError::ImportError(ImportError::ParseError(
             "No tables found in input".to_string(),
         )));
     }
 
-    // Export using ODCSExporter
-    // For now, we'll return a basic ODCS structure
-    // TODO: Reconstruct full Table structs from ImportResult for proper export
-    let exports = ODCSExporter::export_model(&model, None, "odcs_v3_1_0");
+    // Reconstruct full Table structs from ImportResult
+    let tables = reconstruct_tables(&import_result);
 
-    // Combine all YAML documents
-    let yaml_docs: Vec<String> = exports.values().cloned().collect();
+    // Export each table to ODCS format
+    let yaml_docs: Vec<String> = tables
+        .iter()
+        .map(|table| ODCSExporter::export_table(table, "odcs_v3_1_0"))
+        .collect();
+
     Ok(yaml_docs.join("\n---\n"))
+}
+
+/// Convert ImportResult to a DataModel with fully reconstructed Tables
+///
+/// This is useful when you need the full DataModel structure after import,
+/// rather than just the YAML output.
+pub fn import_result_to_data_model(
+    import_result: &ImportResult,
+    model_name: &str,
+) -> Result<DataModel, ConversionError> {
+    if import_result.tables.is_empty() {
+        return Err(ConversionError::ImportError(ImportError::ParseError(
+            "No tables found in import result".to_string(),
+        )));
+    }
+
+    let tables = reconstruct_tables(import_result);
+
+    let mut model = DataModel::new(model_name.to_string(), String::new(), String::new());
+
+    for table in tables {
+        model.tables.push(table);
+    }
+
+    Ok(model)
 }
 
 /// Auto-detect format from input content
@@ -266,4 +334,111 @@ fn auto_detect_format(input: &str) -> Result<&str, ConversionError> {
     Err(ConversionError::AutoDetectionFailed(
         "Could not auto-detect format. Please specify format explicitly.".to_string(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reconstruct_tables_from_import_result() {
+        let import_result = ImportResult {
+            tables: vec![TableData {
+                table_index: 0,
+                name: Some("users".to_string()),
+                columns: vec![
+                    ColumnData {
+                        name: "id".to_string(),
+                        data_type: "INTEGER".to_string(),
+                        physical_type: None,
+                        nullable: false,
+                        primary_key: true,
+                        description: Some("User ID".to_string()),
+                        quality: None,
+                        relationships: vec![],
+                        enum_values: None,
+                    },
+                    ColumnData {
+                        name: "name".to_string(),
+                        data_type: "VARCHAR(100)".to_string(),
+                        physical_type: None,
+                        nullable: true,
+                        primary_key: false,
+                        description: None,
+                        quality: None,
+                        relationships: vec![],
+                        enum_values: None,
+                    },
+                ],
+            }],
+            tables_requiring_name: vec![],
+            errors: vec![],
+            ai_suggestions: None,
+        };
+
+        let tables = reconstruct_tables(&import_result);
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].name, "users");
+        assert_eq!(tables[0].columns.len(), 2);
+        assert_eq!(tables[0].columns[0].name, "id");
+        assert!(tables[0].columns[0].primary_key);
+        assert_eq!(tables[0].columns[0].description, "User ID");
+    }
+
+    #[test]
+    fn test_convert_sql_to_odcs() {
+        let sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name VARCHAR(100));";
+        let result = convert_to_odcs(sql, Some("sql"));
+        assert!(result.is_ok());
+        let yaml = result.unwrap();
+        assert!(yaml.contains("kind: DataContract"));
+        assert!(yaml.contains("users"));
+    }
+
+    #[test]
+    fn test_auto_detect_sql() {
+        let sql = "CREATE TABLE test (id INT);";
+        let format = auto_detect_format(sql);
+        assert!(format.is_ok());
+        assert_eq!(format.unwrap(), "sql");
+    }
+
+    #[test]
+    fn test_auto_detect_odcs() {
+        let odcs = "apiVersion: v3.1.0\nkind: DataContract\n";
+        let format = auto_detect_format(odcs);
+        assert!(format.is_ok());
+        assert_eq!(format.unwrap(), "odcs");
+    }
+
+    #[test]
+    fn test_import_result_to_data_model() {
+        let import_result = ImportResult {
+            tables: vec![TableData {
+                table_index: 0,
+                name: Some("orders".to_string()),
+                columns: vec![ColumnData {
+                    name: "order_id".to_string(),
+                    data_type: "UUID".to_string(),
+                    physical_type: None,
+                    nullable: false,
+                    primary_key: true,
+                    description: None,
+                    quality: None,
+                    relationships: vec![],
+                    enum_values: None,
+                }],
+            }],
+            tables_requiring_name: vec![],
+            errors: vec![],
+            ai_suggestions: None,
+        };
+
+        let model = import_result_to_data_model(&import_result, "test_model");
+        assert!(model.is_ok());
+        let model = model.unwrap();
+        assert_eq!(model.name, "test_model");
+        assert_eq!(model.tables.len(), 1);
+        assert_eq!(model.tables[0].name, "orders");
+    }
 }

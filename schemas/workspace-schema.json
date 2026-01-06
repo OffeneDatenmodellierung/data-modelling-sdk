@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/pixie79/data-modelling-sdk/schemas/workspace-schema.json",
+  "title": "Workspace Schema",
+  "description": "Schema for a Workspace entity in the data modelling application. Workspaces are top-level containers that organize domains and their associated assets. In offline mode, each workspace corresponds to a directory containing domain folders.",
+  "type": "object",
+  "required": ["id", "name", "owner_id", "created_at", "last_modified_at"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the workspace"
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Workspace name"
+    },
+    "owner_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owner/creator user identifier"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of creation"
+    },
+    "last_modified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of last modification"
+    },
+    "domains": {
+      "type": "array",
+      "description": "Array of domain metadata to avoid regenerating UUIDs on each load. Full domain details are stored in separate domain.yaml files within each domain folder.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Domain identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Domain name (must match folder name in offline mode)"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "name": "Enterprise Data Models",
+      "owner_id": "987fcdeb-51a2-43e1-b123-456789abcdef",
+      "created_at": "2025-01-01T09:00:00Z",
+      "last_modified_at": "2025-01-05T16:30:00Z",
+      "domains": [
+        {
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "name": "customer-management"
+        },
+        {
+          "id": "660e8400-e29b-41d4-a716-446655440001",
+          "name": "order-processing"
+        },
+        {
+          "id": "770e8400-e29b-41d4-a716-446655440002",
+          "name": "inventory-control"
+        }
+      ]
+    }
+  ]
+}

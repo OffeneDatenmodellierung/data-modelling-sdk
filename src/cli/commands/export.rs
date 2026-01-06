@@ -55,6 +55,7 @@ pub fn load_tables_from_odcs(input_path: &PathBuf) -> Result<Vec<crate::models::
             .map(|col_data| crate::models::Column {
                 name: col_data.name.clone(),
                 data_type: col_data.data_type.clone(),
+                physical_type: col_data.physical_type.clone(),
                 nullable: col_data.nullable,
                 primary_key: col_data.primary_key,
                 secondary_key: false,
@@ -64,9 +65,10 @@ pub fn load_tables_from_odcs(input_path: &PathBuf) -> Result<Vec<crate::models::
                 description: col_data.description.clone().unwrap_or_default(),
                 errors: Vec::new(),
                 quality: col_data.quality.clone().unwrap_or_default(),
-                ref_path: col_data.ref_path.clone(),
+                relationships: col_data.relationships.clone(),
                 enum_values: col_data.enum_values.clone().unwrap_or_default(),
                 column_order: 0,
+                nested_data: None,
             })
             .collect();
 

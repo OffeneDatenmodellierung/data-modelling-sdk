@@ -1,4 +1,16 @@
 //! Enums for data modeling
+//!
+//! # Serde Casing Conventions
+//!
+//! The enums in this module use different serde `rename_all` strategies based on their
+//! semantic meaning and external schema requirements:
+//!
+//! - `SCREAMING_SNAKE_CASE`: Technical/database constants (DatabaseType, SCDPattern)
+//! - `lowercase`: Simple layer/level keywords (MedallionLayer, ModelingLevel)
+//! - `PascalCase`: Type names and relationships (Cardinality, RelationshipType, InfrastructureType)
+//! - No rename: Values that match Rust conventions (DataVaultClassification)
+//!
+//! These conventions ensure compatibility with ODCS, CADS, and other external schemas.
 
 use serde::{Deserialize, Serialize};
 

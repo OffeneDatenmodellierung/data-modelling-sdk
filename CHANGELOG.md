@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.2] - 2025-01-05
+
+### Added
+
+- **feat(wasm)**: Workspace and DomainConfig WASM bindings
+  - `create_workspace()` - Create a new workspace with owner
+  - `parse_workspace_yaml()` - Parse workspace YAML to JSON
+  - `export_workspace_to_yaml()` - Export workspace JSON to YAML
+  - `add_domain_to_workspace()` - Add a domain reference to workspace
+  - `remove_domain_from_workspace()` - Remove a domain reference from workspace
+  - `create_domain_config()` - Create a new domain configuration
+  - `parse_domain_config_yaml()` - Parse domain config YAML to JSON
+  - `export_domain_config_to_yaml()` - Export domain config JSON to YAML
+  - `get_domain_config_id()` - Extract domain ID from config
+  - `update_domain_view_positions()` - Update view positions in domain config
+  - `add_entity_to_domain_config()` - Add entity reference (system, table, product, asset, process, decision)
+  - `remove_entity_from_domain_config()` - Remove entity reference from domain config
+
+- **feat(loader)**: Workspace and DomainConfig loading/saving
+  - `load_workspace()` / `save_workspace()` - Load/save workspace.yaml files
+  - `load_domain_config()` / `save_domain_config()` - Load/save domain.yaml files
+  - `load_domain_config_by_name()` - Load domain config by name within a workspace
+  - `get_domain_id()` - Extract domain ID from domain.yaml
+  - `load_all_domain_configs()` - Load all domain configs in a workspace
+
+### Fixed
+
+- **fix(loader)**: Domain ID extraction from domain.yaml
+  - BPMN, DMN, and OpenAPI loaders now extract domain ID from domain.yaml instead of generating random UUIDs
+  - Falls back to new UUID if domain.yaml is not found
+
 ## [1.8.1] - 2026-01-05
 
 ### Fixed

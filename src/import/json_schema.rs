@@ -7,13 +7,34 @@
 //! - Maximum length limits
 
 use super::{ImportError, ImportResult, TableData};
-use crate::models::{Column, Table, Tag};
+use crate::models::{Column, PropertyRelationship, Table, Tag};
 use crate::validation::input::{validate_column_name, validate_data_type, validate_table_name};
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::str::FromStr;
 use tracing::{info, warn};
+
+/// Convert a $ref path to a PropertyRelationship.
+fn ref_to_relationships(ref_path: &Option<String>) -> Vec<PropertyRelationship> {
+    match ref_path {
+        Some(ref_str) => {
+            let to = if ref_str.starts_with("#/definitions/") {
+                let def_path = ref_str.strip_prefix("#/definitions/").unwrap_or(ref_str);
+                format!("definitions/{}", def_path)
+            } else if ref_str.starts_with("#/") {
+                ref_str.strip_prefix("#/").unwrap_or(ref_str).to_string()
+            } else {
+                ref_str.clone()
+            };
+            vec![PropertyRelationship {
+                relationship_type: "foreignKey".to_string(),
+                to,
+            }]
+        }
+        None => Vec::new(),
+    }
+}
 
 /// Parser for JSON Schema format.
 pub struct JSONSchemaImporter;
@@ -80,6 +101,7 @@ impl JSONSchemaImporter {
                             .map(|c| super::ColumnData {
                                 name: c.name.clone(),
                                 data_type: c.data_type.clone(),
+                                physical_type: c.physical_type.clone(),
                                 nullable: c.nullable,
                                 primary_key: c.primary_key,
                                 description: if c.description.is_empty() {
@@ -92,7 +114,7 @@ impl JSONSchemaImporter {
                                 } else {
                                     Some(c.quality.clone())
                                 },
-                                ref_path: c.ref_path.clone(),
+                                relationships: c.relationships.clone(),
                                 enum_values: if c.enum_values.is_empty() {
                                     None
                                 } else {
@@ -338,6 +360,7 @@ impl JSONSchemaImporter {
             return Ok(vec![Column {
                 name: prop_name.to_string(),
                 data_type: "STRING".to_string(), // Default for $ref, will be resolved later
+                physical_type: None,
                 nullable,
                 primary_key: false,
                 secondary_key: false,
@@ -346,10 +369,11 @@ impl JSONSchemaImporter {
                 constraints: Vec::new(),
                 description,
                 quality: quality_rules,
-                ref_path: Some(ref_path.to_string()),
+                relationships: ref_to_relationships(&Some(ref_path.to_string())),
                 enum_values: Vec::new(),
                 errors: Vec::new(),
                 column_order: 0,
+                nested_data: None,
             }]);
         }
 
@@ -427,6 +451,7 @@ impl JSONSchemaImporter {
                     columns.push(Column {
                         name: prop_name.to_string(),
                         data_type: "STRUCT".to_string(),
+                        physical_type: None,
                         nullable,
                         primary_key: false,
                         secondary_key: false,
@@ -435,10 +460,11 @@ impl JSONSchemaImporter {
                         constraints: Vec::new(),
                         description,
                         quality: struct_quality,
-                        ref_path: None,
+                        relationships: Vec::new(),
                         enum_values: Vec::new(),
                         errors: Vec::new(),
                         column_order: 0,
+                        nested_data: None,
                     });
                 }
             }
@@ -513,6 +539,7 @@ impl JSONSchemaImporter {
                 columns.push(Column {
                     name: prop_name.to_string(),
                     data_type,
+                    physical_type: None,
                     nullable,
                     primary_key: false,
                     secondary_key: false,
@@ -521,10 +548,11 @@ impl JSONSchemaImporter {
                     constraints: Vec::new(),
                     description,
                     quality: array_quality,
-                    ref_path: None,
+                    relationships: Vec::new(),
                     enum_values: Vec::new(),
                     errors: Vec::new(),
                     column_order: 0,
+                    nested_data: None,
                 });
             }
             _ => {
@@ -533,6 +561,7 @@ impl JSONSchemaImporter {
                 columns.push(Column {
                     name: prop_name.to_string(),
                     data_type,
+                    physical_type: None,
                     nullable,
                     primary_key: false,
                     secondary_key: false,
@@ -541,10 +570,11 @@ impl JSONSchemaImporter {
                     constraints: Vec::new(),
                     description,
                     quality: quality_rules,
-                    ref_path: None,
+                    relationships: Vec::new(),
                     enum_values: enum_values.clone(),
                     errors: Vec::new(),
                     column_order: 0,
+                    nested_data: None,
                 });
             }
         }

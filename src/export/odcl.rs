@@ -4,9 +4,22 @@
 //! Legacy ODCL formats are no longer supported for export.
 
 use super::{ExportError, ExportResult};
-use crate::models::{DataModel, Table};
+use crate::models::{Column, DataModel, Table};
 use serde_yaml;
 use std::collections::HashMap;
+
+/// Extract $ref path from column relationships.
+/// Returns the first foreignKey relationship as a $ref path.
+fn get_ref_path_from_relationships(column: &Column) -> Option<String> {
+    column.relationships.iter().find_map(|rel| {
+        if rel.relationship_type == "foreignKey" {
+            // Convert back to $ref format
+            Some(format!("#/{}", rel.to))
+        } else {
+            None
+        }
+    })
+}
 
 /// Exporter for ODCS (Open Data Contract Standard) v3.1.0 YAML format.
 pub struct ODCLExporter;
@@ -408,11 +421,11 @@ impl ODCLExporter {
                         );
                     }
 
-                    // Export $ref reference for nested columns if present
-                    if let Some(ref_path) = &child_col.ref_path {
+                    // Export $ref reference for nested columns if present (from relationships)
+                    if let Some(ref_path) = get_ref_path_from_relationships(child_col) {
                         child_prop.insert(
                             serde_yaml::Value::String("$ref".to_string()),
-                            serde_yaml::Value::String(ref_path.clone()),
+                            serde_yaml::Value::String(ref_path),
                         );
                     }
 
@@ -607,11 +620,11 @@ impl ODCLExporter {
                 );
             }
 
-            // Export $ref reference if present
-            if let Some(ref_path) = &column.ref_path {
+            // Export $ref reference if present (from relationships)
+            if let Some(ref_path) = get_ref_path_from_relationships(column) {
                 prop.insert(
                     serde_yaml::Value::String("$ref".to_string()),
-                    serde_yaml::Value::String(ref_path.clone()),
+                    serde_yaml::Value::String(ref_path),
                 );
             }
 
@@ -899,9 +912,10 @@ mod tests {
             id: Table::generate_id("test_table", None, None, None),
             name: "test_table".to_string(),
             columns: vec![Column {
-                ref_path: None,
+                relationships: Vec::new(),
                 name: "id".to_string(),
                 data_type: "BIGINT".to_string(),
+                physical_type: None,
                 nullable: false,
                 primary_key: true,
                 secondary_key: false,
@@ -913,6 +927,7 @@ mod tests {
                 quality: Vec::new(),
                 enum_values: Vec::new(),
                 column_order: 0,
+                nested_data: None,
             }],
             database_type: None,
             catalog_name: None,

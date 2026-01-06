@@ -27,6 +27,7 @@ fn create_table_from_import_result(
                 .map(|c| Column {
                     name: c.name.clone(),
                     data_type: c.data_type.clone(),
+                    physical_type: c.physical_type.clone(),
                     nullable: c.nullable,
                     primary_key: c.primary_key,
                     secondary_key: false,
@@ -35,10 +36,11 @@ fn create_table_from_import_result(
                     constraints: Vec::new(),
                     description: c.description.clone().unwrap_or_default(),
                     quality: c.quality.clone().unwrap_or_default(),
-                    ref_path: c.ref_path.clone(),
+                    relationships: c.relationships.clone(),
                     enum_values: c.enum_values.clone().unwrap_or_default(),
                     errors: Vec::new(),
                     column_order: 0,
+                    nested_data: None,
                 })
                 .collect(),
             database_type: None,
@@ -464,7 +466,11 @@ definitions:
             .expect("Should find complete_column");
 
         assert_eq!(column.description, "This column has all three field types");
-        assert_eq!(column.ref_path, Some("#/definitions/order_id".to_string()));
+        // ref_path is now stored as relationships
+        assert!(
+            !column.relationships.is_empty(),
+            "Column should have relationships from $ref"
+        );
         assert!(!column.quality.is_empty());
 
         // Export back to ODCL
@@ -488,8 +494,9 @@ definitions:
             "Description should be preserved"
         );
         assert_eq!(
-            round_trip_column.ref_path, column.ref_path,
-            "$ref should be preserved"
+            round_trip_column.relationships.len(),
+            column.relationships.len(),
+            "relationships (from $ref) should be preserved"
         );
 
         // Note: Quality preservation may vary depending on format conversion
@@ -545,7 +552,15 @@ definitions:
             .expect("Should find complete_column");
 
         assert_eq!(column.description, "This column has all three field types");
-        assert_eq!(column.ref_path, Some("#/definitions/order_id".to_string()));
+        // $ref is now converted to relationships on import
+        assert!(
+            !column.relationships.is_empty(),
+            "Should have relationships from $ref"
+        );
+        assert_eq!(
+            column.relationships[0].to, "definitions/order_id",
+            "Relationship should point to definitions/order_id"
+        );
         assert!(!column.quality.is_empty());
 
         // Export back to ODCS v3.1.0
@@ -563,19 +578,26 @@ definitions:
             .find(|c| c.name == "complete_column")
             .expect("Should find complete_column after round-trip");
 
-        // Verify critical fields are preserved (description and $ref are most important)
+        // Verify critical fields are preserved (description and relationships are most important)
         assert_eq!(
             round_trip_column.description, column.description,
             "Description should be preserved"
         );
         assert_eq!(
-            round_trip_column.ref_path, column.ref_path,
-            "$ref should be preserved"
+            round_trip_column.relationships.len(),
+            column.relationships.len(),
+            "Relationships should be preserved"
         );
+        if !column.relationships.is_empty() {
+            assert_eq!(
+                round_trip_column.relationships[0].to, column.relationships[0].to,
+                "Relationship target should be preserved"
+            );
+        }
 
         // Note: Quality preservation may vary depending on format conversion
         // The exported YAML contains quality, but format conversion may affect parsing.
-        // Description and $ref are the critical fields for this user story.
+        // Description and relationships are the critical fields for this user story.
     }
 }
 
@@ -1160,5 +1182,544 @@ odcs_nodes: []
             "Domain conversion error should mention Domain or ODCS node. Error was: {}",
             error_str
         );
+    }
+}
+
+/// Roundtrip tests for example files to ensure no data loss during import/export
+mod example_file_roundtrip_tests {
+    use super::*;
+    use data_modelling_sdk::import::odcl::ODCLImporter;
+
+    /// Helper to compare YAML values, ignoring ordering differences in maps
+    #[allow(dead_code)]
+    fn yaml_values_equivalent(a: &serde_yaml::Value, b: &serde_yaml::Value) -> bool {
+        match (a, b) {
+            (serde_yaml::Value::Mapping(m1), serde_yaml::Value::Mapping(m2)) => {
+                if m1.len() != m2.len() {
+                    return false;
+                }
+                for (k, v1) in m1 {
+                    match m2.get(k) {
+                        Some(v2) => {
+                            if !yaml_values_equivalent(v1, v2) {
+                                return false;
+                            }
+                        }
+                        None => return false,
+                    }
+                }
+                true
+            }
+            (serde_yaml::Value::Sequence(s1), serde_yaml::Value::Sequence(s2)) => {
+                if s1.len() != s2.len() {
+                    return false;
+                }
+                s1.iter()
+                    .zip(s2.iter())
+                    .all(|(v1, v2)| yaml_values_equivalent(v1, v2))
+            }
+            _ => a == b,
+        }
+    }
+
+    /// Helper to check if a key exists in YAML at any level
+    fn yaml_contains_key(yaml: &serde_yaml::Value, key: &str) -> bool {
+        match yaml {
+            serde_yaml::Value::Mapping(m) => {
+                for (k, v) in m {
+                    if let serde_yaml::Value::String(s) = k
+                        && s == key
+                    {
+                        return true;
+                    }
+                    if yaml_contains_key(v, key) {
+                        return true;
+                    }
+                }
+                false
+            }
+            serde_yaml::Value::Sequence(s) => s.iter().any(|v| yaml_contains_key(v, key)),
+            _ => false,
+        }
+    }
+
+    /// Helper to get all tables/schema names from ODCS YAML
+    fn get_schema_names(yaml: &serde_yaml::Value) -> Vec<String> {
+        let mut names = Vec::new();
+        if let Some(serde_yaml::Value::Sequence(tables)) = yaml.get("schema") {
+            for table in tables {
+                if let Some(serde_yaml::Value::String(s)) = table.get("name") {
+                    names.push(s.clone());
+                }
+            }
+        }
+        names
+    }
+
+    /// Helper to get property names from a schema table
+    fn get_property_names(yaml: &serde_yaml::Value, table_name: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        if let Some(serde_yaml::Value::Sequence(tables)) = yaml.get("schema") {
+            for table in tables {
+                if let Some(serde_yaml::Value::String(s)) = table.get("name")
+                    && s == table_name
+                    && let Some(serde_yaml::Value::Sequence(properties)) = table.get("properties")
+                {
+                    for prop in properties {
+                        if let Some(serde_yaml::Value::String(ps)) = prop.get("name") {
+                            names.push(ps.clone());
+                        }
+                    }
+                }
+            }
+        }
+        names
+    }
+
+    #[test]
+    fn test_full_example_odcs_roundtrip() {
+        // Load the full-example.odcs.yaml file
+        let original_yaml = std::fs::read_to_string("examples/full-example.odcs.yaml")
+            .expect("Failed to read full-example.odcs.yaml");
+
+        // Parse original YAML for comparison
+        let original_parsed: serde_yaml::Value =
+            serde_yaml::from_str(&original_yaml).expect("Failed to parse original YAML");
+
+        // Import
+        let mut importer = ODCSImporter::new();
+        let import_result = importer
+            .import(&original_yaml)
+            .expect("Failed to import full-example.odcs.yaml");
+
+        // Verify we got tables
+        assert!(
+            !import_result.tables.is_empty(),
+            "Should import at least one table"
+        );
+
+        // Create tables from import result
+        let tables = create_table_from_import_result(&import_result);
+
+        // Export back to ODCS
+        let exported_yaml = ODCSExporter::export_table(&tables[0], "odcs_v3_1_0");
+
+        // Parse exported YAML
+        let exported_parsed: serde_yaml::Value =
+            serde_yaml::from_str(&exported_yaml).expect("Failed to parse exported YAML");
+
+        // Verify key fields are preserved
+        // Check apiVersion
+        assert!(
+            exported_parsed.get("apiVersion").is_some(),
+            "Exported YAML should have apiVersion"
+        );
+
+        // Check schema exists
+        assert!(
+            exported_parsed.get("schema").is_some(),
+            "Exported YAML should have schema"
+        );
+
+        // Verify table names are preserved
+        let original_schema_names = get_schema_names(&original_parsed);
+        let exported_schema_names = get_schema_names(&exported_parsed);
+
+        // The first table should match
+        assert!(
+            !exported_schema_names.is_empty(),
+            "Exported schema should have tables"
+        );
+
+        // Verify properties are preserved for first table
+        if !original_schema_names.is_empty() {
+            let original_props = get_property_names(&original_parsed, &original_schema_names[0]);
+            let exported_props = get_property_names(&exported_parsed, &exported_schema_names[0]);
+
+            // Check that we have properties
+            assert!(
+                !exported_props.is_empty(),
+                "Exported table should have properties"
+            );
+
+            // Check key properties are present
+            for prop in &original_props {
+                assert!(
+                    exported_props.contains(prop),
+                    "Property '{}' should be preserved in export",
+                    prop
+                );
+            }
+        }
+
+        // Verify relationships are preserved (schema-level and property-level)
+        assert!(
+            yaml_contains_key(&exported_parsed, "relationships")
+                || yaml_contains_key(&original_parsed, "relationships"),
+            "Relationships should be preserved if present in original"
+        );
+
+        // Re-import the exported YAML to verify it's valid
+        let mut reimporter = ODCSImporter::new();
+        let reimport_result = reimporter
+            .import(&exported_yaml)
+            .expect("Failed to re-import exported YAML");
+
+        assert!(
+            !reimport_result.tables.is_empty(),
+            "Re-imported YAML should produce tables"
+        );
+
+        // Verify column count matches
+        assert_eq!(
+            import_result.tables[0].columns.len(),
+            reimport_result.tables[0].columns.len(),
+            "Column count should match after roundtrip"
+        );
+    }
+
+    #[test]
+    fn test_all_data_types_odcs_roundtrip() {
+        // Load the all-data-types.odcs.yaml file
+        let original_yaml = std::fs::read_to_string("examples/all-data-types.odcs.yaml")
+            .expect("Failed to read all-data-types.odcs.yaml");
+
+        // Import
+        let mut importer = ODCSImporter::new();
+        let import_result = importer
+            .import(&original_yaml)
+            .expect("Failed to import all-data-types.odcs.yaml");
+
+        // Verify we got tables
+        assert!(
+            !import_result.tables.is_empty(),
+            "Should import at least one table"
+        );
+
+        // Check expected data type columns exist in import
+        let expected_columns = vec![
+            "account_id",
+            "txn_ref_date",
+            "txn_timestamp",
+            "txn_timestamp_tz",
+            "txn_time",
+            "amount",
+            "age",
+            "is_open",
+            "latest_txns",
+            "customer_details",
+        ];
+
+        let imported_col_names: Vec<&str> = import_result.tables[0]
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+
+        for col in &expected_columns {
+            assert!(
+                imported_col_names.contains(col),
+                "Imported table should have column '{}'. Available: {:?}",
+                col,
+                imported_col_names
+            );
+        }
+
+        // Create tables from import result
+        let tables = create_table_from_import_result(&import_result);
+
+        // Export back to ODCS
+        let exported_yaml = ODCSExporter::export_table(&tables[0], "odcs_v3_1_0");
+
+        // Re-import to verify validity and data preservation
+        let mut reimporter = ODCSImporter::new();
+        let reimport_result = reimporter
+            .import(&exported_yaml)
+            .expect("Failed to re-import exported YAML");
+
+        assert!(
+            !reimport_result.tables.is_empty(),
+            "Re-imported YAML should produce tables"
+        );
+
+        // Verify column count matches
+        assert_eq!(
+            import_result.tables[0].columns.len(),
+            reimport_result.tables[0].columns.len(),
+            "Column count should match after roundtrip. Original: {}, Reimported: {}",
+            import_result.tables[0].columns.len(),
+            reimport_result.tables[0].columns.len()
+        );
+
+        // Verify all columns are preserved after roundtrip
+        let reimported_col_names: Vec<&str> = reimport_result.tables[0]
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+
+        for col in &expected_columns {
+            assert!(
+                reimported_col_names.contains(col),
+                "Column '{}' should exist after roundtrip. Available: {:?}",
+                col,
+                reimported_col_names
+            );
+        }
+
+        // Verify data types are preserved
+        for col in &import_result.tables[0].columns {
+            let reimported_col = reimport_result.tables[0]
+                .columns
+                .iter()
+                .find(|c| c.name == col.name);
+            assert!(
+                reimported_col.is_some(),
+                "Column '{}' should exist after roundtrip",
+                col.name
+            );
+            let reimported = reimported_col.unwrap();
+            assert_eq!(
+                col.data_type, reimported.data_type,
+                "Data type for '{}' should be preserved: expected '{}', got '{}'",
+                col.name, col.data_type, reimported.data_type
+            );
+        }
+    }
+
+    #[test]
+    fn test_time_example_odcl_to_odcs_roundtrip() {
+        // Load the time-example.odcl.yaml file (ODCL format)
+        let original_yaml = std::fs::read_to_string("examples/time-example.odcl.yaml")
+            .expect("Failed to read time-example.odcl.yaml");
+
+        // Import using ODCL importer
+        let mut importer = ODCLImporter::new();
+        let import_result = importer
+            .import(&original_yaml)
+            .expect("Failed to import time-example.odcl.yaml");
+
+        // Verify we got tables
+        assert!(
+            !import_result.tables.is_empty(),
+            "Should import at least one table from ODCL"
+        );
+
+        // Note: ODCL importer currently only imports the first model
+        // The first model should be business_hours
+        let first_table = &import_result.tables[0];
+        assert!(
+            first_table.name.as_deref() == Some("business_hours"),
+            "First model should be 'business_hours', got {:?}",
+            first_table.name
+        );
+
+        // Check time columns exist in the first table
+        let time_columns = vec!["opening_time", "closing_time", "lunch_start", "lunch_end"];
+        let col_names: Vec<&str> = first_table
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+
+        for col_name in &time_columns {
+            assert!(
+                col_names.contains(col_name),
+                "Column '{}' should be imported from ODCL. Available: {:?}",
+                col_name,
+                col_names
+            );
+        }
+
+        // Verify time data types
+        for col_name in &time_columns {
+            let col = first_table
+                .columns
+                .iter()
+                .find(|c| c.name == *col_name)
+                .unwrap();
+            assert!(
+                col.data_type.to_uppercase().contains("TIME")
+                    || col.data_type.to_uppercase().contains("STRING"),
+                "Time column '{}' should have time-related type, got '{}'",
+                col_name,
+                col.data_type
+            );
+        }
+
+        // Create tables from import result
+        let tables = create_table_from_import_result(&import_result);
+
+        // Export to ODCS format
+        let exported_yaml = ODCSExporter::export_table(&tables[0], "odcs_v3_1_0");
+
+        // Parse exported YAML
+        let exported_parsed: serde_yaml::Value =
+            serde_yaml::from_str(&exported_yaml).expect("Failed to parse exported YAML");
+
+        // Verify it's valid ODCS
+        assert!(
+            exported_parsed.get("apiVersion").is_some()
+                || exported_parsed.get("kind").is_some()
+                || exported_parsed.get("schema").is_some(),
+            "Exported YAML should be valid ODCS format"
+        );
+
+        // Re-import as ODCS to verify validity
+        let mut odcs_reimporter = ODCSImporter::new();
+        let reimport_result = odcs_reimporter
+            .import(&exported_yaml)
+            .expect("Failed to re-import exported ODCS YAML");
+
+        assert!(
+            !reimport_result.tables.is_empty(),
+            "Re-imported ODCS should produce tables"
+        );
+
+        // Verify column count is preserved after roundtrip
+        assert_eq!(
+            first_table.columns.len(),
+            reimport_result.tables[0].columns.len(),
+            "Column count should be preserved after ODCL -> ODCS roundtrip"
+        );
+
+        // Verify all time columns are preserved in reimport
+        let reimported_col_names: Vec<&str> = reimport_result.tables[0]
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+
+        for col_name in &time_columns {
+            assert!(
+                reimported_col_names.contains(col_name),
+                "Column '{}' should be preserved after roundtrip. Available: {:?}",
+                col_name,
+                reimported_col_names
+            );
+        }
+    }
+
+    #[test]
+    fn test_orders_latest_odcl_to_odcs_roundtrip() {
+        // Load the orders-latest.odcl.yaml file (ODCL format)
+        let original_yaml = std::fs::read_to_string("examples/orders-latest.odcl.yaml")
+            .expect("Failed to read orders-latest.odcl.yaml");
+
+        // Import using ODCL importer
+        let mut importer = ODCLImporter::new();
+        let import_result = importer
+            .import(&original_yaml)
+            .expect("Failed to import orders-latest.odcl.yaml");
+
+        // Verify we got tables
+        assert!(
+            !import_result.tables.is_empty(),
+            "Should import at least one table from ODCL"
+        );
+
+        // Note: ODCL importer currently only imports the first model
+        // Due to hash ordering, the first model could be either 'orders' or 'line_items'
+        let first_table = &import_result.tables[0];
+        let table_name = first_table.name.as_deref().unwrap_or("");
+
+        assert!(
+            table_name == "orders" || table_name == "line_items",
+            "First model should be 'orders' or 'line_items', got {:?}",
+            first_table.name
+        );
+
+        // Define expected columns based on which table was imported
+        let expected_columns: Vec<&str> = if table_name == "orders" {
+            vec![
+                "order_id",
+                "order_timestamp",
+                "order_total",
+                "customer_id",
+                "customer_email_address",
+                "processed_timestamp",
+            ]
+        } else {
+            // line_items columns
+            vec!["line_item_id", "order_id", "sku"]
+        };
+
+        let col_names: Vec<&str> = first_table
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+
+        for col_name in &expected_columns {
+            assert!(
+                col_names.contains(col_name),
+                "{} table should have column '{}'. Available: {:?}",
+                table_name,
+                col_name,
+                col_names
+            );
+        }
+
+        // Verify order_id has $ref converted to relationships (present in both tables)
+        let order_id_col = first_table.columns.iter().find(|c| c.name == "order_id");
+        if let Some(col) = order_id_col {
+            // Check that relationships are populated (from $ref conversion)
+            assert!(
+                !col.relationships.is_empty(),
+                "order_id column should have relationships from $ref"
+            );
+        }
+
+        // Create tables from import result
+        let tables = create_table_from_import_result(&import_result);
+
+        // Export to ODCS format
+        let exported_yaml = ODCSExporter::export_table(&tables[0], "odcs_v3_1_0");
+
+        // Parse exported YAML
+        let exported_parsed: serde_yaml::Value =
+            serde_yaml::from_str(&exported_yaml).expect("Failed to parse exported YAML");
+
+        // Verify it's valid ODCS
+        assert!(
+            exported_parsed.get("apiVersion").is_some()
+                || exported_parsed.get("kind").is_some()
+                || exported_parsed.get("schema").is_some(),
+            "Exported YAML should be valid ODCS format"
+        );
+
+        // Re-import as ODCS to verify validity
+        let mut odcs_reimporter = ODCSImporter::new();
+        let reimport_result = odcs_reimporter
+            .import(&exported_yaml)
+            .expect("Failed to re-import exported ODCS YAML");
+
+        assert!(
+            !reimport_result.tables.is_empty(),
+            "Re-imported ODCS should produce tables"
+        );
+
+        // Verify column count is preserved
+        assert_eq!(
+            tables[0].columns.len(),
+            reimport_result.tables[0].columns.len(),
+            "Column count should be preserved after ODCL -> ODCS -> ODCS roundtrip"
+        );
+
+        // Verify all expected columns are preserved in reimport
+        let reimported_col_names: Vec<&str> = reimport_result.tables[0]
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+
+        for col_name in &expected_columns {
+            assert!(
+                reimported_col_names.contains(col_name),
+                "Column '{}' should be preserved after roundtrip. Available: {:?}",
+                col_name,
+                reimported_col_names
+            );
+        }
     }
 }

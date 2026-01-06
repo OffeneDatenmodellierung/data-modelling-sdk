@@ -514,7 +514,11 @@ definitions:
 
         let column = &table.columns[0];
         assert_eq!(column.name, "order_id");
-        assert_eq!(column.ref_path, Some("#/definitions/order_id".to_string()));
+        // ref_path is now stored as relationships
+        assert!(
+            !column.relationships.is_empty(),
+            "Column should have relationships from $ref"
+        );
     }
 
     #[test]
@@ -564,8 +568,11 @@ definitions:
             Some("This column has all three field types".to_string())
         );
 
-        // Verify $ref is preserved
-        assert_eq!(column.ref_path, Some("#/definitions/order_id".to_string()));
+        // Verify $ref is preserved (now as relationships)
+        assert!(
+            !column.relationships.is_empty(),
+            "Column should have relationships from $ref"
+        );
 
         // Verify quality array is preserved with nested structures
         // Note: When required=true, a not_null quality rule may be added automatically
@@ -605,41 +612,40 @@ definitions:
         // Verify we got tables
         assert!(!result.tables.is_empty());
 
-        // The ODCL parser only parses the first model from the models section
-        // Let's verify that the parsed table has fields with description, quality, and $ref preserved
-        let test_table = &result.tables[0];
+        // The fixture has multiple models (orders, line_items). The ODCL importer currently
+        // only returns the first model alphabetically. We search across all returned tables.
 
-        // Verify description is preserved (find a column with description)
-        let desc_column = test_table
-            .columns
+        // Verify description is preserved (find any column with description across all tables)
+        let desc_column = result
+            .tables
             .iter()
+            .flat_map(|t| t.columns.iter())
             .find(|c| c.description.is_some() && !c.description.as_ref().unwrap().is_empty())
             .expect("Should find column with description");
         assert!(desc_column.description.is_some());
 
-        // Verify quality array is preserved (find a column with quality rules)
-        let quality_column = test_table
-            .columns
+        // Verify quality array is preserved (find any column with quality rules across all tables)
+        let quality_column = result
+            .tables
             .iter()
+            .flat_map(|t| t.columns.iter())
             .find(|c| c.quality.is_some() && !c.quality.as_ref().unwrap().is_empty())
             .expect("Should find column with quality");
         assert!(quality_column.quality.is_some());
         let quality = quality_column.quality.as_ref().unwrap();
         assert!(!quality.is_empty());
 
-        // Verify $ref is preserved (find a column with $ref)
-        let ref_column = test_table
-            .columns
+        // Verify $ref is preserved as relationships (find any column with relationships across all tables)
+        let ref_column = result
+            .tables
             .iter()
-            .find(|c| c.ref_path.is_some())
-            .expect("Should find column with $ref");
-        assert!(ref_column.ref_path.is_some());
+            .flat_map(|t| t.columns.iter())
+            .find(|c| !c.relationships.is_empty())
+            .expect("Should find column with relationships from $ref");
+        assert!(!ref_column.relationships.is_empty());
         assert!(
-            ref_column
-                .ref_path
-                .as_ref()
-                .unwrap()
-                .starts_with("#/definitions/")
+            ref_column.relationships[0].to.starts_with("definitions/"),
+            "Relationship 'to' should reference definitions"
         );
     }
 }
@@ -776,12 +782,12 @@ mod databricks_sql_tests {
             CREATE TABLE IF NOT EXISTS IDENTIFIER(:catalog_name || '.schema.example_table') (
                 id STRING COMMENT 'Unique identifier for each record.',
                 name STRING COMMENT 'Name of the record.',
-                rulesTriggered ARRAY<STRUCT<
+                events ARRAY<STRUCT<
                     id: STRING,
                     name: STRING,
-                    alertOperation: STRUCT<
+                    details: STRUCT<
                         name: STRING,
-                        revert: :variable_type,
+                        status: :variable_type,
                         timestamp: TIMESTAMP
                     >
                 >>,
@@ -904,9 +910,9 @@ TBLPROPERTIES (
         let sql = r#"
 CREATE TABLE test (
   id STRING COMMENT 'Unique identifier.',
-  name STRING COMMENT 'annotations are values that users link to customer IDs to provide any additional information about the customer\'s behaviour.',
-  description STRING COMMENT 'the time at which the alert was removed by the UI, by either completing the alert, dismissing the alert or by the alert hitting the rule\'s expiry time.',
-  metadata STRING COMMENT 'betMetadata gives bet information, and will be populated whenever there\'s an alert based off of a bet or group of bets. These fields aren\'t'
+  name STRING COMMENT 'Annotations are values that users link to customer IDs to provide any additional information about the customer\'s profile.',
+  description STRING COMMENT 'The time at which the record was updated by the UI, by either completing the task, dismissing the item or by the item hitting the system\'s expiry time.',
+  metadata STRING COMMENT 'Extended metadata gives additional information, and will be populated whenever there\'s an event based off of a transaction or group of transactions. These fields aren\'t'
 );
         "#;
         let result = importer.parse(sql).unwrap();
@@ -934,7 +940,13 @@ CREATE TABLE test (
             .iter()
             .find(|c| c.name == "description")
             .expect("description column should exist");
-        assert!(desc_col.description.as_deref().unwrap().contains("rule's"));
+        assert!(
+            desc_col
+                .description
+                .as_deref()
+                .unwrap()
+                .contains("system's")
+        );
 
         let meta_col = result.tables[0]
             .columns

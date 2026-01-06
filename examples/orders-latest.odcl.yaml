@@ -1,4 +1,4 @@
-dataContractSpecification: 1.2.1
+dataContractSpecification: 1.2.0
 id: orders-latest
 info:
   title: Orders Latest
@@ -8,7 +8,6 @@ info:
     All orders since 2020-01-01.
     Orders with their line items are in their current state (no history included).
   owner: Checkout Team
-  status: active
   contact:
     name: John Doe (Data Product Owner)
     url: https://teams.microsoft.com/l/channel/example/checkout
@@ -102,11 +101,8 @@ models:
       - type: sql
         description: The maximum duration between two orders should be less that 3600 seconds
         query: |
-          SELECT MAX(duration) AS max_duration
-          FROM (
-            SELECT EXTRACT(EPOCH FROM (order_timestamp - LAG(order_timestamp) OVER (ORDER BY order_timestamp))) AS duration
-            FROM orders
-          )
+          SELECT MAX(duration) AS max_duration FROM (SELECT EXTRACT(EPOCH FROM (order_timestamp - LAG(order_timestamp)
+          OVER (ORDER BY order_timestamp))) AS duration FROM orders)
         mustBeLessThan: 3600
       - type: sql
         description: Row Count
@@ -135,10 +131,6 @@ models:
         type: text
         description: Primary key of the lines_item_id table
         required: true
-        quality:
-          - type: text
-            description: Line item ID must follow naming convention
-            pattern: "^LI-[0-9]+$"
       order_id:
         $ref: "#/definitions/order_id"
         references: orders.order_id

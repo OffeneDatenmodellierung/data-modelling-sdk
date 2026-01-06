@@ -20,7 +20,45 @@ impl CADSExporter {
     ///
     /// A Result containing the YAML string in CADS v1.0 format, or an ExportError
     pub fn export(&self, asset: &CADSAsset) -> Result<String, ExportError> {
-        Ok(Self::export_asset(asset))
+        let yaml = Self::export_asset(asset);
+
+        // Validate exported YAML against CADS schema (if feature enabled)
+        #[cfg(feature = "schema-validation")]
+        {
+            #[cfg(feature = "cli")]
+            {
+                use crate::cli::validation::validate_cads_internal;
+                validate_cads_internal(&yaml).map_err(ExportError::ValidationError)?;
+            }
+            #[cfg(not(feature = "cli"))]
+            {
+                // Inline validation when CLI feature is not enabled
+                use jsonschema::Validator;
+                use serde_json::Value;
+
+                let schema_content = include_str!("../../schemas/cads.schema.json");
+                let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
+                    ExportError::ValidationError(format!("Failed to load CADS schema: {}", e))
+                })?;
+
+                let validator = Validator::new(&schema).map_err(|e| {
+                    ExportError::ValidationError(format!("Failed to compile CADS schema: {}", e))
+                })?;
+
+                let data: Value = serde_yaml::from_str(&yaml).map_err(|e| {
+                    ExportError::ValidationError(format!("Failed to parse YAML: {}", e))
+                })?;
+
+                if let Err(error) = validator.validate(&data) {
+                    return Err(ExportError::ValidationError(format!(
+                        "CADS validation failed: {}",
+                        error
+                    )));
+                }
+            }
+        }
+
+        Ok(yaml)
     }
 
     /// Export a CADS asset to CADS v1.0 YAML format

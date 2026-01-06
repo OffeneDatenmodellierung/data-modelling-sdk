@@ -88,6 +88,7 @@ impl ProtobufImporter {
                             .map(|c| super::ColumnData {
                                 name: c.name.clone(),
                                 data_type: c.data_type.clone(),
+                                physical_type: c.physical_type.clone(),
                                 nullable: c.nullable,
                                 primary_key: c.primary_key,
                                 description: if c.description.is_empty() {
@@ -100,7 +101,7 @@ impl ProtobufImporter {
                                 } else {
                                     Some(c.quality.clone())
                                 },
-                                ref_path: c.ref_path.clone(),
+                                relationships: c.relationships.clone(),
                                 enum_values: if c.enum_values.is_empty() {
                                     None
                                 } else {
@@ -187,7 +188,6 @@ impl ProtobufImporter {
                 current_message = Some(Message {
                     name: msg_name.to_string(),
                     fields: Vec::new(),
-                    nested_messages: Vec::new(),
                 });
             } else if trimmed == "}" || trimmed == "};" {
                 // End of message
@@ -345,6 +345,7 @@ impl ProtobufImporter {
                             columns.push(Column {
                                 name: format!("{}.{}", nested_field_name, deep_nested_field.name),
                                 data_type,
+                                physical_type: None,
                                 nullable: nested_field.nullable || deep_nested_field.nullable,
                                 primary_key: false,
                                 secondary_key: false,
@@ -353,10 +354,11 @@ impl ProtobufImporter {
                                 constraints: Vec::new(),
                                 description: String::new(),
                                 quality: Vec::new(),
-                                ref_path: None,
+                                relationships: Vec::new(),
                                 enum_values: Vec::new(),
                                 errors: Vec::new(),
                                 column_order: 0,
+                                nested_data: None,
                             });
                         }
                     } else {
@@ -373,6 +375,7 @@ impl ProtobufImporter {
                         columns.push(Column {
                             name: nested_field_name,
                             data_type,
+                            physical_type: None,
                             nullable: nested_field.nullable,
                             primary_key: false,
                             secondary_key: false,
@@ -381,10 +384,11 @@ impl ProtobufImporter {
                             constraints: Vec::new(),
                             description: String::new(),
                             quality: Vec::new(),
-                            ref_path: None,
+                            relationships: Vec::new(),
                             enum_values: Vec::new(),
                             errors: Vec::new(),
                             column_order: 0,
+                            nested_data: None,
                         });
                     }
                 }
@@ -399,6 +403,7 @@ impl ProtobufImporter {
                 columns.push(Column {
                     name: field.name.clone(),
                     data_type,
+                    physical_type: None,
                     nullable: field.nullable,
                     primary_key: false,
                     secondary_key: false,
@@ -407,10 +412,11 @@ impl ProtobufImporter {
                     constraints: Vec::new(),
                     description: String::new(),
                     quality: Vec::new(),
-                    ref_path: None,
+                    relationships: Vec::new(),
                     enum_values: Vec::new(),
                     errors: Vec::new(),
                     column_order: 0,
+                    nested_data: None,
                 });
             }
         }
@@ -490,8 +496,6 @@ impl ProtobufImporter {
 struct Message {
     name: String,
     fields: Vec<ProtobufField>,
-    #[allow(dead_code)]
-    nested_messages: Vec<Message>,
 }
 
 /// Protobuf field structure.

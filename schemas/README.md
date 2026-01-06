@@ -97,6 +97,34 @@ DMN 1.3 defines decision models. The SDK stores DMN files in their native XML fo
 
 OpenAPI 3.1.1 defines API specifications. The SDK stores OpenAPI files in their native YAML or JSON format and validates them against the official JSON Schema. The SDK also provides a converter to transform OpenAPI schema components to ODCS table definitions.
 
+### Workspace
+
+**File**: `workspace-schema.json`
+**Version**: 1.0
+**Source**: Internal specification
+**Purpose**: Workspace configuration for the data modelling application
+**Status**: ✅ Fully Supported
+
+Workspace schema defines top-level containers that organize domains and their associated assets. In offline mode, each workspace corresponds to a directory containing domain folders. Key features:
+- Workspace metadata (id, name, owner_id, timestamps)
+- Domain references with IDs and names
+- Supports offline directory-based storage
+
+### Domain
+
+**File**: `domain-schema.json`
+**Version**: 1.0
+**Source**: Internal specification
+**Purpose**: Domain configuration within a workspace
+**Status**: ✅ Fully Supported
+
+Domain schema defines business-oriented containers that group related assets within a workspace. Key features:
+- Domain metadata (id, workspace_id, name, description, timestamps)
+- Owner information (name, email, team, role)
+- Asset references (systems, tables, products, assets, processes, decisions)
+- View positions for canvas rendering in different view modes
+- Supports offline directory-based storage
+
 ## Other Formats
 
 The SDK also supports importing/exporting from these formats, but they use external standards rather than our own schemas:
@@ -159,7 +187,9 @@ schemas/
 ├── cads.schema.json               # CADS v1.0 schema
 ├── bpmn-2.0.xsd                   # BPMN 2.0 XSD schema
 ├── dmn-1.3.xsd                    # DMN 1.3 XSD schema
-└── openapi-3.1.1.json             # OpenAPI 3.1.1 JSON Schema
+├── openapi-3.1.1.json             # OpenAPI 3.1.1 JSON Schema
+├── workspace-schema.json          # Workspace configuration schema
+└── domain-schema.json             # Domain configuration schema
 ```
 
 ## Related Documentation
