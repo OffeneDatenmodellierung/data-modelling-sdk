@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.2] - 2026-01-07
+
+### Added
+
+- **feat(wasm)**: Decision Log (DDL) WASM bindings for browser support
+  - `parse_decision_yaml()` - Parse decision YAML files (.madr.yaml)
+  - `parse_decision_index_yaml()` - Parse decisions index file (decisions.yaml)
+  - `export_decision_to_yaml()` - Export decision to YAML format
+  - `export_decision_index_to_yaml()` - Export decision index to YAML format
+  - `export_decision_to_markdown()` - Export decision to MADR Markdown format
+  - `create_decision()` - Create new decision with required fields
+  - `create_decision_index()` - Create empty decision index
+  - `add_decision_to_index()` - Add decision to index
+
+- **feat(wasm)**: Knowledge Base (KB) WASM bindings for browser support
+  - `parse_knowledge_yaml()` - Parse knowledge article YAML files (.kb.yaml)
+  - `parse_knowledge_index_yaml()` - Parse knowledge index file (knowledge.yaml)
+  - `export_knowledge_to_yaml()` - Export article to YAML format
+  - `export_knowledge_index_to_yaml()` - Export knowledge index to YAML format
+  - `export_knowledge_to_markdown()` - Export article to Markdown format
+  - `create_knowledge_article()` - Create new knowledge article
+  - `create_knowledge_index()` - Create empty knowledge index
+  - `add_article_to_knowledge_index()` - Add article to index
+  - `search_knowledge_articles()` - Search articles by title, summary, content, or tags
+
+### Changed
+
+- WASM package now exports 83 functions (up from 66 in v1.13.1)
+
 ## [1.13.1] - 2026-01-07
 
 ### Fixed

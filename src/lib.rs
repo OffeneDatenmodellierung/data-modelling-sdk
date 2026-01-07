@@ -2119,4 +2119,388 @@ mod wasm {
         config.last_modified_at = Utc::now();
         serde_json::to_string(&config).map_err(serialization_error)
     }
+
+    // ============================================================================
+    // Decision Log (DDL) Operations
+    // ============================================================================
+
+    /// Parse a decision YAML file and return a structured representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - Decision YAML content as a string (.madr.yaml)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing Decision, or JsValue error
+    #[wasm_bindgen]
+    pub fn parse_decision_yaml(yaml_content: &str) -> Result<String, JsValue> {
+        use crate::import::decision::DecisionImporter;
+
+        let importer = DecisionImporter::new();
+        match importer.import(yaml_content) {
+            Ok(decision) => serde_json::to_string(&decision).map_err(serialization_error),
+            Err(e) => Err(import_error_to_js(e)),
+        }
+    }
+
+    /// Parse a decisions index YAML file and return a structured representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - Decisions index YAML content as a string (decisions.yaml)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing DecisionIndex, or JsValue error
+    #[wasm_bindgen]
+    pub fn parse_decision_index_yaml(yaml_content: &str) -> Result<String, JsValue> {
+        use crate::import::decision::DecisionImporter;
+
+        let importer = DecisionImporter::new();
+        match importer.import_index(yaml_content) {
+            Ok(index) => serde_json::to_string(&index).map_err(serialization_error),
+            Err(e) => Err(import_error_to_js(e)),
+        }
+    }
+
+    /// Export a decision to YAML format.
+    ///
+    /// # Arguments
+    ///
+    /// * `decision_json` - JSON string containing Decision
+    ///
+    /// # Returns
+    ///
+    /// Decision YAML format string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_decision_to_yaml(decision_json: &str) -> Result<String, JsValue> {
+        use crate::export::decision::DecisionExporter;
+        use crate::models::decision::Decision;
+
+        let decision: Decision =
+            serde_json::from_str(decision_json).map_err(deserialization_error)?;
+        let exporter = DecisionExporter::new();
+        exporter
+            .export_without_validation(&decision)
+            .map_err(export_error_to_js)
+    }
+
+    /// Export a decisions index to YAML format.
+    ///
+    /// # Arguments
+    ///
+    /// * `index_json` - JSON string containing DecisionIndex
+    ///
+    /// # Returns
+    ///
+    /// DecisionIndex YAML format string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_decision_index_to_yaml(index_json: &str) -> Result<String, JsValue> {
+        use crate::export::decision::DecisionExporter;
+        use crate::models::decision::DecisionIndex;
+
+        let index: DecisionIndex =
+            serde_json::from_str(index_json).map_err(deserialization_error)?;
+        let exporter = DecisionExporter::new();
+        exporter.export_index(&index).map_err(export_error_to_js)
+    }
+
+    /// Export a decision to Markdown format (MADR template).
+    ///
+    /// # Arguments
+    ///
+    /// * `decision_json` - JSON string containing Decision
+    ///
+    /// # Returns
+    ///
+    /// Decision Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_decision_to_markdown(decision_json: &str) -> Result<String, JsValue> {
+        use crate::export::markdown::MarkdownExporter;
+        use crate::models::decision::Decision;
+
+        let decision: Decision =
+            serde_json::from_str(decision_json).map_err(deserialization_error)?;
+        let exporter = MarkdownExporter::new();
+        exporter
+            .export_decision(&decision)
+            .map_err(export_error_to_js)
+    }
+
+    /// Create a new decision with required fields.
+    ///
+    /// # Arguments
+    ///
+    /// * `number` - Decision number (ADR-0001, ADR-0002, etc.)
+    /// * `title` - Short title describing the decision
+    /// * `context` - Problem statement and context
+    /// * `decision` - The decision that was made
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing Decision, or JsValue error
+    #[wasm_bindgen]
+    pub fn create_decision(
+        number: u32,
+        title: &str,
+        context: &str,
+        decision: &str,
+    ) -> Result<String, JsValue> {
+        use crate::models::decision::Decision;
+
+        let dec = Decision::new(number, title, context, decision);
+        serde_json::to_string(&dec).map_err(serialization_error)
+    }
+
+    /// Create a new empty decision index.
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing DecisionIndex, or JsValue error
+    #[wasm_bindgen]
+    pub fn create_decision_index() -> Result<String, JsValue> {
+        use crate::models::decision::DecisionIndex;
+
+        let index = DecisionIndex::new();
+        serde_json::to_string(&index).map_err(serialization_error)
+    }
+
+    /// Add a decision to an index.
+    ///
+    /// # Arguments
+    ///
+    /// * `index_json` - JSON string containing DecisionIndex
+    /// * `decision_json` - JSON string containing Decision
+    /// * `filename` - Filename for the decision YAML file
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing updated DecisionIndex, or JsValue error
+    #[wasm_bindgen]
+    pub fn add_decision_to_index(
+        index_json: &str,
+        decision_json: &str,
+        filename: &str,
+    ) -> Result<String, JsValue> {
+        use crate::models::decision::{Decision, DecisionIndex};
+
+        let mut index: DecisionIndex =
+            serde_json::from_str(index_json).map_err(deserialization_error)?;
+        let decision: Decision =
+            serde_json::from_str(decision_json).map_err(deserialization_error)?;
+
+        index.add_decision(&decision, filename.to_string());
+        serde_json::to_string(&index).map_err(serialization_error)
+    }
+
+    // ============================================================================
+    // Knowledge Base (KB) Operations
+    // ============================================================================
+
+    /// Parse a knowledge article YAML file and return a structured representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - Knowledge article YAML content as a string (.kb.yaml)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing KnowledgeArticle, or JsValue error
+    #[wasm_bindgen]
+    pub fn parse_knowledge_yaml(yaml_content: &str) -> Result<String, JsValue> {
+        use crate::import::knowledge::KnowledgeImporter;
+
+        let importer = KnowledgeImporter::new();
+        match importer.import(yaml_content) {
+            Ok(article) => serde_json::to_string(&article).map_err(serialization_error),
+            Err(e) => Err(import_error_to_js(e)),
+        }
+    }
+
+    /// Parse a knowledge index YAML file and return a structured representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - Knowledge index YAML content as a string (knowledge.yaml)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing KnowledgeIndex, or JsValue error
+    #[wasm_bindgen]
+    pub fn parse_knowledge_index_yaml(yaml_content: &str) -> Result<String, JsValue> {
+        use crate::import::knowledge::KnowledgeImporter;
+
+        let importer = KnowledgeImporter::new();
+        match importer.import_index(yaml_content) {
+            Ok(index) => serde_json::to_string(&index).map_err(serialization_error),
+            Err(e) => Err(import_error_to_js(e)),
+        }
+    }
+
+    /// Export a knowledge article to YAML format.
+    ///
+    /// # Arguments
+    ///
+    /// * `article_json` - JSON string containing KnowledgeArticle
+    ///
+    /// # Returns
+    ///
+    /// KnowledgeArticle YAML format string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_knowledge_to_yaml(article_json: &str) -> Result<String, JsValue> {
+        use crate::export::knowledge::KnowledgeExporter;
+        use crate::models::knowledge::KnowledgeArticle;
+
+        let article: KnowledgeArticle =
+            serde_json::from_str(article_json).map_err(deserialization_error)?;
+        let exporter = KnowledgeExporter::new();
+        exporter
+            .export_without_validation(&article)
+            .map_err(export_error_to_js)
+    }
+
+    /// Export a knowledge index to YAML format.
+    ///
+    /// # Arguments
+    ///
+    /// * `index_json` - JSON string containing KnowledgeIndex
+    ///
+    /// # Returns
+    ///
+    /// KnowledgeIndex YAML format string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_knowledge_index_to_yaml(index_json: &str) -> Result<String, JsValue> {
+        use crate::export::knowledge::KnowledgeExporter;
+        use crate::models::knowledge::KnowledgeIndex;
+
+        let index: KnowledgeIndex =
+            serde_json::from_str(index_json).map_err(deserialization_error)?;
+        let exporter = KnowledgeExporter::new();
+        exporter.export_index(&index).map_err(export_error_to_js)
+    }
+
+    /// Export a knowledge article to Markdown format.
+    ///
+    /// # Arguments
+    ///
+    /// * `article_json` - JSON string containing KnowledgeArticle
+    ///
+    /// # Returns
+    ///
+    /// KnowledgeArticle Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_knowledge_to_markdown(article_json: &str) -> Result<String, JsValue> {
+        use crate::export::markdown::MarkdownExporter;
+        use crate::models::knowledge::KnowledgeArticle;
+
+        let article: KnowledgeArticle =
+            serde_json::from_str(article_json).map_err(deserialization_error)?;
+        let exporter = MarkdownExporter::new();
+        exporter
+            .export_knowledge(&article)
+            .map_err(export_error_to_js)
+    }
+
+    /// Create a new knowledge article with required fields.
+    ///
+    /// # Arguments
+    ///
+    /// * `number` - Article number (1, 2, 3, etc. - will be formatted as KB-0001)
+    /// * `title` - Article title
+    /// * `summary` - Brief summary of the article
+    /// * `content` - Full article content in Markdown
+    /// * `author` - Article author (email or name)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing KnowledgeArticle, or JsValue error
+    #[wasm_bindgen]
+    pub fn create_knowledge_article(
+        number: u32,
+        title: &str,
+        summary: &str,
+        content: &str,
+        author: &str,
+    ) -> Result<String, JsValue> {
+        use crate::models::knowledge::KnowledgeArticle;
+
+        let article = KnowledgeArticle::new(number, title, summary, content, author);
+        serde_json::to_string(&article).map_err(serialization_error)
+    }
+
+    /// Create a new empty knowledge index.
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing KnowledgeIndex, or JsValue error
+    #[wasm_bindgen]
+    pub fn create_knowledge_index() -> Result<String, JsValue> {
+        use crate::models::knowledge::KnowledgeIndex;
+
+        let index = KnowledgeIndex::new();
+        serde_json::to_string(&index).map_err(serialization_error)
+    }
+
+    /// Add an article to a knowledge index.
+    ///
+    /// # Arguments
+    ///
+    /// * `index_json` - JSON string containing KnowledgeIndex
+    /// * `article_json` - JSON string containing KnowledgeArticle
+    /// * `filename` - Filename for the article YAML file
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing updated KnowledgeIndex, or JsValue error
+    #[wasm_bindgen]
+    pub fn add_article_to_knowledge_index(
+        index_json: &str,
+        article_json: &str,
+        filename: &str,
+    ) -> Result<String, JsValue> {
+        use crate::models::knowledge::{KnowledgeArticle, KnowledgeIndex};
+
+        let mut index: KnowledgeIndex =
+            serde_json::from_str(index_json).map_err(deserialization_error)?;
+        let article: KnowledgeArticle =
+            serde_json::from_str(article_json).map_err(deserialization_error)?;
+
+        index.add_article(&article, filename.to_string());
+        serde_json::to_string(&index).map_err(serialization_error)
+    }
+
+    /// Search knowledge articles by title, summary, or content.
+    ///
+    /// # Arguments
+    ///
+    /// * `articles_json` - JSON string containing array of KnowledgeArticle
+    /// * `query` - Search query string (case-insensitive)
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing array of matching KnowledgeArticle, or JsValue error
+    #[wasm_bindgen]
+    pub fn search_knowledge_articles(articles_json: &str, query: &str) -> Result<String, JsValue> {
+        use crate::models::knowledge::KnowledgeArticle;
+
+        let articles: Vec<KnowledgeArticle> =
+            serde_json::from_str(articles_json).map_err(deserialization_error)?;
+
+        let query_lower = query.to_lowercase();
+        let matches: Vec<&KnowledgeArticle> = articles
+            .iter()
+            .filter(|article| {
+                article.title.to_lowercase().contains(&query_lower)
+                    || article.summary.to_lowercase().contains(&query_lower)
+                    || article.content.to_lowercase().contains(&query_lower)
+                    || article
+                        .tags
+                        .iter()
+                        .any(|tag| tag.to_string().to_lowercase().contains(&query_lower))
+            })
+            .collect();
+
+        serde_json::to_string(&matches).map_err(serialization_error)
+    }
 }
