@@ -23,6 +23,9 @@ cargo build --release --bin data-modelling-cli --features cli
 
 # With OpenAPI support
 cargo build --release --bin data-modelling-cli --features cli,openapi
+
+# With full features (including database support)
+cargo build --release --bin data-modelling-cli --features cli-full
 ```
 
 The binary will be located at:
@@ -62,6 +65,11 @@ cargo install --path . --bin data-modelling-cli --features cli
 **Installation with OpenAPI support:**
 ```bash
 cargo install --path . --bin data-modelling-cli --features cli,openapi
+```
+
+**Installation with full features (including database):**
+```bash
+cargo install --path . --bin data-modelling-cli --features cli-full
 ```
 
 This installs the binary to `~/.cargo/bin/data-modelling-cli` (or `%USERPROFILE%\.cargo\bin\data-modelling-cli` on Windows).
@@ -293,3 +301,201 @@ Install Protocol Buffers compiler:
 - Ensure referenced files are accessible
 - For HTTP/HTTPS references, ensure the URL is publicly accessible (no authentication required)
 - Check file paths are relative to the source file's directory
+
+---
+
+## Database Commands
+
+The CLI includes database commands for high-performance queries on large workspaces. These commands require the `cli-full` or `duckdb-backend` feature.
+
+### Database Initialization
+
+Initialize a database for a workspace:
+
+```bash
+# Initialize with DuckDB (default, embedded database)
+data-modelling-cli db init --workspace ./my-workspace --backend duckdb
+
+# Initialize with PostgreSQL (requires postgres-backend feature)
+data-modelling-cli db init --workspace ./my-workspace --backend postgres \
+  --connection-string "postgresql://user:pass@localhost/datamodel"
+```
+
+This creates:
+- `.data-model.toml`: Configuration file
+- `.data-model.duckdb`: DuckDB database file (for DuckDB backend)
+- Git hooks (if in a Git repository and hooks are enabled)
+
+### Database Sync
+
+Sync YAML files to the database:
+
+```bash
+# Incremental sync (only changed files)
+data-modelling-cli db sync --workspace ./my-workspace
+
+# Force full resync
+data-modelling-cli db sync --workspace ./my-workspace --force
+```
+
+The sync engine:
+- Detects changed files using SHA256 hashes
+- Parses ODCS/ODPS/CADS YAML files
+- Updates database tables, columns, and relationships
+
+### Database Status
+
+Check database status and statistics:
+
+```bash
+data-modelling-cli db status --workspace ./my-workspace
+```
+
+Output includes:
+- Backend type (DuckDB/PostgreSQL)
+- Database file path
+- Workspace count
+- Table, column, and relationship counts
+- Health check status
+
+### Database Export
+
+Export database contents back to YAML files:
+
+```bash
+# Export to workspace directory
+data-modelling-cli db export --workspace ./my-workspace
+
+# Export to custom output directory
+data-modelling-cli db export --workspace ./my-workspace --output ./export
+```
+
+### Query Command
+
+Execute SQL queries directly against the workspace database:
+
+```bash
+# Basic query (table output format)
+data-modelling-cli query "SELECT name, data_type FROM columns LIMIT 10" \
+  --workspace ./my-workspace
+
+# JSON output format
+data-modelling-cli query "SELECT * FROM tables" \
+  --workspace ./my-workspace --format json
+
+# CSV output format
+data-modelling-cli query "SELECT name, nullable FROM columns WHERE primary_key = true" \
+  --workspace ./my-workspace --format csv
+```
+
+**Output Formats:**
+- `table` (default): Human-readable table format
+- `json`: JSON array of objects
+- `csv`: Comma-separated values
+
+**Available Tables:**
+- `workspaces`: Workspace metadata
+- `domains`: Business domain definitions
+- `tables`: Table/data contract definitions
+- `columns`: Column definitions
+- `relationships`: Table relationships
+- `file_hashes`: File sync tracking
+
+**Example Queries:**
+
+```bash
+# Find all primary key columns
+data-modelling-cli query \
+  "SELECT t.name as table_name, c.name as column_name, c.data_type
+   FROM columns c
+   JOIN tables t ON c.table_id = t.id
+   WHERE c.primary_key = true" \
+  --workspace ./my-workspace
+
+# Count tables per domain
+data-modelling-cli query \
+  "SELECT d.name as domain, COUNT(t.id) as table_count
+   FROM domains d
+   LEFT JOIN tables t ON t.domain_id = d.id
+   GROUP BY d.name" \
+  --workspace ./my-workspace
+
+# Find nullable columns without descriptions
+data-modelling-cli query \
+  "SELECT name, data_type FROM columns
+   WHERE nullable = true AND (description IS NULL OR description = '')" \
+  --workspace ./my-workspace
+```
+
+### Database Command Reference
+
+```
+data-modelling-cli db <subcommand> [options]
+
+Subcommands:
+  init      Initialize database for a workspace
+  sync      Sync YAML files to database
+  status    Show database status
+  export    Export database to YAML files
+
+db init Options:
+  --workspace <path>           Workspace directory (required)
+  --backend <type>             Backend type: duckdb or postgres (default: duckdb)
+  --connection-string <url>    PostgreSQL connection string (for postgres backend)
+
+db sync Options:
+  --workspace <path>           Workspace directory (required)
+  --force                      Force full resync (ignore file hashes)
+
+db status Options:
+  --workspace <path>           Workspace directory (required)
+
+db export Options:
+  --workspace <path>           Workspace directory (required)
+  --output <path>              Output directory (default: workspace directory)
+```
+
+```
+data-modelling-cli query <sql> [options]
+
+Arguments:
+  <sql>                        SQL query to execute
+
+Options:
+  --workspace <path>           Workspace directory (required)
+  --format <format>            Output format: table, json, csv (default: table)
+```
+
+---
+
+## Git Hooks
+
+When database is initialized in a Git repository, hooks are automatically installed:
+
+### Pre-commit Hook
+
+Located at `.git/hooks/pre-commit`:
+- Exports database changes to YAML files before commit
+- Ensures YAML files reflect the current database state
+- Prevents committing stale YAML files
+
+### Post-checkout Hook
+
+Located at `.git/hooks/post-checkout`:
+- Syncs YAML files to database after checkout
+- Keeps database in sync when switching branches
+- Runs automatically on `git checkout` and `git switch`
+
+### Disabling Hooks
+
+To disable Git hooks, edit `.data-model.toml`:
+
+```toml
+[git]
+hooks_enabled = false
+```
+
+Or remove the hooks manually:
+```bash
+rm .git/hooks/pre-commit .git/hooks/post-checkout
+```

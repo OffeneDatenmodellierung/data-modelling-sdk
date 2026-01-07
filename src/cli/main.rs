@@ -2,6 +2,11 @@
 
 #[cfg(feature = "cli")]
 use clap::{Parser, Subcommand};
+#[cfg(all(feature = "cli", feature = "database"))]
+use data_modelling_sdk::cli::commands::db::{
+    DbExportArgs, DbInitArgs, DbStatusArgs, DbSyncArgs, handle_db_export, handle_db_init,
+    handle_db_status, handle_db_sync,
+};
 #[cfg(feature = "cli")]
 use data_modelling_sdk::cli::commands::export::{
     ExportArgs, ExportFormat, handle_export_avro, handle_export_json_schema, handle_export_odcs,
@@ -16,6 +21,8 @@ use data_modelling_sdk::cli::commands::import::{
     ImportArgs, ImportFormat, InputSource, handle_import_avro, handle_import_json_schema,
     handle_import_odcl, handle_import_odcs, handle_import_protobuf, handle_import_sql,
 };
+#[cfg(all(feature = "cli", feature = "database"))]
+use data_modelling_sdk::cli::commands::query::{QueryArgs, handle_query};
 #[cfg(feature = "cli")]
 use data_modelling_sdk::cli::commands::validate::handle_validate;
 #[cfg(feature = "cli")]
@@ -97,6 +104,70 @@ enum Commands {
         /// Input file path or '-' for stdin
         #[arg(default_value = "-")]
         input: String,
+    },
+
+    /// Database management commands
+    #[cfg(feature = "database")]
+    Db {
+        #[command(subcommand)]
+        command: DbCommands,
+    },
+
+    /// Execute SQL queries against the workspace database
+    #[cfg(feature = "database")]
+    Query {
+        /// SQL query to execute
+        sql: String,
+        /// Workspace path (default: current directory)
+        #[arg(short, long, default_value = ".")]
+        workspace: PathBuf,
+        /// Output format (table, json, csv)
+        #[arg(short, long, default_value = "table")]
+        format: String,
+    },
+}
+
+#[cfg(all(feature = "cli", feature = "database"))]
+#[derive(Subcommand)]
+enum DbCommands {
+    /// Initialize database for a workspace
+    Init {
+        /// Workspace path
+        #[arg(default_value = ".")]
+        workspace: PathBuf,
+        /// Database backend (duckdb, postgres)
+        #[arg(short, long, default_value = "duckdb")]
+        backend: String,
+        /// PostgreSQL connection string (required for postgres backend)
+        #[arg(long)]
+        connection_string: Option<String>,
+    },
+
+    /// Sync YAML files to database
+    Sync {
+        /// Workspace path
+        #[arg(default_value = ".")]
+        workspace: PathBuf,
+        /// Force full resync (ignore change detection)
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Show sync status
+    Status {
+        /// Workspace path
+        #[arg(default_value = ".")]
+        workspace: PathBuf,
+    },
+
+    /// Export database back to YAML files
+    Export {
+        /// Workspace path
+        #[arg(default_value = ".")]
+        workspace: PathBuf,
+        /// Output directory (default: same as workspace)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -300,6 +371,48 @@ fn main() {
                 ValidateFormatArg::Sql => "sql",
             };
             handle_validate(validate_format, &input)
+        }
+
+        #[cfg(feature = "database")]
+        Commands::Db { command } => match command {
+            DbCommands::Init {
+                workspace,
+                backend,
+                connection_string,
+            } => {
+                let args = DbInitArgs {
+                    workspace,
+                    backend,
+                    connection_string,
+                };
+                handle_db_init(&args)
+            }
+            DbCommands::Sync { workspace, force } => {
+                let args = DbSyncArgs { workspace, force };
+                handle_db_sync(&args)
+            }
+            DbCommands::Status { workspace } => {
+                let args = DbStatusArgs { workspace };
+                handle_db_status(&args)
+            }
+            DbCommands::Export { workspace, output } => {
+                let args = DbExportArgs { workspace, output };
+                handle_db_export(&args)
+            }
+        },
+
+        #[cfg(feature = "database")]
+        Commands::Query {
+            sql,
+            workspace,
+            format,
+        } => {
+            let args = QueryArgs {
+                sql,
+                workspace,
+                format,
+            };
+            handle_query(&args)
         }
     };
 

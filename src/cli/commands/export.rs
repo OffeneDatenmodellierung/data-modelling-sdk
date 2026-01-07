@@ -311,9 +311,9 @@ pub fn handle_export_protobuf_descriptor(args: &ExportArgs) -> Result<(), CliErr
 pub fn handle_export_odps(_args: &ExportArgs) -> Result<(), CliError> {
     #[cfg(not(feature = "odps-validation"))]
     {
-        return Err(CliError::InvalidArgument(
+        Err(CliError::InvalidArgument(
             "ODPS export requires 'odps-validation' feature".to_string(),
-        ));
+        ))
     }
 
     #[cfg(feature = "odps-validation")]

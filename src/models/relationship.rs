@@ -148,6 +148,9 @@ pub struct Relationship {
     /// Draw.io edge ID for diagram integration
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drawio_edge_id: Option<String>,
+    /// Color for the relationship line in the UI (hex color code or named color)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
     /// Creation timestamp
     pub created_at: DateTime<Utc>,
     /// Last update timestamp
@@ -195,6 +198,7 @@ impl Relationship {
             infrastructure_type: None,
             visual_metadata: None,
             drawio_edge_id: None,
+            color: None,
             created_at: now,
             updated_at: now,
         }

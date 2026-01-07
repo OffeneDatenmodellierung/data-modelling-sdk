@@ -7,17 +7,19 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/pixie79/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 1.11.0
+**Version**: 1.12.0
 
 ## Architecture
 
 The SDK is designed with a modular architecture centered around:
 
 1. **Storage Backends**: Abstract storage operations (file system, browser storage, HTTP API)
-2. **Models**: Core data structures (Table, Column, Relationship, DataModel)
-3. **Import/Export**: Format converters for various data contract formats
-4. **Validation**: Table and relationship validation logic
-5. **Model Management**: Loading and saving models from storage backends
+2. **Database Backends**: High-performance query layer (DuckDB, PostgreSQL)
+3. **Models**: Core data structures (Table, Column, Relationship, DataModel)
+4. **Import/Export**: Format converters for various data contract formats
+5. **Validation**: Table and relationship validation logic
+6. **Model Management**: Loading and saving models from storage backends
+7. **Sync Engine**: Bidirectional YAML ↔ Database synchronization
 
 ## Directory Structure
 
@@ -80,12 +82,20 @@ data-modelling-sdk/
 │   │   ├── openapi.rs         # OpenAPI model structs (OpenAPIModel, OpenAPIFormat) (feature-gated)
 │   │   ├── relationship.rs    # Relationship model
 │   │   ├── table.rs           # Table model
-│   │   └── tag.rs             # Enhanced Tag enum (Simple, Pair, List)
+│   │   ├── tag.rs             # Enhanced Tag enum (Simple, Pair, List)
+│   │   └── workspace.rs       # Workspace model with embedded relationships
 │   ├── storage/                # Storage backend abstraction
 │   │   ├── mod.rs             # StorageBackend trait
 │   │   ├── api.rs             # HTTP API backend (feature-gated)
 │   │   ├── browser.rs         # Browser storage backend (WASM, feature-gated)
 │   │   └── filesystem.rs      # File system backend (native, feature-gated)
+│   ├── database/               # Database backend abstraction
+│   │   ├── mod.rs             # DatabaseBackend trait, error types
+│   │   ├── config.rs          # Database configuration (.data-model.toml)
+│   │   ├── schema.rs          # Database schema definitions
+│   │   ├── sync.rs            # SyncEngine for YAML ↔ Database sync
+│   │   ├── duckdb.rs          # DuckDB backend (feature-gated)
+│   │   └── postgres.rs        # PostgreSQL backend (feature-gated)
 │   ├── validation/             # Validation logic
 │   │   ├── mod.rs
 │   │   ├── input.rs           # Input validation (table/column names, UUIDs, model names, file sizes)
@@ -94,6 +104,10 @@ data-modelling-sdk/
 │   │   └── xml.rs             # XML validation utilities (well-formedness checks)
 │   └── workspace/              # Workspace management types
 │       └── mod.rs             # WorkspaceInfo, ProfileInfo types
+├── src/cli/commands/           # CLI command implementations
+│   ├── mod.rs                 # Command module exports
+│   ├── db.rs                  # Database commands (init, sync, status, export)
+│   └── query.rs               # SQL query command
 ├── tests/                      # Test suite
 │   ├── auth_tests.rs
 │   ├── cads_tests.rs          # CADS import/export tests
@@ -140,6 +154,17 @@ Abstracts file operations across different environments:
 - **`BrowserStorageBackend`**: Browser IndexedDB/localStorage (WASM, requires `wasm` feature)
 - **`ApiStorageBackend`**: HTTP API backend (requires `api-backend` feature, default)
 
+### Database Backends (`src/database/`)
+
+High-performance database layer for large workspaces (10-100x faster than file operations):
+
+- **`DatabaseBackend` trait**: Common interface for all database backends
+- **`DuckDBBackend`**: Embedded analytical database (requires `duckdb-backend` feature)
+- **`PostgresBackend`**: Server-based relational database (requires `postgres-backend` feature)
+- **`SyncEngine`**: Bidirectional sync between YAML files and database
+- **`DatabaseConfig`**: Configuration management (`.data-model.toml`)
+- **`DatabaseSchema`**: Schema definitions for workspaces, tables, columns, relationships
+
 ### Models (`src/models/`)
 
 Core data structures:
@@ -149,7 +174,7 @@ Core data structures:
 - **`ColumnData`**: Import-format mirror of Column struct, preserving all ODCS v3.1.0 fields through WASM layer
 - **`LogicalTypeOptions`**: Type constraint options (minLength, maxLength, pattern, format, minimum, maximum, precision, scale)
 - **`AuthoritativeDefinition`**: Authoritative definition reference (type, url)
-- **`Relationship`**: Relationship between tables (source/target, type, metadata)
+- **`Relationship`**: Relationship between tables (source/target, type, metadata, color for UI display, drawio_edge_id for diagram integration)
 - **`DataModel`**: Container for tables, relationships, and domains. Includes filter methods and domain operations (`add_domain`, `add_system_to_domain`, etc.)
 - **`Domain`**: Business domain container with systems, CADS nodes, ODCS nodes, and connections
 - **`System`**: Physical infrastructure entity (Kafka, Cassandra, EKS, etc.) with DataFlow metadata (owner, SLA, contact_details, infrastructure_type, notes, version)
@@ -164,6 +189,7 @@ Core data structures:
 - **`CADSDMNModel`**: CADS reference to DMN model (name, reference, format, description)
 - **`CADSOpenAPISpec`**: CADS reference to OpenAPI spec (name, reference, format, description)
 - **`Tag`**: Enhanced tag enum supporting Simple, Pair, and List formats
+- **`Workspace`**: Workspace configuration containing domains, systems, assets, and embedded relationships. Helper methods: `add_relationship()`, `remove_relationship()`, `get_relationships_for_source()`, `get_relationships_for_target()`
 - **`ForeignKey`**: Foreign key relationship details
 - **`SlaProperty`**: SLA property structure (property, value, unit, element, driver, description, scheduler, schedule)
 - **`ContactDetails`**: Contact details structure (email, phone, name, role, other)
@@ -270,6 +296,10 @@ The SDK uses Cargo features to enable optional functionality:
 - **`png-export`**: Enables PNG diagram export (image, imageproc)
 - **`databricks-dialect`**: Enables Databricks SQL dialect support (datafusion)
 - **`git`**: Enables Git operations (git2)
+- **`database`**: Enables database backend support
+- **`duckdb-backend`**: Enables DuckDB embedded database (duckdb)
+- **`postgres-backend`**: Enables PostgreSQL database (tokio-postgres)
+- **`cli-full`**: Full CLI with all features including database support
 
 ## Dependencies
 
@@ -289,6 +319,8 @@ The SDK uses Cargo features to enable optional functionality:
 - `git2`: Git operations (for `git` feature)
 - `image`, `imageproc`: Image processing (for `png-export` feature)
 - `datafusion`: SQL parsing (for `databricks-dialect` feature)
+- `duckdb`: DuckDB embedded database (for `duckdb-backend` feature)
+- `tokio-postgres`: PostgreSQL client (for `postgres-backend` feature)
 - `sqlparser`: SQL parsing
 - `yaml-rust`: YAML processing
 
@@ -352,6 +384,42 @@ let result = table_validator.detect_naming_conflicts(&tables)?;
 
 let rel_validator = RelationshipValidator::new();
 let (has_cycle, cycle_path) = rel_validator.check_circular_dependency(&relationships, source_id, target_id)?;
+```
+
+### Database Operations
+
+```rust
+use data_modelling_sdk::database::{DuckDBBackend, DatabaseBackend, SyncEngine};
+
+// Initialize database
+let backend = DuckDBBackend::new(".data-model.duckdb")?;
+backend.initialize().await?;
+
+// Sync YAML files to database
+let sync_engine = SyncEngine::new(backend.clone());
+let result = sync_engine.sync_workspace(workspace_path).await?;
+
+// Execute SQL query
+let result = backend.execute_query("SELECT * FROM tables").await?;
+```
+
+### CLI Database Commands
+
+```bash
+# Initialize database for a workspace
+data-modelling-cli db init --workspace ./my-workspace --backend duckdb
+
+# Sync YAML files to database
+data-modelling-cli db sync --workspace ./my-workspace
+
+# Check database status
+data-modelling-cli db status --workspace ./my-workspace
+
+# Export database to YAML files
+data-modelling-cli db export --workspace ./my-workspace
+
+# Query the database directly
+data-modelling-cli query "SELECT * FROM tables" --workspace ./my-workspace --format json
 ```
 
 ## Testing
@@ -424,33 +492,79 @@ cargo build --all-features
 
 ## File Structure
 
-The SDK organizes files using a domain-based directory structure:
+The SDK organizes files using a flat file naming convention:
 
 ```
 base_directory/
 ├── .git/                     # Git folder (if present)
+│   └── hooks/               # Git hooks directory
+│       ├── pre-commit       # Exports database to YAML before commit
+│       └── post-checkout    # Syncs YAML to database after checkout
+├── .data-model.toml          # Database configuration file
+├── .data-model.duckdb        # DuckDB database file (if using DuckDB backend)
 ├── README.md                 # Repository files
+├── workspace.yaml            # Workspace definition with domains, systems, assets, and relationships
 ├── schemas/                  # Schema reference directory
 │   ├── README.md
+│   ├── workspace-schema.json # Workspace schema with relationship definitions
 │   ├── odcs-json-schema-v3.1.0.json
 │   ├── odcl-json-schema-1.2.1.json
 │   ├── odps-json-schema-latest.json
 │   └── cads.schema.json
-├── domain1/                  # Domain directory
-│   ├── domain.yaml          # Domain definition
-│   ├── table1.odcs.yaml     # ODCS table files
-│   ├── product1.odps.yaml   # ODPS product files
-│   └── model1.cads.yaml    # CADS asset files
-├── domain2/                  # Another domain directory
-│   └── ...
-└── tables/                    # Legacy: tables not in any domain (backward compatibility)
+├── {workspace}_{domain}_{system}_{resource}.odcs.yaml   # ODCS table files
+├── {workspace}_{domain}_{system}_{resource}.odps.yaml   # ODPS product files
+├── {workspace}_{domain}_{system}_{resource}.cads.yaml   # CADS asset files
+├── {workspace}_{domain}_{system}_{resource}.bpmn.xml    # BPMN process models
+├── {workspace}_{domain}_{system}_{resource}.dmn.xml     # DMN decision models
+└── {workspace}_{domain}_{system}_{resource}.openapi.yaml # OpenAPI specifications
 ```
 
-Each domain directory contains:
-- `domain.yaml`: Domain definition with systems, CADS nodes, ODCS nodes, and connections
-- `*.odcs.yaml`: ODCS table files referenced by ODCSNodes in the domain
-- `*.odps.yaml`: ODPS product files for data products in the domain
-- `*.cads.yaml`: CADS asset files referenced by CADSNodes in the domain
+### Flat File Naming Convention
+
+Files use the format: `{workspace}_{domain}_{system}_{resource}.{type}.yaml`
+
+- **workspace**: The workspace name (e.g., `acme`)
+- **domain**: The business domain (e.g., `sales`, `finance`)
+- **system**: The system or service (e.g., `orders`, `payments`)
+- **resource**: The specific resource name (e.g., `customers`, `transactions`)
+- **type**: The asset type (e.g., `odcs`, `odps`, `cads`, `bpmn`, `dmn`, `openapi`)
+
+### Workspace Configuration (`workspace.yaml`)
+
+The workspace.yaml file is the central configuration containing:
+- Workspace metadata (id, name, owner, description)
+- Domain references
+- System definitions
+- Asset references (ODCS tables, ODPS products, CADS assets)
+- **Relationships** - relationship definitions are now part of the workspace (no separate relationships.yaml)
+
+### Database Configuration (`.data-model.toml`)
+
+```toml
+[database]
+backend = "duckdb"           # Backend type: "duckdb" or "postgres"
+path = ".data-model.duckdb"  # DuckDB file path (for DuckDB backend)
+
+[postgres]
+connection_string = "postgresql://user:pass@localhost/db"  # PostgreSQL connection
+pool_size = 5                # Connection pool size
+
+[sync]
+auto_sync = true             # Enable automatic sync on file changes
+watch = false                # Enable file watching
+
+[git]
+hooks_enabled = true         # Install Git hooks on db init
+```
+
+### Git Hooks
+
+When database is initialized in a Git repository with `hooks_enabled = true`:
+
+- **Pre-commit hook**: Exports database changes to YAML files before commit
+- **Post-checkout hook**: Syncs YAML files to database after checkout/switch
+
+Domain directories may also contain:
 - `*.openapi.yaml` / `*.openapi.json`: OpenAPI specification files (can be referenced by CADS assets)
 - `*.bpmn.xml`: BPMN 2.0 process model files (can be referenced by CADS assets)
 - `*.dmn.xml`: DMN 1.3 decision model files (can be referenced by CADS assets)

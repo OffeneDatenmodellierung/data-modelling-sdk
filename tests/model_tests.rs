@@ -1,4 +1,9 @@
 //! Model loading and saving tests
+//!
+//! These tests use the new flat file naming convention:
+//! - `{workspace}_{domain}_{resource}.{type}.yaml` for ODCS tables
+//! - `relationships.yaml` for relationship definitions
+//! - Files are stored in the workspace root directory (no subdirectories)
 
 #[cfg(feature = "native-fs")]
 mod model_loader_tests {
@@ -21,7 +26,11 @@ mod model_loader_tests {
         rt.block_on(async {
             let temp = TempDir::new().unwrap();
             let backend = FileSystemStorageBackend::new(temp.path());
+            let backend_setup = FileSystemStorageBackend::new(temp.path());
             let loader = ModelLoader::new(backend);
+
+            // Create empty workspace directory
+            backend_setup.create_dir("workspace").await.unwrap();
 
             let result = loader.load_model("workspace").await.unwrap();
             assert_eq!(result.tables.len(), 0);
@@ -39,10 +48,11 @@ mod model_loader_tests {
             let backend_setup = FileSystemStorageBackend::new(temp.path());
             let loader = ModelLoader::new(backend);
 
-            // Create workspace structure
-            backend_setup.create_dir("workspace/tables").await.unwrap();
+            // Create workspace directory
+            backend_setup.create_dir("workspace").await.unwrap();
 
-            // Create a table YAML file
+            // Create a table YAML file using flat naming convention
+            // Format: {workspace}_{domain}_{resource}.odcs.yaml
             let table_yaml = r#"
 name: users
 id: 550e8400-e29b-41d4-a716-446655440000
@@ -53,7 +63,10 @@ columns:
     nullable: false
 "#;
             backend_setup
-                .write_file("workspace/tables/users.yaml", table_yaml.as_bytes())
+                .write_file(
+                    "workspace/myworkspace_default_users.odcs.yaml",
+                    table_yaml.as_bytes(),
+                )
                 .await
                 .unwrap();
 
@@ -76,10 +89,10 @@ columns:
             let backend_setup = FileSystemStorageBackend::new(temp.path());
             let loader = ModelLoader::new(backend);
 
-            // Create workspace structure
-            backend_setup.create_dir("workspace/tables").await.unwrap();
+            // Create workspace directory
+            backend_setup.create_dir("workspace").await.unwrap();
 
-            // Create tables
+            // Create tables using flat naming convention
             let users_table = r#"
 name: users
 id: 550e8400-e29b-41d4-a716-446655440000
@@ -88,7 +101,10 @@ columns:
     type: string
 "#;
             backend_setup
-                .write_file("workspace/tables/users.yaml", users_table.as_bytes())
+                .write_file(
+                    "workspace/myworkspace_default_users.odcs.yaml",
+                    users_table.as_bytes(),
+                )
                 .await
                 .unwrap();
 
@@ -100,7 +116,10 @@ columns:
     type: string
 "#;
             backend_setup
-                .write_file("workspace/tables/orders.yaml", orders_table.as_bytes())
+                .write_file(
+                    "workspace/myworkspace_default_orders.odcs.yaml",
+                    orders_table.as_bytes(),
+                )
                 .await
                 .unwrap();
 
@@ -135,10 +154,10 @@ relationships:
             let backend_setup = FileSystemStorageBackend::new(temp.path());
             let loader = ModelLoader::new(backend);
 
-            // Create workspace structure
-            backend_setup.create_dir("workspace/tables").await.unwrap();
+            // Create workspace directory
+            backend_setup.create_dir("workspace").await.unwrap();
 
-            // Create only one table
+            // Create only one table using flat naming convention
             let users_table = r#"
 name: users
 id: 550e8400-e29b-41d4-a716-446655440000
@@ -147,7 +166,10 @@ columns:
     type: string
 "#;
             backend_setup
-                .write_file("workspace/tables/users.yaml", users_table.as_bytes())
+                .write_file(
+                    "workspace/myworkspace_default_users.odcs.yaml",
+                    users_table.as_bytes(),
+                )
                 .await
                 .unwrap();
 
@@ -182,13 +204,16 @@ relationships:
             let backend_setup = FileSystemStorageBackend::new(temp.path());
             let loader = ModelLoader::new(backend);
 
-            // Create workspace structure
-            backend_setup.create_dir("workspace/tables").await.unwrap();
+            // Create workspace directory
+            backend_setup.create_dir("workspace").await.unwrap();
 
-            // Create invalid YAML file
+            // Create invalid YAML file using flat naming convention
             let invalid_yaml = "invalid: yaml: content: [";
             backend_setup
-                .write_file("workspace/tables/invalid.yaml", invalid_yaml.as_bytes())
+                .write_file(
+                    "workspace/myworkspace_default_invalid.odcs.yaml",
+                    invalid_yaml.as_bytes(),
+                )
                 .await
                 .unwrap();
 
@@ -207,16 +232,19 @@ relationships:
             let backend_setup = FileSystemStorageBackend::new(temp.path());
             let loader = ModelLoader::new(backend);
 
-            // Create workspace structure
-            backend_setup.create_dir("workspace/tables").await.unwrap();
+            // Create workspace directory
+            backend_setup.create_dir("workspace").await.unwrap();
 
-            // Create table YAML without name field
+            // Create table YAML without name field using flat naming convention
             let table_yaml = r#"
 id: 550e8400-e29b-41d4-a716-446655440000
 columns: []
 "#;
             backend_setup
-                .write_file("workspace/tables/table.yaml", table_yaml.as_bytes())
+                .write_file(
+                    "workspace/myworkspace_default_table.odcs.yaml",
+                    table_yaml.as_bytes(),
+                )
                 .await
                 .unwrap();
 

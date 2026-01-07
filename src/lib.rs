@@ -12,6 +12,8 @@ pub mod auth;
 #[cfg(feature = "cli")]
 pub mod cli;
 pub mod convert;
+#[cfg(feature = "database")]
+pub mod database;
 pub mod export;
 #[cfg(feature = "git")]
 pub mod git;
@@ -1644,14 +1646,7 @@ mod wasm {
         let owner_uuid =
             Uuid::parse_str(owner_id).map_err(|e| invalid_input_error("owner ID", e))?;
 
-        let workspace = Workspace {
-            id: Uuid::new_v4(),
-            name: name.to_string(),
-            owner_id: owner_uuid,
-            created_at: Utc::now(),
-            last_modified_at: Utc::now(),
-            domains: Vec::new(),
-        };
+        let workspace = Workspace::new(name.to_string(), owner_uuid);
 
         serde_json::to_string(&workspace).map_err(serialization_error)
     }
@@ -1730,6 +1725,8 @@ mod wasm {
         workspace.domains.push(DomainReference {
             id: domain_uuid,
             name: domain_name.to_string(),
+            description: None,
+            systems: Vec::new(),
         });
         workspace.last_modified_at = Utc::now();
 
@@ -1774,6 +1771,139 @@ mod wasm {
 
         workspace.last_modified_at = Utc::now();
         serde_json::to_string(&workspace).map_err(serialization_error)
+    }
+
+    /// Add a relationship to a workspace.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing Workspace
+    /// * `relationship_json` - JSON string containing Relationship
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing updated Workspace, or JsValue error
+    #[wasm_bindgen]
+    pub fn add_relationship_to_workspace(
+        workspace_json: &str,
+        relationship_json: &str,
+    ) -> Result<String, JsValue> {
+        use crate::models::Relationship;
+        use crate::models::workspace::Workspace;
+
+        let mut workspace: Workspace =
+            serde_json::from_str(workspace_json).map_err(deserialization_error)?;
+        let relationship: Relationship =
+            serde_json::from_str(relationship_json).map_err(deserialization_error)?;
+
+        // Check if relationship already exists
+        if workspace
+            .relationships
+            .iter()
+            .any(|r| r.id == relationship.id)
+        {
+            return Err(WasmError::new(
+                "DuplicateError",
+                format!(
+                    "Relationship {} already exists in workspace",
+                    relationship.id
+                ),
+            )
+            .with_code("DUPLICATE_RELATIONSHIP")
+            .to_js_value());
+        }
+
+        workspace.add_relationship(relationship);
+        serde_json::to_string(&workspace).map_err(serialization_error)
+    }
+
+    /// Remove a relationship from a workspace.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing Workspace
+    /// * `relationship_id` - Relationship UUID as string to remove
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing updated Workspace, or JsValue error
+    #[wasm_bindgen]
+    pub fn remove_relationship_from_workspace(
+        workspace_json: &str,
+        relationship_id: &str,
+    ) -> Result<String, JsValue> {
+        use crate::models::workspace::Workspace;
+        use uuid::Uuid;
+
+        let mut workspace: Workspace =
+            serde_json::from_str(workspace_json).map_err(deserialization_error)?;
+        let relationship_uuid = Uuid::parse_str(relationship_id)
+            .map_err(|e| invalid_input_error("relationship ID", e))?;
+
+        if !workspace.remove_relationship(relationship_uuid) {
+            return Err(WasmError::new(
+                "NotFoundError",
+                format!("Relationship {} not found in workspace", relationship_id),
+            )
+            .with_code("RELATIONSHIP_NOT_FOUND")
+            .to_js_value());
+        }
+
+        serde_json::to_string(&workspace).map_err(serialization_error)
+    }
+
+    /// Get relationships for a source table from a workspace.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing Workspace
+    /// * `source_table_id` - Source table UUID as string
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing array of Relationships, or JsValue error
+    #[wasm_bindgen]
+    pub fn get_workspace_relationships_for_source(
+        workspace_json: &str,
+        source_table_id: &str,
+    ) -> Result<String, JsValue> {
+        use crate::models::workspace::Workspace;
+        use uuid::Uuid;
+
+        let workspace: Workspace =
+            serde_json::from_str(workspace_json).map_err(deserialization_error)?;
+        let source_uuid = Uuid::parse_str(source_table_id)
+            .map_err(|e| invalid_input_error("source table ID", e))?;
+
+        let relationships: Vec<_> = workspace.get_relationships_for_source(source_uuid);
+        serde_json::to_string(&relationships).map_err(serialization_error)
+    }
+
+    /// Get relationships for a target table from a workspace.
+    ///
+    /// # Arguments
+    ///
+    /// * `workspace_json` - JSON string containing Workspace
+    /// * `target_table_id` - Target table UUID as string
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing array of Relationships, or JsValue error
+    #[wasm_bindgen]
+    pub fn get_workspace_relationships_for_target(
+        workspace_json: &str,
+        target_table_id: &str,
+    ) -> Result<String, JsValue> {
+        use crate::models::workspace::Workspace;
+        use uuid::Uuid;
+
+        let workspace: Workspace =
+            serde_json::from_str(workspace_json).map_err(deserialization_error)?;
+        let target_uuid = Uuid::parse_str(target_table_id)
+            .map_err(|e| invalid_input_error("target table ID", e))?;
+
+        let relationships: Vec<_> = workspace.get_relationships_for_target(target_uuid);
+        serde_json::to_string(&relationships).map_err(serialization_error)
     }
 
     /// Create a new domain configuration.

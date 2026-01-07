@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/pixie79/data-modelling-sdk/schemas/workspace-schema.json",
   "title": "Workspace Schema",
-  "description": "Schema for a Workspace entity in the data modelling application. Workspaces are top-level containers that organize domains and their associated assets. In offline mode, each workspace corresponds to a directory containing domain folders.",
+  "description": "Schema for a Workspace entity in the data modelling application. Workspaces are top-level containers that organize domains, systems, their associated assets, and relationships. All files use a flat naming convention: {workspace}_{domain}_{system}_{resource}.xxx.yaml",
   "type": "object",
   "required": ["id", "name", "owner_id", "created_at", "last_modified_at"],
   "properties": {
@@ -14,7 +14,8 @@
     "name": {
       "type": "string",
       "maxLength": 255,
-      "description": "Workspace name"
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
+      "description": "Workspace name (used in file naming, must be valid for filenames)"
     },
     "owner_id": {
       "type": "string",
@@ -33,45 +34,238 @@
     },
     "domains": {
       "type": "array",
-      "description": "Array of domain metadata to avoid regenerating UUIDs on each load. Full domain details are stored in separate domain.yaml files within each domain folder.",
+      "description": "Array of domain references with their systems",
       "items": {
-        "type": "object",
-        "required": ["id", "name"],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Domain identifier"
-          },
-          "name": {
-            "type": "string",
-            "description": "Domain name (must match folder name in offline mode)"
-          }
-        },
-        "additionalProperties": false
+        "$ref": "#/definitions/DomainReference"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "description": "Array of asset references in this workspace",
+      "items": {
+        "$ref": "#/definitions/AssetReference"
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "description": "Array of relationships between assets in this workspace",
+      "items": {
+        "$ref": "#/definitions/Relationship"
       }
     }
   },
   "additionalProperties": false,
+  "definitions": {
+    "DomainReference": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Domain identifier"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
+          "description": "Domain name (used in file naming)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the domain"
+        },
+        "systems": {
+          "type": "array",
+          "description": "Systems within this domain",
+          "items": {
+            "$ref": "#/definitions/SystemReference"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "SystemReference": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "System identifier"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
+          "description": "System name (used in file naming)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the system"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AssetReference": {
+      "type": "object",
+      "required": ["id", "name", "domain", "asset_type"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Asset identifier"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 255,
+          "description": "Asset name"
+        },
+        "domain": {
+          "type": "string",
+          "description": "Domain name this asset belongs to"
+        },
+        "system": {
+          "type": "string",
+          "description": "Optional system name (if asset is within a system)"
+        },
+        "asset_type": {
+          "type": "string",
+          "enum": ["odcs", "odps", "cads", "bpmn", "dmn", "openapi"],
+          "description": "Type of asset"
+        },
+        "file_path": {
+          "type": "string",
+          "description": "File path relative to workspace (generated from naming convention)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Relationship": {
+      "type": "object",
+      "required": ["id", "source_table_id", "target_table_id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for the relationship"
+        },
+        "source_table_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "ID of the source table/asset"
+        },
+        "target_table_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "ID of the target table/asset"
+        },
+        "cardinality": {
+          "type": "string",
+          "enum": ["one_to_one", "one_to_many", "many_to_many"],
+          "description": "Relationship cardinality"
+        },
+        "source_optional": {
+          "type": "boolean",
+          "description": "Whether the source side is optional"
+        },
+        "target_optional": {
+          "type": "boolean",
+          "description": "Whether the target side is optional"
+        },
+        "relationship_type": {
+          "type": "string",
+          "enum": ["foreign_key", "data_flow", "dependency", "etl"],
+          "description": "Type of relationship"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional notes about the relationship"
+        },
+        "owner": {
+          "type": "string",
+          "description": "Owner information for the relationship"
+        },
+        "color": {
+          "type": "string",
+          "description": "Color for the relationship line in the UI (hex color code or named color)",
+          "pattern": "^(#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3}|[a-zA-Z]+)$"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
   "examples": [
     {
       "id": "123e4567-e89b-12d3-a456-426614174000",
-      "name": "Enterprise Data Models",
+      "name": "enterprise",
       "owner_id": "987fcdeb-51a2-43e1-b123-456789abcdef",
       "created_at": "2025-01-01T09:00:00Z",
       "last_modified_at": "2025-01-05T16:30:00Z",
       "domains": [
         {
           "id": "550e8400-e29b-41d4-a716-446655440000",
-          "name": "customer-management"
+          "name": "sales",
+          "description": "Sales domain",
+          "systems": [
+            {
+              "id": "660e8400-e29b-41d4-a716-446655440001",
+              "name": "kafka",
+              "description": "Kafka streaming platform"
+            },
+            {
+              "id": "770e8400-e29b-41d4-a716-446655440002",
+              "name": "postgres",
+              "description": "PostgreSQL database"
+            }
+          ]
         },
         {
-          "id": "660e8400-e29b-41d4-a716-446655440001",
-          "name": "order-processing"
+          "id": "880e8400-e29b-41d4-a716-446655440003",
+          "name": "finance",
+          "systems": []
+        }
+      ],
+      "assets": [
+        {
+          "id": "990e8400-e29b-41d4-a716-446655440004",
+          "name": "orders",
+          "domain": "sales",
+          "system": "kafka",
+          "asset_type": "odcs",
+          "file_path": "enterprise_sales_kafka_orders.odcs.yaml"
         },
         {
-          "id": "770e8400-e29b-41d4-a716-446655440002",
-          "name": "inventory-control"
+          "id": "aa0e8400-e29b-41d4-a716-446655440005",
+          "name": "customers",
+          "domain": "sales",
+          "system": "postgres",
+          "asset_type": "odcs",
+          "file_path": "enterprise_sales_postgres_customers.odcs.yaml"
+        },
+        {
+          "id": "bb0e8400-e29b-41d4-a716-446655440006",
+          "name": "accounts",
+          "domain": "finance",
+          "asset_type": "odcs",
+          "file_path": "enterprise_finance_accounts.odcs.yaml"
+        },
+        {
+          "id": "cc0e8400-e29b-41d4-a716-446655440007",
+          "name": "sales-analytics",
+          "domain": "sales",
+          "asset_type": "odps",
+          "file_path": "enterprise_sales_sales-analytics.odps.yaml"
+        }
+      ],
+      "relationships": [
+        {
+          "id": "dd0e8400-e29b-41d4-a716-446655440008",
+          "source_table_id": "990e8400-e29b-41d4-a716-446655440004",
+          "target_table_id": "aa0e8400-e29b-41d4-a716-446655440005",
+          "cardinality": "one_to_many",
+          "relationship_type": "foreign_key",
+          "notes": "Orders reference customers"
         }
       ]
     }

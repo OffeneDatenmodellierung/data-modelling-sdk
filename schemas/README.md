@@ -105,25 +105,12 @@ OpenAPI 3.1.1 defines API specifications. The SDK stores OpenAPI files in their 
 **Purpose**: Workspace configuration for the data modelling application
 **Status**: ✅ Fully Supported
 
-Workspace schema defines top-level containers that organize domains and their associated assets. In offline mode, each workspace corresponds to a directory containing domain folders. Key features:
+Workspace schema defines top-level containers that organize domains, systems, assets, and relationships. Key features:
 - Workspace metadata (id, name, owner_id, timestamps)
-- Domain references with IDs and names
-- Supports offline directory-based storage
-
-### Domain
-
-**File**: `domain-schema.json`
-**Version**: 1.0
-**Source**: Internal specification
-**Purpose**: Domain configuration within a workspace
-**Status**: ✅ Fully Supported
-
-Domain schema defines business-oriented containers that group related assets within a workspace. Key features:
-- Domain metadata (id, workspace_id, name, description, timestamps)
-- Owner information (name, email, team, role)
-- Asset references (systems, tables, products, assets, processes, decisions)
-- View positions for canvas rendering in different view modes
-- Supports offline directory-based storage
+- Domain references with systems
+- Asset references (ODCS, ODPS, CADS, BPMN, DMN, OpenAPI)
+- Relationship definitions between assets
+- Flat file naming convention: `{workspace}_{domain}_{system}_{resource}.{type}.yaml`
 
 ## Other Formats
 
@@ -184,12 +171,11 @@ schemas/
 ├── odcs-json-schema-v3.1.0.json  # ODCS v3.1.0 schema
 ├── odcl-json-schema-1.2.1.json   # ODCL v1.2.1 schema (legacy)
 ├── odps-json-schema-latest.json  # ODPS latest schema
-├── cads.schema.json               # CADS v1.0 schema
+├── cads.schema.json               # CADS v1.0 schema (with bpmnModels, dmnModels, openApiSpecs)
 ├── bpmn-2.0.xsd                   # BPMN 2.0 XSD schema
 ├── dmn-1.3.xsd                    # DMN 1.3 XSD schema
 ├── openapi-3.1.1.json             # OpenAPI 3.1.1 JSON Schema
-├── workspace-schema.json          # Workspace configuration schema
-└── domain-schema.json             # Domain configuration schema
+└── workspace-schema.json          # Workspace configuration schema (includes domains, assets, relationships)
 ```
 
 ## Related Documentation

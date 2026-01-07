@@ -9,9 +9,10 @@
 5. [Design Principles](#design-principles)
 6. [Component Architecture](#component-architecture)
 7. [Storage Architecture](#storage-architecture)
-8. [File Organization](#file-organization)
-9. [Integration Patterns](#integration-patterns)
-10. [Use Cases](#use-cases)
+8. [Database Architecture](#database-architecture)
+9. [File Organization](#file-organization)
+10. [Integration Patterns](#integration-patterns)
+11. [Use Cases](#use-cases)
 
 ---
 
@@ -102,14 +103,16 @@ pub trait StorageBackend: Send + Sync {
 - **Ownership**: Clear ownership boundaries per domain
 - **Version Control**: Better Git history and collaboration
 
-**Structure**:
+**Structure** (Flat File Naming Convention):
 ```
-domain1/
-├── domain.yaml          # Domain definition
-├── table1.odcs.yaml     # Data contracts
-├── product1.odps.yaml   # Data products
-└── model1.cads.yaml     # Compute assets
+workspace/
+├── workspace.yaml                          # Workspace metadata with assets and relationships
+├── myworkspace_domain1_table1.odcs.yaml    # Data contracts
+├── myworkspace_domain1_product1.odps.yaml  # Data products
+└── myworkspace_domain1_model1.cads.yaml    # Compute assets
 ```
+
+Files follow the pattern: `{workspace}_{domain}_{system}_{resource}.{type}.yaml`
 
 ### 5. Feature-Gated Functionality
 
@@ -128,6 +131,10 @@ domain1/
 - `git`: Git operations
 - `png-export`: PNG diagram generation
 - `databricks-dialect`: Databricks SQL support
+- `database`: Database backend support (DuckDB/PostgreSQL)
+- `duckdb-backend`: DuckDB embedded database
+- `postgres-backend`: PostgreSQL database
+- `cli-full`: Full CLI with all features including database support
 
 ### 6. UUID Strategy
 
@@ -306,12 +313,12 @@ Files and models are organized by business domain:
 - **CADS Nodes**: Compute assets (AI/ML models, applications)
 - **ODPS Products**: Data products linking multiple contracts
 
-### 4. Backward Compatibility
+### 4. Format Compatibility
 
-The SDK maintains backward compatibility:
-- Legacy `tables/` directory structure still supported
+The SDK maintains format compatibility:
 - ODCL v1.2.1 format supported (last version)
 - Migration utilities for DataFlow → Domain
+- Flat file naming convention for all assets
 
 ### 5. Extensibility
 
@@ -457,46 +464,189 @@ pub trait StorageBackend: Send + Sync {
 
 ---
 
+## Database Architecture
+
+The SDK includes an optional database layer that provides 10-100x performance improvements over file-based operations for large workspaces. The database caches YAML data in an indexed format for fast queries.
+
+### Database Backend Trait
+
+All database operations go through the `DatabaseBackend` trait:
+
+```rust
+#[async_trait(?Send)]
+pub trait DatabaseBackend: Send + Sync {
+    async fn initialize(&self) -> DatabaseResult<()>;
+    async fn health_check(&self) -> DatabaseResult<bool>;
+    async fn execute_query(&self, sql: &str) -> DatabaseResult<QueryResult>;
+    async fn sync_tables(&self, workspace_id: Uuid, tables: &[Table]) -> DatabaseResult<usize>;
+    async fn sync_domains(&self, workspace_id: Uuid, domains: &[Domain]) -> DatabaseResult<usize>;
+    async fn export_tables(&self, workspace_id: Uuid) -> DatabaseResult<Vec<Table>>;
+    // ... more operations
+}
+```
+
+### Database Backends
+
+#### DuckDB Backend (`duckdb-backend` feature)
+
+- **Type**: Embedded analytical database
+- **Use Case**: CLI tools, local development, offline analysis
+- **Performance**: Excellent for analytical queries, columnar storage
+- **File**: `.data-model.duckdb` in workspace root
+
+#### PostgreSQL Backend (`postgres-backend` feature)
+
+- **Type**: Server-based relational database
+- **Use Case**: Team environments, server deployments, shared access
+- **Performance**: Excellent for concurrent access, ACID transactions
+- **Connection**: Via connection string (e.g., `postgresql://user:pass@localhost/db`)
+
+### Sync Engine
+
+The `SyncEngine` manages bidirectional synchronization between YAML files and the database:
+
+```
+YAML Files ←→ SyncEngine ←→ Database
+```
+
+**Features**:
+- **Incremental Sync**: Only syncs changed files using SHA256 hashes
+- **Bidirectional**: YAML → Database (import) and Database → YAML (export)
+- **Change Detection**: Tracks file hashes to detect modifications
+- **Conflict Resolution**: Database is source of truth during export
+
+### Database Schema
+
+The database schema mirrors the YAML structure:
+
+- **workspaces**: Workspace metadata and configuration
+- **domains**: Business domain definitions
+- **tables**: Table/data contract definitions
+- **columns**: Column definitions with all ODCS properties
+- **relationships**: Table relationships and foreign keys
+- **file_hashes**: File hash tracking for incremental sync
+
+### Git Hooks Integration
+
+The database layer integrates with Git for automatic synchronization:
+
+**Pre-commit Hook**:
+- Exports database changes to YAML files
+- Ensures YAML files are up-to-date before commit
+
+**Post-checkout Hook**:
+- Syncs YAML files to database after checkout
+- Keeps database in sync with branch changes
+
+### CLI Commands
+
+The database functionality is exposed via CLI commands:
+
+```bash
+# Initialize database for a workspace
+data-modelling-cli db init --workspace ./my-workspace --backend duckdb
+
+# Sync YAML files to database
+data-modelling-cli db sync --workspace ./my-workspace
+
+# Check database status
+data-modelling-cli db status --workspace ./my-workspace
+
+# Export database to YAML files
+data-modelling-cli db export --workspace ./my-workspace
+
+# Query the database directly
+data-modelling-cli query "SELECT * FROM tables" --workspace ./my-workspace
+```
+
+### Configuration
+
+Database configuration is stored in `.data-model.toml`:
+
+```toml
+[database]
+backend = "duckdb"
+path = ".data-model.duckdb"
+
+[sync]
+auto_sync = true
+watch = false
+
+[git]
+hooks_enabled = true
+
+[postgres]
+connection_string = "postgresql://localhost/datamodel"
+pool_size = 5
+```
+
+### Process Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Workspace                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐        │
+│  │ YAML Files  │ ←─→ │ SyncEngine  │ ←─→ │  Database   │        │
+│  │ (.odcs.yaml)│     │             │     │  (DuckDB/   │        │
+│  │ (.odps.yaml)│     │             │     │  PostgreSQL)│        │
+│  │ (.cads.yaml)│     │             │     │             │        │
+│  └─────────────┘     └─────────────┘     └─────────────┘        │
+│         │                   │                   │                 │
+│         │                   │                   │                 │
+│         ▼                   ▼                   ▼                 │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐        │
+│  │ Git Hooks   │     │   CLI       │     │ SQL Queries │        │
+│  │ (pre-commit │     │ (db init,   │     │ (query cmd) │        │
+│  │  post-      │     │  db sync,   │     │             │        │
+│  │  checkout)  │     │  db status) │     │             │        │
+│  └─────────────┘     └─────────────┘     └─────────────┘        │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## File Organization
 
-### Domain-Based Structure
+### Flat File Structure
 
-Files are organized by business domain:
+Files are organized using a flat naming convention within a workspace:
 
 ```
 workspace/
-├── schemas/                    # Schema reference (JSON Schema files)
+├── schemas/                                        # Schema reference (JSON Schema files)
 │   ├── odcs-json-schema-v3.1.0.json
 │   ├── odcl-json-schema-1.2.1.json
 │   ├── odps-json-schema-latest.json
 │   └── cads.schema.json
-├── customer-service/           # Domain directory
-│   ├── domain.yaml            # Domain definition
-│   ├── customers.odcs.yaml    # ODCS table
-│   ├── orders.odcs.yaml       # ODCS table
-│   ├── customer-product.odps.yaml  # ODPS product
-│   └── recommendation-model.cads.yaml  # CADS asset
-├── order-processing/           # Another domain
-│   ├── domain.yaml
-│   └── ...
-└── tables/                     # Legacy: tables not in domains
-    └── legacy-table.yaml
+├── workspace.yaml                                  # Workspace metadata with assets and relationships
+├── myworkspace_customer-service_customers.odcs.yaml    # ODCS table
+├── myworkspace_customer-service_orders.odcs.yaml       # ODCS table
+├── myworkspace_customer-service_customer-product.odps.yaml  # ODPS product
+├── myworkspace_customer-service_recommendation-model.cads.yaml  # CADS asset
+├── myworkspace_order-processing_shipments.odcs.yaml    # Another domain's table
+└── myworkspace_order-processing_tracking.odcs.yaml
 ```
 
-### File Naming Conventions
+### File Naming Convention
 
-- **Domain files**: `domain.yaml`
-- **ODCS tables**: `{table-name}.odcs.yaml`
-- **ODPS products**: `{product-name}.odps.yaml`
-- **CADS assets**: `{asset-name}.cads.yaml`
+Pattern: `{workspace}_{domain}_{system}_{resource}.{type}.yaml`
+
+- **Workspace file**: `workspace.yaml` (contains domains, systems, assets, relationships)
+- **ODCS tables**: `{workspace}_{domain}_{resource}.odcs.yaml`
+- **ODPS products**: `{workspace}_{domain}_{resource}.odps.yaml`
+- **CADS assets**: `{workspace}_{domain}_{resource}.cads.yaml`
+- **With system**: `{workspace}_{domain}_{system}_{resource}.{type}.yaml`
 
 ### Benefits
 
-1. **Logical Grouping**: Related assets grouped together
+1. **Logical Grouping**: Domain/system encoded in filename
 2. **Scalability**: Easy to manage large numbers of assets
-3. **Ownership**: Clear ownership per domain
-4. **Version Control**: Better Git history
-5. **Discovery**: Easy to find assets by domain
+3. **Ownership**: Clear ownership via naming convention
+4. **Version Control**: Better Git history with flat structure
+5. **Discovery**: Easy to find assets by filename pattern
 
 ---
 

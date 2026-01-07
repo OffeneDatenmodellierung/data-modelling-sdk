@@ -48,4 +48,10 @@ pub enum CliError {
 
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
+
+    #[error("IO error: {0}")]
+    IoError(String),
+
+    #[error("Database error: {0}")]
+    DatabaseError(String),
 }

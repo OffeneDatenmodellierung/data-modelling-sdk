@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-01-07
+
+### Added
+
+- **feat(workspace)**: Relationships now embedded in workspace.yaml
+  - Added `relationships` field to Workspace struct
+  - Added Relationship definition to workspace-schema.json
+  - WASM bindings for relationship operations: `add_relationship_to_workspace()`, `remove_relationship_from_workspace()`, `get_workspace_relationships_for_source()`, `get_workspace_relationships_for_target()`
+  - Relationships.yaml file is no longer required (merged into workspace schema)
+
+- **feat(models)**: Added `color` field to Relationship model
+  - Supports hex color codes (#RRGGBB, #RGB) or named colors
+  - Used for relationship line colors in the UI
+  - Pattern validation in workspace-schema.json
+
+- **feat(database)**: Database schema updated with new relationship fields
+  - Added `drawio_edge_id` column to relationships table for diagram integration
+  - Added `color` column to relationships table for UI display
+  - Updated DuckDB backend `sync_relationships` with new fields
+  - Updated PostgreSQL backend `sync_relationships` with new fields
+
+- **feat(schemas)**: Added workspace-schema.json
+  - Complete JSON Schema for workspace.yaml validation
+  - Includes Relationship definition with all fields
+
+### Changed
+
+- **refactor(storage)**: Flat file naming convention
+  - Files now use format: `{workspace}_{domain}_{system}_{resource}.{type}.yaml`
+  - Removed legacy domain-based directory structure
+  - Updated README.md and ARCHITECTURE.md documentation
+
+- **refactor(schemas)**: Removed domain-schema.json
+  - Domain functionality now merged into workspace schema
+  - Added dmnModels section to CADS schema
+  - Added openApiSpecs section to CADS schema
+
+### Documentation
+
+- Updated LLM.txt with flat file structure and workspace relationships
+- Updated README.md with new file naming convention
+- Updated docs/ARCHITECTURE.md with flat structure documentation
+- Updated schemas/README.md with workspace-schema.json
+
 ## [1.11.0] - 2026-01-07
 
 ### Added

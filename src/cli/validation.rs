@@ -259,6 +259,7 @@ pub(crate) fn validate_odps_internal(content: &str) -> Result<(), String> {
 }
 
 #[cfg(not(feature = "schema-validation"))]
+#[allow(dead_code)]
 pub(crate) fn validate_odps_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
@@ -334,6 +335,7 @@ pub(crate) fn validate_cads_internal(content: &str) -> Result<(), String> {
 }
 
 #[cfg(not(feature = "schema-validation"))]
+#[allow(dead_code)]
 pub(crate) fn validate_cads_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
@@ -348,6 +350,76 @@ pub fn validate_sql(content: &str) -> Result<(), CliError> {
 
     Parser::parse_sql(&dialect, content)
         .map_err(|e| CliError::ValidationError(format!("SQL validation failed: {}", e)))?;
+
+    Ok(())
+}
+
+/// Validate a workspace.yaml file against the workspace JSON Schema
+#[cfg(feature = "schema-validation")]
+pub fn validate_workspace(content: &str) -> Result<(), CliError> {
+    use jsonschema::Validator;
+    use serde_json::Value;
+
+    // Load workspace JSON Schema
+    let schema_content = include_str!("../../schemas/workspace-schema.json");
+    let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
+        CliError::ValidationError(format!("Failed to load workspace schema: {}", e))
+    })?;
+
+    let validator = Validator::new(&schema).map_err(|e| {
+        CliError::ValidationError(format!("Failed to compile workspace schema: {}", e))
+    })?;
+
+    // Parse YAML content
+    let data: Value = serde_yaml::from_str(content)
+        .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?;
+
+    // Validate
+    if let Err(error) = validator.validate(&data) {
+        let error_msg = format_validation_error(&error, "Workspace");
+        return Err(CliError::ValidationError(error_msg));
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "schema-validation"))]
+pub fn validate_workspace(_content: &str) -> Result<(), CliError> {
+    // Validation disabled - feature not enabled
+    Ok(())
+}
+
+/// Validate a relationships.yaml file
+pub fn validate_relationships(content: &str) -> Result<(), CliError> {
+    use serde_json::Value;
+
+    // Parse YAML content
+    let data: Value = serde_yaml::from_str(content)
+        .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?;
+
+    // Check structure - should be an object with "relationships" array or a direct array
+    let relationships = data
+        .get("relationships")
+        .and_then(|v| v.as_array())
+        .or_else(|| data.as_array());
+
+    if let Some(rels) = relationships {
+        for (i, rel) in rels.iter().enumerate() {
+            // Each relationship should have source_table_id and target_table_id
+            if rel.get("source_table_id").is_none() {
+                return Err(CliError::ValidationError(format!(
+                    "Relationship {} is missing 'source_table_id'",
+                    i
+                )));
+            }
+            if rel.get("target_table_id").is_none() {
+                return Err(CliError::ValidationError(format!(
+                    "Relationship {} is missing 'target_table_id'",
+                    i
+                )));
+            }
+        }
+    }
 
     Ok(())
 }

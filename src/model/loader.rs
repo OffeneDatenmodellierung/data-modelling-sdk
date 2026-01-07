@@ -5,14 +5,16 @@
 //! Supports both file-based loading (FileSystemStorageBackend, BrowserStorageBackend)
 //! and API-based loading (ApiStorageBackend).
 //!
-//! File structure:
-//! - Base directory (workspace_path)
-//!   - Domain directories (e.g., `domain1/`, `domain2/`)
-//!     - `domain.yaml` - Domain definition
-//!     - `{name}.odcs.yaml` - ODCS table files
-//!     - `{name}.odps.yaml` - ODPS product files
-//!     - `{name}.cads.yaml` - CADS asset files
-//!   - `tables/` - Legacy: tables not in any domain (backward compatibility)
+//! ## File Naming Convention
+//!
+//! All files use a flat naming pattern in the workspace root directory:
+//! - `workspace.yaml` - workspace metadata with references to all assets
+//! - `{workspace}_{domain}_{system}_{resource}.odcs.yaml` - ODCS table files
+//! - `{workspace}_{domain}_{system}_{resource}.odps.yaml` - ODPS product files
+//! - `{workspace}_{domain}_{system}_{resource}.cads.yaml` - CADS asset files
+//! - `relationships.yaml` - relationship definitions
+//!
+//! Where `{system}` is optional if the resource is at the domain level.
 
 #[cfg(feature = "bpmn")]
 use crate::import::bpmn::BPMNImporter;
@@ -28,7 +30,7 @@ use crate::models::dmn::DMNModel;
 use crate::models::domain_config::DomainConfig;
 #[cfg(feature = "openapi")]
 use crate::models::openapi::{OpenAPIFormat, OpenAPIModel};
-use crate::models::workspace::Workspace;
+use crate::models::workspace::{AssetType, Workspace};
 use crate::models::{cads::CADSAsset, domain::Domain, odps::ODPSDataProduct, table::Table};
 use crate::storage::{StorageBackend, StorageError};
 use anyhow::Result;
@@ -52,7 +54,7 @@ impl<B: StorageBackend> ModelLoader<B> {
     /// Load a model from storage
     ///
     /// For file-based backends (FileSystemStorageBackend, BrowserStorageBackend):
-    /// - Loads from `tables/` subdirectory with YAML files
+    /// - Loads from flat files in workspace root using naming convention
     /// - Loads from `relationships.yaml` file
     ///
     /// For API backend (ApiStorageBackend), use `load_model_from_api()` instead.
@@ -64,33 +66,30 @@ impl<B: StorageBackend> ModelLoader<B> {
         self.load_model_from_files(workspace_path).await
     }
 
-    /// Load model from file-based storage
+    /// Load model from file-based storage using flat file naming convention
     async fn load_model_from_files(
         &self,
         workspace_path: &str,
     ) -> Result<ModelLoadResult, StorageError> {
-        let tables_dir = format!("{}/tables", workspace_path);
-
-        // Ensure tables directory exists
-        if !self.storage.dir_exists(&tables_dir).await? {
-            self.storage.create_dir(&tables_dir).await?;
-        }
-
-        // Load tables from individual YAML files
+        // Load tables from flat YAML files in workspace root
         let mut tables = Vec::new();
         let mut table_ids: HashMap<Uuid, String> = HashMap::new();
 
-        let files = self.storage.list_files(&tables_dir).await?;
+        let files = self.storage.list_files(workspace_path).await?;
         for file_name in files {
-            if file_name.ends_with(".yaml") || file_name.ends_with(".yml") {
-                let file_path = format!("{}/{}", tables_dir, file_name);
-                match self.load_table_from_yaml(&file_path, workspace_path).await {
-                    Ok(table_data) => {
-                        table_ids.insert(table_data.id, table_data.name.clone());
-                        tables.push(table_data);
-                    }
-                    Err(e) => {
-                        warn!("Failed to load table from {}: {}", file_path, e);
+            // Only load supported asset files (skip workspace.yaml, relationships.yaml, etc.)
+            if let Some(asset_type) = AssetType::from_filename(&file_name) {
+                // Skip workspace-level files and non-ODCS files for table loading
+                if asset_type == AssetType::Odcs {
+                    let file_path = format!("{}/{}", workspace_path, file_name);
+                    match self.load_table_from_yaml(&file_path, workspace_path).await {
+                        Ok(table_data) => {
+                            table_ids.insert(table_data.id, table_data.name.clone());
+                            tables.push(table_data);
+                        }
+                        Err(e) => {
+                            warn!("Failed to load table from {}: {}", file_path, e);
+                        }
                     }
                 }
             }
@@ -272,10 +271,10 @@ impl<B: StorageBackend> ModelLoader<B> {
 
     /// Load all domains from storage
     ///
-    /// Scans the workspace for domain directories and loads each domain along with
-    /// its associated ODCS tables, ODPS products, and CADS assets.
+    /// Loads domains and assets from flat files in the workspace root directory.
+    /// Uses the file naming convention: {workspace}_{domain}_{system}_{resource}.xxx.yaml
     ///
-    /// Domain directories are identified by the presence of a `domain.yaml` file.
+    /// Domain and system information is extracted from filenames and the workspace.yaml file.
     pub async fn load_domains(
         &self,
         workspace_path: &str,
@@ -285,82 +284,83 @@ impl<B: StorageBackend> ModelLoader<B> {
         let mut odps_products = HashMap::new();
         let mut cads_assets = HashMap::new();
 
-        // Try to discover domain directories by checking for domain.yaml files
-        // Since list_files only returns files, we need to check potential directories
-        // by looking for domain.yaml files. We'll check common patterns or use
-        // a recursive approach if the storage backend supports it.
+        // Load workspace.yaml to get domain/system structure
+        let workspace = self.load_workspace(workspace_path).await?;
 
-        // For now, we'll check if entries that look like directories contain domain.yaml
-        // This is a limitation - ideally we'd have a list_directories method
-        let entries = self.storage.list_files(workspace_path).await?;
-
-        // Collect potential domain directories (entries that don't look like files)
-        let mut potential_domains = Vec::new();
-        for entry in entries {
-            // If entry doesn't end with .yaml/.yml and doesn't contain a dot, it might be a directory
-            if !entry.ends_with(".yaml") && !entry.ends_with(".yml") && !entry.contains('.') {
-                potential_domains.push(entry);
+        // If workspace.yaml exists, use its domain definitions
+        if let Some(ws) = &workspace {
+            for domain_ref in &ws.domains {
+                domains.push(Domain::new(domain_ref.name.clone()));
             }
         }
 
-        // Also check for domain.yaml files directly in subdirectories
-        // We'll try common domain directory patterns or scan recursively
-        // For a more robust solution, we'd need storage backend support for listing directories
+        // Load all flat files from workspace root
+        let files = self.storage.list_files(workspace_path).await?;
 
-        // Check each potential domain directory
-        for entry in potential_domains {
-            let domain_dir = format!("{}/{}", workspace_path, entry);
-            let domain_yaml_path = format!("{}/domain.yaml", domain_dir);
+        for file_name in files {
+            let Some(asset_type) = AssetType::from_filename(&file_name) else {
+                continue;
+            };
 
-            if self.storage.file_exists(&domain_yaml_path).await? {
-                // Load domain
-                match self.load_domain(&domain_dir).await {
-                    Ok(domain) => {
-                        let domain_name = domain.name.clone();
-                        domains.push(domain);
+            // Skip workspace-level files
+            if asset_type.is_workspace_level() {
+                continue;
+            }
 
-                        // Load ODCS tables from this domain directory
-                        let domain_tables = self.load_domain_odcs_tables(&domain_dir).await?;
-                        let table_count = domain_tables.len();
-                        for table in domain_tables {
+            let file_path = format!("{}/{}", workspace_path, file_name);
+
+            match asset_type {
+                AssetType::Odcs => {
+                    // Load ODCS table
+                    match self.load_odcs_table_from_file(&file_path).await {
+                        Ok(table) => {
                             tables.insert(table.id, table);
                         }
-
-                        // Load ODPS products from this domain directory
-                        let domain_odps = self.load_domain_odps_products(&domain_dir).await?;
-                        let odps_count = domain_odps.len();
-                        for product in domain_odps {
+                        Err(e) => {
+                            warn!("Failed to load ODCS table from {}: {}", file_path, e);
+                        }
+                    }
+                }
+                AssetType::Odps => {
+                    // Load ODPS product
+                    match self.load_odps_product_from_file(&file_path).await {
+                        Ok(product) => {
                             odps_products.insert(
                                 Uuid::parse_str(&product.id).unwrap_or_else(|_| Uuid::new_v4()),
                                 product,
                             );
                         }
-
-                        // Load CADS assets from this domain directory
-                        let domain_cads = self.load_domain_cads_assets(&domain_dir).await?;
-                        let cads_count = domain_cads.len();
-                        for asset in domain_cads {
+                        Err(e) => {
+                            warn!("Failed to load ODPS product from {}: {}", file_path, e);
+                        }
+                    }
+                }
+                AssetType::Cads => {
+                    // Load CADS asset
+                    match self.load_cads_asset_from_file(&file_path).await {
+                        Ok(asset) => {
                             cads_assets.insert(
                                 Uuid::parse_str(&asset.id).unwrap_or_else(|_| Uuid::new_v4()),
                                 asset,
                             );
                         }
-
-                        info!(
-                            "Loaded domain '{}' with {} tables, {} ODPS products, {} CADS assets",
-                            domain_name, table_count, odps_count, cads_count
-                        );
+                        Err(e) => {
+                            warn!("Failed to load CADS asset from {}: {}", file_path, e);
+                        }
                     }
-                    Err(e) => {
-                        warn!("Failed to load domain from {}: {}", domain_dir, e);
-                    }
+                }
+                _ => {
+                    // Skip other asset types for now (BPMN, DMN, OpenAPI handled separately)
                 }
             }
         }
 
         info!(
-            "Loaded {} domains from workspace {}",
+            "Loaded {} domains, {} tables, {} ODPS products, {} CADS assets from workspace {}",
             domains.len(),
+            tables.len(),
+            odps_products.len(),
+            cads_assets.len(),
             workspace_path
         );
 
@@ -372,90 +372,106 @@ impl<B: StorageBackend> ModelLoader<B> {
         })
     }
 
-    /// Load domains from explicit domain directory names
+    /// Load an ODCS table from a file
+    async fn load_odcs_table_from_file(&self, file_path: &str) -> Result<Table, StorageError> {
+        let content = self.storage.read_file(file_path).await?;
+        let yaml_content = String::from_utf8(content)
+            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
+
+        let mut importer = ODCSImporter::new();
+        let (table, _parse_errors) = importer.parse_table(&yaml_content).map_err(|e| {
+            StorageError::SerializationError(format!("Failed to parse ODCS table: {}", e))
+        })?;
+
+        Ok(table)
+    }
+
+    /// Load an ODPS product from a file
+    async fn load_odps_product_from_file(
+        &self,
+        file_path: &str,
+    ) -> Result<ODPSDataProduct, StorageError> {
+        let content = self.storage.read_file(file_path).await?;
+        let yaml_content = String::from_utf8(content)
+            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
+
+        let importer = ODPSImporter::new();
+        importer
+            .import(&yaml_content)
+            .map_err(|e| StorageError::SerializationError(format!("Failed to parse ODPS: {}", e)))
+    }
+
+    /// Load a CADS asset from a file
+    async fn load_cads_asset_from_file(&self, file_path: &str) -> Result<CADSAsset, StorageError> {
+        let content = self.storage.read_file(file_path).await?;
+        let yaml_content = String::from_utf8(content)
+            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
+
+        let importer = CADSImporter::new();
+        importer.import(&yaml_content).map_err(|e| {
+            StorageError::SerializationError(format!("Failed to parse CADS asset: {}", e))
+        })
+    }
+
+    /// Load all domains from explicit domain directory names (DEPRECATED)
     ///
-    /// This is more reliable than `load_domains()` when you know the domain directory names,
-    /// as it doesn't rely on directory discovery which may be limited by the storage backend.
+    /// This method is deprecated. Use load_domains() with flat file structure instead.
+    #[deprecated(
+        since = "2.0.0",
+        note = "Use load_domains() with flat file structure instead"
+    )]
+    #[allow(dead_code)]
+    async fn load_domains_legacy(
+        &self,
+        workspace_path: &str,
+    ) -> Result<DomainLoadResult, StorageError> {
+        let domains = Vec::new();
+        let tables = HashMap::new();
+        let odps_products = HashMap::new();
+        let cads_assets = HashMap::new();
+
+        info!(
+            "Legacy domain loading is deprecated. Use flat file structure instead. Workspace: {}",
+            workspace_path
+        );
+
+        Ok(DomainLoadResult {
+            domains,
+            tables,
+            odps_products,
+            cads_assets,
+        })
+    }
+
+    /// Load domains from explicit domain directory names (DEPRECATED)
+    ///
+    /// This method is deprecated. Use load_domains() with flat file structure instead.
+    #[deprecated(
+        since = "2.0.0",
+        note = "Use load_domains() with flat file structure instead. Domain directories are no longer supported."
+    )]
+    #[allow(dead_code)]
     pub async fn load_domains_from_list(
         &self,
         workspace_path: &str,
-        domain_directory_names: &[String],
+        _domain_directory_names: &[String],
     ) -> Result<DomainLoadResult, StorageError> {
-        let mut domains = Vec::new();
-        let mut tables = HashMap::new();
-        let mut odps_products = HashMap::new();
-        let mut cads_assets = HashMap::new();
-
-        for domain_dir_name in domain_directory_names {
-            let domain_dir = format!("{}/{}", workspace_path, domain_dir_name);
-            let domain_yaml_path = format!("{}/domain.yaml", domain_dir);
-
-            if self.storage.file_exists(&domain_yaml_path).await? {
-                match self.load_domain(&domain_dir).await {
-                    Ok(domain) => {
-                        let domain_name = domain.name.clone();
-                        domains.push(domain);
-
-                        // Load ODCS tables from this domain directory
-                        let domain_tables = self.load_domain_odcs_tables(&domain_dir).await?;
-                        let table_count = domain_tables.len();
-                        for table in domain_tables {
-                            tables.insert(table.id, table);
-                        }
-
-                        // Load ODPS products from this domain directory
-                        let domain_odps = self.load_domain_odps_products(&domain_dir).await?;
-                        let odps_count = domain_odps.len();
-                        for product in domain_odps {
-                            odps_products.insert(
-                                Uuid::parse_str(&product.id).unwrap_or_else(|_| Uuid::new_v4()),
-                                product,
-                            );
-                        }
-
-                        // Load CADS assets from this domain directory
-                        let domain_cads = self.load_domain_cads_assets(&domain_dir).await?;
-                        let cads_count = domain_cads.len();
-                        for asset in domain_cads {
-                            cads_assets.insert(
-                                Uuid::parse_str(&asset.id).unwrap_or_else(|_| Uuid::new_v4()),
-                                asset,
-                            );
-                        }
-
-                        info!(
-                            "Loaded domain '{}' with {} tables, {} ODPS products, {} CADS assets",
-                            domain_name, table_count, odps_count, cads_count
-                        );
-                    }
-                    Err(e) => {
-                        warn!("Failed to load domain from {}: {}", domain_dir, e);
-                    }
-                }
-            } else {
-                warn!(
-                    "Domain directory '{}' does not contain domain.yaml",
-                    domain_dir
-                );
-            }
-        }
-
-        info!(
-            "Loaded {} domains from workspace {}",
-            domains.len(),
+        warn!(
+            "load_domains_from_list is deprecated. Using flat file structure for workspace: {}",
             workspace_path
         );
 
-        Ok(DomainLoadResult {
-            domains,
-            tables,
-            odps_products,
-            cads_assets,
-        })
+        // Delegate to the new flat file loading
+        self.load_domains(workspace_path).await
     }
 
-    /// Load a single domain from a domain directory
-    async fn load_domain(&self, domain_dir: &str) -> Result<Domain, StorageError> {
+    /// Load a single domain from a domain directory (DEPRECATED)
+    #[deprecated(
+        since = "2.0.0",
+        note = "Domain directories are no longer supported. Use flat file structure."
+    )]
+    #[allow(dead_code)]
+    async fn load_domain_legacy(&self, domain_dir: &str) -> Result<Domain, StorageError> {
         let domain_yaml_path = format!("{}/domain.yaml", domain_dir);
         let content = self.storage.read_file(&domain_yaml_path).await?;
         let yaml_content = String::from_utf8(content)
@@ -466,8 +482,16 @@ impl<B: StorageBackend> ModelLoader<B> {
         })
     }
 
-    /// Load ODCS tables from a domain directory
-    async fn load_domain_odcs_tables(&self, domain_dir: &str) -> Result<Vec<Table>, StorageError> {
+    /// Load ODCS tables from a domain directory (DEPRECATED)
+    #[deprecated(
+        since = "2.0.0",
+        note = "Domain directories are no longer supported. Use flat file structure."
+    )]
+    #[allow(dead_code)]
+    async fn load_domain_odcs_tables_legacy(
+        &self,
+        domain_dir: &str,
+    ) -> Result<Vec<Table>, StorageError> {
         let mut tables = Vec::new();
         let files = self.storage.list_files(domain_dir).await?;
 
@@ -497,8 +521,13 @@ impl<B: StorageBackend> ModelLoader<B> {
         Ok(tables)
     }
 
-    /// Load ODPS products from a domain directory
-    async fn load_domain_odps_products(
+    /// Load ODPS products from a domain directory (DEPRECATED)
+    #[deprecated(
+        since = "2.0.0",
+        note = "Domain directories are no longer supported. Use flat file structure."
+    )]
+    #[allow(dead_code)]
+    async fn load_domain_odps_products_legacy(
         &self,
         domain_dir: &str,
     ) -> Result<Vec<ODPSDataProduct>, StorageError> {
@@ -528,8 +557,13 @@ impl<B: StorageBackend> ModelLoader<B> {
         Ok(products)
     }
 
-    /// Load CADS assets from a domain directory
-    async fn load_domain_cads_assets(
+    /// Load CADS assets from a domain directory (DEPRECATED)
+    #[deprecated(
+        since = "2.0.0",
+        note = "Domain directories are no longer supported. Use flat file structure."
+    )]
+    #[allow(dead_code)]
+    async fn load_domain_cads_assets_legacy(
         &self,
         domain_dir: &str,
     ) -> Result<Vec<CADSAsset>, StorageError> {
@@ -559,27 +593,20 @@ impl<B: StorageBackend> ModelLoader<B> {
         Ok(assets)
     }
 
-    /// Load all BPMN models from a domain directory
+    /// Load all BPMN models from workspace using flat file structure
     #[cfg(feature = "bpmn")]
     pub async fn load_bpmn_models(
         &self,
         workspace_path: &str,
-        domain_name: &str,
+        _domain_name: &str,
     ) -> Result<Vec<BPMNModel>, StorageError> {
-        let sanitized_domain_name = sanitize_filename(domain_name);
-        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
-
-        if !self.storage.dir_exists(&domain_dir).await? {
-            return Ok(Vec::new());
-        }
-
         let mut models = Vec::new();
-        let files = self.storage.list_files(&domain_dir).await?;
+        let files = self.storage.list_files(workspace_path).await?;
 
         for file_name in files {
             if file_name.ends_with(".bpmn.xml") {
-                let file_path = format!("{}/{}", domain_dir, file_name);
-                match self.load_bpmn_model(&domain_dir, &file_name).await {
+                let file_path = format!("{}/{}", workspace_path, file_name);
+                match self.load_bpmn_model_from_file(&file_path, &file_name).await {
                     Ok(model) => models.push(model),
                     Err(e) => {
                         warn!("Failed to load BPMN model from {}: {}", file_path, e);
@@ -591,15 +618,14 @@ impl<B: StorageBackend> ModelLoader<B> {
         Ok(models)
     }
 
-    /// Load a specific BPMN model by name from a domain directory
+    /// Load a specific BPMN model from a file
     #[cfg(feature = "bpmn")]
-    pub async fn load_bpmn_model(
+    async fn load_bpmn_model_from_file(
         &self,
-        domain_dir: &str,
+        file_path: &str,
         file_name: &str,
     ) -> Result<BPMNModel, StorageError> {
-        let file_path = format!("{}/{}", domain_dir, file_name);
-        let content = self.storage.read_file(&file_path).await?;
+        let content = self.storage.read_file(file_path).await?;
         let xml_content = String::from_utf8(content)
             .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
 
@@ -609,11 +635,8 @@ impl<B: StorageBackend> ModelLoader<B> {
             .unwrap_or(file_name)
             .to_string();
 
-        // Get domain ID from domain.yaml, or generate a new one if not found
-        let domain_id = self
-            .get_domain_id(domain_dir)
-            .await?
-            .unwrap_or_else(Uuid::new_v4);
+        // Generate a domain ID (can be extracted from filename if using naming convention)
+        let domain_id = Uuid::new_v4();
 
         // Import using BPMNImporter
         let mut importer = BPMNImporter::new();
@@ -626,45 +649,64 @@ impl<B: StorageBackend> ModelLoader<B> {
         Ok(model)
     }
 
-    /// Load BPMN XML content from a domain directory
+    /// Load a specific BPMN model by name from a domain directory (DEPRECATED)
+    #[cfg(feature = "bpmn")]
+    #[deprecated(
+        since = "2.0.0",
+        note = "Use load_bpmn_model_from_file with flat file structure instead"
+    )]
+    #[allow(dead_code)]
+    pub async fn load_bpmn_model(
+        &self,
+        domain_dir: &str,
+        file_name: &str,
+    ) -> Result<BPMNModel, StorageError> {
+        let file_path = format!("{}/{}", domain_dir, file_name);
+        self.load_bpmn_model_from_file(&file_path, file_name).await
+    }
+
+    /// Load BPMN XML content from workspace
     #[cfg(feature = "bpmn")]
     pub async fn load_bpmn_xml(
         &self,
         workspace_path: &str,
-        domain_name: &str,
+        _domain_name: &str,
         model_name: &str,
     ) -> Result<String, StorageError> {
-        let sanitized_domain_name = sanitize_filename(domain_name);
         let sanitized_model_name = sanitize_filename(model_name);
-        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
-        let file_path = format!("{}/{}.bpmn.xml", domain_dir, sanitized_model_name);
+        // Try to find the file with any naming pattern
+        let files = self.storage.list_files(workspace_path).await?;
 
-        let content = self.storage.read_file(&file_path).await?;
-        String::from_utf8(content)
-            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))
+        for file_name in files {
+            if file_name.ends_with(".bpmn.xml") && file_name.contains(&sanitized_model_name) {
+                let file_path = format!("{}/{}", workspace_path, file_name);
+                let content = self.storage.read_file(&file_path).await?;
+                return String::from_utf8(content).map_err(|e| {
+                    StorageError::SerializationError(format!("Invalid UTF-8: {}", e))
+                });
+            }
+        }
+
+        Err(StorageError::IoError(format!(
+            "BPMN model '{}' not found in workspace",
+            model_name
+        )))
     }
 
-    /// Load all DMN models from a domain directory
+    /// Load all DMN models from workspace using flat file structure
     #[cfg(feature = "dmn")]
     pub async fn load_dmn_models(
         &self,
         workspace_path: &str,
-        domain_name: &str,
+        _domain_name: &str,
     ) -> Result<Vec<DMNModel>, StorageError> {
-        let sanitized_domain_name = sanitize_filename(domain_name);
-        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
-
-        if !self.storage.dir_exists(&domain_dir).await? {
-            return Ok(Vec::new());
-        }
-
         let mut models = Vec::new();
-        let files = self.storage.list_files(&domain_dir).await?;
+        let files = self.storage.list_files(workspace_path).await?;
 
         for file_name in files {
             if file_name.ends_with(".dmn.xml") {
-                let file_path = format!("{}/{}", domain_dir, file_name);
-                match self.load_dmn_model(&domain_dir, &file_name).await {
+                let file_path = format!("{}/{}", workspace_path, file_name);
+                match self.load_dmn_model_from_file(&file_path, &file_name).await {
                     Ok(model) => models.push(model),
                     Err(e) => {
                         warn!("Failed to load DMN model from {}: {}", file_path, e);
@@ -676,15 +718,14 @@ impl<B: StorageBackend> ModelLoader<B> {
         Ok(models)
     }
 
-    /// Load a specific DMN model by name from a domain directory
+    /// Load a specific DMN model from a file
     #[cfg(feature = "dmn")]
-    pub async fn load_dmn_model(
+    async fn load_dmn_model_from_file(
         &self,
-        domain_dir: &str,
+        file_path: &str,
         file_name: &str,
     ) -> Result<DMNModel, StorageError> {
-        let file_path = format!("{}/{}", domain_dir, file_name);
-        let content = self.storage.read_file(&file_path).await?;
+        let content = self.storage.read_file(file_path).await?;
         let xml_content = String::from_utf8(content)
             .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
 
@@ -694,11 +735,8 @@ impl<B: StorageBackend> ModelLoader<B> {
             .unwrap_or(file_name)
             .to_string();
 
-        // Get domain ID from domain.yaml, or generate a new one if not found
-        let domain_id = self
-            .get_domain_id(domain_dir)
-            .await?
-            .unwrap_or_else(Uuid::new_v4);
+        // Generate a domain ID (can be extracted from filename if using naming convention)
+        let domain_id = Uuid::new_v4();
 
         // Import using DMNImporter
         let mut importer = DMNImporter::new();
@@ -711,48 +749,69 @@ impl<B: StorageBackend> ModelLoader<B> {
         Ok(model)
     }
 
-    /// Load DMN XML content from a domain directory
+    /// Load a specific DMN model by name from a domain directory (DEPRECATED)
+    #[cfg(feature = "dmn")]
+    #[deprecated(
+        since = "2.0.0",
+        note = "Use load_dmn_model_from_file with flat file structure instead"
+    )]
+    #[allow(dead_code)]
+    pub async fn load_dmn_model(
+        &self,
+        domain_dir: &str,
+        file_name: &str,
+    ) -> Result<DMNModel, StorageError> {
+        let file_path = format!("{}/{}", domain_dir, file_name);
+        self.load_dmn_model_from_file(&file_path, file_name).await
+    }
+
+    /// Load DMN XML content from workspace
     #[cfg(feature = "dmn")]
     pub async fn load_dmn_xml(
         &self,
         workspace_path: &str,
-        domain_name: &str,
+        _domain_name: &str,
         model_name: &str,
     ) -> Result<String, StorageError> {
-        let sanitized_domain_name = sanitize_filename(domain_name);
         let sanitized_model_name = sanitize_filename(model_name);
-        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
-        let file_path = format!("{}/{}.dmn.xml", domain_dir, sanitized_model_name);
+        let files = self.storage.list_files(workspace_path).await?;
 
-        let content = self.storage.read_file(&file_path).await?;
-        String::from_utf8(content)
-            .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))
+        for file_name in files {
+            if file_name.ends_with(".dmn.xml") && file_name.contains(&sanitized_model_name) {
+                let file_path = format!("{}/{}", workspace_path, file_name);
+                let content = self.storage.read_file(&file_path).await?;
+                return String::from_utf8(content).map_err(|e| {
+                    StorageError::SerializationError(format!("Invalid UTF-8: {}", e))
+                });
+            }
+        }
+
+        Err(StorageError::IoError(format!(
+            "DMN model '{}' not found in workspace",
+            model_name
+        )))
     }
 
-    /// Load all OpenAPI specifications from a domain directory
+    /// Load all OpenAPI specifications from workspace using flat file structure
     #[cfg(feature = "openapi")]
     pub async fn load_openapi_models(
         &self,
         workspace_path: &str,
-        domain_name: &str,
+        _domain_name: &str,
     ) -> Result<Vec<OpenAPIModel>, StorageError> {
-        let sanitized_domain_name = sanitize_filename(domain_name);
-        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
-
-        if !self.storage.dir_exists(&domain_dir).await? {
-            return Ok(Vec::new());
-        }
-
         let mut models = Vec::new();
-        let files = self.storage.list_files(&domain_dir).await?;
+        let files = self.storage.list_files(workspace_path).await?;
 
         for file_name in files {
             if file_name.ends_with(".openapi.yaml")
                 || file_name.ends_with(".openapi.yml")
                 || file_name.ends_with(".openapi.json")
             {
-                let file_path = format!("{}/{}", domain_dir, file_name);
-                match self.load_openapi_model(&domain_dir, &file_name).await {
+                let file_path = format!("{}/{}", workspace_path, file_name);
+                match self
+                    .load_openapi_model_from_file(&file_path, &file_name)
+                    .await
+                {
                     Ok(model) => models.push(model),
                     Err(e) => {
                         warn!("Failed to load OpenAPI spec from {}: {}", file_path, e);
@@ -764,19 +823,16 @@ impl<B: StorageBackend> ModelLoader<B> {
         Ok(models)
     }
 
-    /// Load a specific OpenAPI model by name from a domain directory
+    /// Load a specific OpenAPI model from a file
     #[cfg(feature = "openapi")]
-    pub async fn load_openapi_model(
+    async fn load_openapi_model_from_file(
         &self,
-        domain_dir: &str,
+        file_path: &str,
         file_name: &str,
     ) -> Result<OpenAPIModel, StorageError> {
-        let file_path = format!("{}/{}", domain_dir, file_name);
-        let content = self.storage.read_file(&file_path).await?;
+        let content = self.storage.read_file(file_path).await?;
         let spec_content = String::from_utf8(content)
             .map_err(|e| StorageError::SerializationError(format!("Invalid UTF-8: {}", e)))?;
-
-        // Format is detected by OpenAPIImporter, no need to detect here
 
         // Extract API name from filename (remove .openapi.yaml/.openapi.json extension)
         let api_name = file_name
@@ -786,11 +842,8 @@ impl<B: StorageBackend> ModelLoader<B> {
             .unwrap_or(file_name)
             .to_string();
 
-        // Get domain ID from domain.yaml, or generate a new one if not found
-        let domain_id = self
-            .get_domain_id(domain_dir)
-            .await?
-            .unwrap_or_else(Uuid::new_v4);
+        // Generate a domain ID (can be extracted from filename if using naming convention)
+        let domain_id = Uuid::new_v4();
 
         // Import using OpenAPIImporter
         let mut importer = OpenAPIImporter::new();
@@ -803,18 +856,33 @@ impl<B: StorageBackend> ModelLoader<B> {
         Ok(model)
     }
 
-    /// Load OpenAPI content from a domain directory
+    /// Load a specific OpenAPI model by name from a domain directory (DEPRECATED)
+    #[cfg(feature = "openapi")]
+    #[deprecated(
+        since = "2.0.0",
+        note = "Use load_openapi_model_from_file with flat file structure instead"
+    )]
+    #[allow(dead_code)]
+    pub async fn load_openapi_model(
+        &self,
+        domain_dir: &str,
+        file_name: &str,
+    ) -> Result<OpenAPIModel, StorageError> {
+        let file_path = format!("{}/{}", domain_dir, file_name);
+        self.load_openapi_model_from_file(&file_path, file_name)
+            .await
+    }
+
+    /// Load OpenAPI content from workspace
     #[cfg(feature = "openapi")]
     pub async fn load_openapi_content(
         &self,
         workspace_path: &str,
-        domain_name: &str,
+        _domain_name: &str,
         api_name: &str,
         format: Option<OpenAPIFormat>,
     ) -> Result<String, StorageError> {
-        let sanitized_domain_name = sanitize_filename(domain_name);
         let sanitized_api_name = sanitize_filename(api_name);
-        let domain_dir = format!("{}/{}", workspace_path, sanitized_domain_name);
 
         // Try to find the file with the requested format, or any format
         let extensions: Vec<&str> = if let Some(fmt) = format {
@@ -826,19 +894,24 @@ impl<B: StorageBackend> ModelLoader<B> {
             vec!["yaml", "yml", "json"]
         };
 
-        for ext in extensions {
-            let file_path = format!("{}/{}.openapi.{}", domain_dir, sanitized_api_name, ext);
-            if self.storage.file_exists(&file_path).await? {
-                let content = self.storage.read_file(&file_path).await?;
-                return String::from_utf8(content).map_err(|e| {
-                    StorageError::SerializationError(format!("Invalid UTF-8: {}", e))
-                });
+        let files = self.storage.list_files(workspace_path).await?;
+
+        for file_name in files {
+            for ext in &extensions {
+                let suffix = format!(".openapi.{}", ext);
+                if file_name.ends_with(&suffix) && file_name.contains(&sanitized_api_name) {
+                    let file_path = format!("{}/{}", workspace_path, file_name);
+                    let content = self.storage.read_file(&file_path).await?;
+                    return String::from_utf8(content).map_err(|e| {
+                        StorageError::SerializationError(format!("Invalid UTF-8: {}", e))
+                    });
+                }
             }
         }
 
         Err(StorageError::IoError(format!(
-            "OpenAPI spec '{}.openapi.{{yaml,json}}' not found in domain '{}'",
-            api_name, domain_name
+            "OpenAPI spec '{}' not found in workspace",
+            api_name
         )))
     }
 
@@ -974,15 +1047,14 @@ impl<B: StorageBackend> ModelLoader<B> {
 
     /// Get domain ID from domain.yaml, or None if not found
     ///
-    /// This is a helper method used by BPMN/DMN/OpenAPI loaders to get the domain ID.
+    /// Get domain ID from domain.yaml (DEPRECATED)
     ///
-    /// # Arguments
-    ///
-    /// * `domain_dir` - Path to the domain directory
-    ///
-    /// # Returns
-    ///
-    /// The domain UUID if found in domain.yaml, or None
+    /// This method is deprecated. Domain information is now stored in workspace.yaml.
+    #[deprecated(
+        since = "2.0.0",
+        note = "Domain directories are no longer supported. Domain info is in workspace.yaml"
+    )]
+    #[allow(dead_code)]
     pub async fn get_domain_id(&self, domain_dir: &str) -> Result<Option<Uuid>, StorageError> {
         match self.load_domain_config(domain_dir).await? {
             Some(config) => Ok(Some(config.id)),
@@ -990,36 +1062,25 @@ impl<B: StorageBackend> ModelLoader<B> {
         }
     }
 
-    /// Load all domain configurations from a workspace
+    /// Load all domain configurations from a workspace (DEPRECATED)
     ///
-    /// # Arguments
-    ///
-    /// * `workspace_path` - Path to the workspace directory
-    ///
-    /// # Returns
-    ///
-    /// A vector of all DomainConfig found in the workspace
+    /// This method is deprecated. Use load_workspace() and access domains from the workspace.
+    #[deprecated(
+        since = "2.0.0",
+        note = "Domain directories are no longer supported. Use load_workspace() instead"
+    )]
+    #[allow(dead_code)]
     pub async fn load_all_domain_configs(
         &self,
         workspace_path: &str,
     ) -> Result<Vec<DomainConfig>, StorageError> {
-        let mut configs = Vec::new();
+        warn!(
+            "load_all_domain_configs is deprecated. Use load_workspace() for workspace: {}",
+            workspace_path
+        );
 
-        // List all directories in the workspace
-        let entries = self.storage.list_files(workspace_path).await?;
-
-        for entry in entries {
-            // Skip files, only process directories
-            let entry_path = format!("{}/{}", workspace_path, entry);
-            if self.storage.dir_exists(&entry_path).await? {
-                // Try to load domain.yaml from each directory
-                if let Ok(Some(config)) = self.load_domain_config(&entry_path).await {
-                    configs.push(config);
-                }
-            }
-        }
-
-        Ok(configs)
+        // Return empty as domain directories are no longer supported
+        Ok(Vec::new())
     }
 }
 

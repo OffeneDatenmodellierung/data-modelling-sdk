@@ -34,6 +34,7 @@ cargo run --bin test-odps --features odps-validation,cli -- product.odps.yaml --
 ## Features
 
 - **Storage Backends**: File system, browser storage (IndexedDB/localStorage), and HTTP API
+- **Database Backends**: DuckDB (embedded) and PostgreSQL for high-performance queries
 - **Model Loading/Saving**: Load and save models from various storage backends
 - **Import/Export**: Import from SQL (PostgreSQL, MySQL, SQLite, Generic, Databricks), ODCS, ODCL, JSON Schema, AVRO, Protobuf (proto2/proto3), CADS, ODPS, BPMN, DMN, OpenAPI; Export to various formats
 - **Business Domain Schema**: Organize systems, CADS nodes, and ODCS nodes within business domains
@@ -41,38 +42,51 @@ cargo run --bin test-odps --features odps-validation,cli -- product.odps.yaml --
 - **OpenAPI to ODCS Converter**: Convert OpenAPI schema components to ODCS table definitions
 - **Validation**: Table and relationship validation (naming conflicts, circular dependencies)
 - **Schema Reference**: JSON Schema definitions for all supported formats in `schemas/` directory
+- **Database Sync**: Bidirectional sync between YAML files and database with change detection
+- **Git Hooks**: Automatic pre-commit and post-checkout hooks for database synchronization
 
 ## File Structure
 
-The SDK organizes files using a domain-based directory structure:
+The SDK organizes files using a flat file naming convention within a workspace:
 
 ```
-base_directory/
-├── .git/                     # Git folder (if present)
-├── README.md                 # Repository files
-├── domain1/                  # Domain directory
-│   ├── domain.yaml          # Domain definition
-│   ├── table1.odcs.yaml      # ODCS table files
-│   ├── table2.odcs.yaml
-│   ├── product1.odps.yaml   # ODPS product files
-│   ├── model1.cads.yaml     # CADS asset files
-│   ├── api1.openapi.yaml    # OpenAPI specification files
-│   ├── process1.bpmn.xml    # BPMN process model files
-│   └── decision1.dmn.xml     # DMN decision model files
-├── domain2/                  # Another domain directory
-│   ├── domain.yaml
-│   └── ...
-└── tables/                    # Legacy: tables not in any domain (backward compatibility)
+workspace/
+├── .git/                                        # Git folder (if present)
+├── README.md                                    # Repository files
+├── workspace.yaml                               # Workspace metadata with assets and relationships
+├── myworkspace_sales_customers.odcs.yaml        # ODCS table: workspace_domain_resource.type.yaml
+├── myworkspace_sales_orders.odcs.yaml           # Another ODCS table in sales domain
+├── myworkspace_sales_crm_leads.odcs.yaml        # ODCS table with system: workspace_domain_system_resource.type.yaml
+├── myworkspace_analytics_metrics.odps.yaml      # ODPS product file
+├── myworkspace_platform_api.cads.yaml           # CADS asset file
+├── myworkspace_platform_api.openapi.yaml        # OpenAPI specification file
+├── myworkspace_ops_approval.bpmn.xml            # BPMN process model file
+└── myworkspace_ops_routing.dmn.xml              # DMN decision model file
 ```
 
-Each domain directory contains:
-- `domain.yaml`: The domain definition with systems, CADS nodes, ODCS nodes, and connections
-- `*.odcs.yaml`: ODCS table files referenced by ODCSNodes in the domain
-- `*.odps.yaml`: ODPS product files for data products in the domain
-- `*.cads.yaml`: CADS asset files referenced by CADSNodes in the domain
-- `*.openapi.yaml` / `*.openapi.json`: OpenAPI specification files (can be referenced by CADS assets)
-- `*.bpmn.xml`: BPMN 2.0 process model files (can be referenced by CADS assets)
-- `*.dmn.xml`: DMN 1.3 decision model files (can be referenced by CADS assets)
+### File Naming Convention
+
+Files follow the pattern: `{workspace}_{domain}_{system}_{resource}.{type}.{ext}`
+
+- **workspace**: The workspace name (required)
+- **domain**: The business domain (required)
+- **system**: The system within the domain (optional)
+- **resource**: The resource/asset name (required)
+- **type**: The asset type (`odcs`, `odps`, `cads`, `openapi`, `bpmn`, `dmn`)
+- **ext**: File extension (`yaml`, `xml`, `json`)
+
+### Workspace-Level Files
+
+- `workspace.yaml`: Workspace metadata including domains, systems, asset references, and relationships
+
+### Asset Types
+
+- `*.odcs.yaml`: ODCS table/schema definitions (Open Data Contract Standard)
+- `*.odps.yaml`: ODPS data product definitions (Open Data Product Standard)
+- `*.cads.yaml`: CADS asset definitions (architecture assets)
+- `*.openapi.yaml` / `*.openapi.json`: OpenAPI specification files
+- `*.bpmn.xml`: BPMN 2.0 process model files
+- `*.dmn.xml`: DMN 1.3 decision model files
 
 ## Usage
 
@@ -195,6 +209,58 @@ console.log('Exported YAML:', exportedYaml);
 - `filterRelationshipsByInfrastructureType(workspaceJson: string, infrastructureType: string): string` - Filter relationships by infrastructure type
 - `filterByTags(workspaceJson: string, tag: string): string` - Filter nodes and relationships by tag (supports Simple, Pair, and List tag formats)
 
+## Database Support
+
+The SDK includes an optional database layer for high-performance queries on large workspaces (10-100x faster than file-based operations).
+
+### Database Backends
+
+- **DuckDB**: Embedded analytical database, ideal for CLI tools and local development
+- **PostgreSQL**: Server-based database for team environments and shared access
+
+### Quick Start
+
+```bash
+# Build CLI with database support
+cargo build --release --bin data-modelling-cli --features cli-full
+
+# Initialize database for a workspace
+./target/release/data-modelling-cli db init --workspace ./my-workspace
+
+# Sync YAML files to database
+./target/release/data-modelling-cli db sync --workspace ./my-workspace
+
+# Query the database
+./target/release/data-modelling-cli query "SELECT name FROM tables" --workspace ./my-workspace
+```
+
+### Configuration
+
+Database settings are stored in `.data-model.toml`:
+
+```toml
+[database]
+backend = "duckdb"
+path = ".data-model.duckdb"
+
+[sync]
+auto_sync = true
+
+[git]
+hooks_enabled = true
+```
+
+### Git Hooks Integration
+
+When initializing a database in a Git repository, the CLI automatically installs:
+
+- **Pre-commit hook**: Exports database changes to YAML before commit
+- **Post-checkout hook**: Syncs YAML files to database after checkout
+
+This ensures YAML files and database stay in sync across branches and collaborators.
+
+See [CLI.md](docs/CLI.md) for detailed database command documentation.
+
 ## Development
 
 ### Pre-commit Hooks
@@ -260,6 +326,7 @@ These schemas serve as authoritative references for validation, documentation, a
 The SDK provides comprehensive support for multiple data modeling formats:
 
 - ✅ Storage backend abstraction and implementations
+- ✅ Database backend abstraction (DuckDB, PostgreSQL)
 - ✅ Model loader/saver structure
 - ✅ Full import/export implementation for all supported formats
 - ✅ Validation module structure
@@ -268,3 +335,5 @@ The SDK provides comprehensive support for multiple data modeling formats:
 - ✅ Enhanced tag support (Simple, Pair, List)
 - ✅ Full ODCS/ODCL field preservation
 - ✅ Schema reference directory (`schemas/`) with JSON Schema definitions for all supported formats
+- ✅ Bidirectional YAML ↔ Database sync with change detection
+- ✅ Git hooks for automatic synchronization
