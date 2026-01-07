@@ -33,7 +33,9 @@ pub use cads::{
     CADSRuntimeResources, CADSSLA, CADSSLAProperty, CADSStatus, CADSTeamMember,
     CADSValidationProfile, CADSValidationProfileAppliesTo,
 };
-pub use column::{Column, ForeignKey, PropertyRelationship};
+pub use column::{
+    AuthoritativeDefinition, Column, ForeignKey, LogicalTypeOptions, PropertyRelationship,
+};
 pub use cross_domain::{CrossDomainConfig, CrossDomainRelationshipRef, CrossDomainTableRef};
 pub use data_model::DataModel;
 #[cfg(feature = "dmn")]

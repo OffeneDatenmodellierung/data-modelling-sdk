@@ -961,13 +961,10 @@ impl SQLImporter {
             out_cols.push(ColumnData {
                 name: col_name,
                 data_type,
-                physical_type: None,
                 nullable,
                 primary_key: is_pk,
                 description,
-                quality: None,
-                relationships: Vec::new(),
-                enum_values: None,
+                ..Default::default()
             });
         }
 

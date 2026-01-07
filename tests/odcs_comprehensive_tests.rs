@@ -136,20 +136,9 @@ fn create_column(name: &str, data_type: &str, primary_key: bool, nullable: bool)
     Column {
         name: name.to_string(),
         data_type: data_type.to_string(),
-        physical_type: None,
         nullable,
         primary_key,
-        secondary_key: false,
-        composite_key: None,
-        foreign_key: None,
-        constraints: Vec::new(),
-        description: String::new(),
-        quality: Vec::new(),
-        relationships: Vec::new(),
-        enum_values: Vec::new(),
-        errors: Vec::new(),
-        column_order: 0,
-        nested_data: None,
+        ..Default::default()
     }
 }
 

@@ -73,30 +73,165 @@ pub struct TableData {
     // Additional fields can be added as needed
 }
 
-/// Column data from import
+/// Column data from import - mirrors Column struct exactly to preserve all ODCS v3.1.0 fields
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ColumnData {
-    pub name: String,
-    pub data_type: String,
-    /// Physical type - the actual database type (e.g., "DOUBLE", "VARCHAR(100)")
-    /// For ODCS this maps to physicalType. Optional as not all formats distinguish logical/physical types.
+    // === Core Identity Fields ===
+    /// Stable technical identifier (ODCS: id)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub physical_type: Option<String>,
-    pub nullable: bool,
-    pub primary_key: bool,
-    /// Column description/documentation (from ODCS/ODCL description field)
+    pub id: Option<String>,
+    /// Column name (ODCS: name)
+    pub name: String,
+    /// Business name for the column (ODCS: businessName)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub business_name: Option<String>,
+    /// Column description/documentation (ODCS: description)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Quality rules and validation checks (from ODCS/ODCL quality array)
+
+    // === Type Information ===
+    /// Logical data type (ODCS: logicalType)
+    #[serde(rename = "dataType")]
+    pub data_type: String,
+    /// Physical database type (ODCS: physicalType)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub quality: Option<Vec<std::collections::HashMap<String, serde_json::Value>>>,
+    pub physical_type: Option<String>,
+    /// Physical name in the data source (ODCS: physicalName)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub physical_name: Option<String>,
+    /// Additional type options (ODCS: logicalTypeOptions)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_type_options: Option<crate::models::LogicalTypeOptions>,
+
+    // === Key Constraints ===
+    /// Whether this column is part of the primary key (ODCS: primaryKey)
+    #[serde(default)]
+    pub primary_key: bool,
+    /// Position in composite primary key, 1-based (ODCS: primaryKeyPosition)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primary_key_position: Option<i32>,
+    /// Whether the column contains unique values (ODCS: unique)
+    #[serde(default)]
+    pub unique: bool,
+    /// Whether the column allows NULL values (inverse of ODCS: required)
+    #[serde(default = "default_true")]
+    pub nullable: bool,
+
+    // === Partitioning & Clustering ===
+    /// Whether the column is used for partitioning (ODCS: partitioned)
+    #[serde(default)]
+    pub partitioned: bool,
+    /// Position in partition key, 1-based (ODCS: partitionKeyPosition)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition_key_position: Option<i32>,
+    /// Whether the column is used for clustering
+    #[serde(default)]
+    pub clustered: bool,
+
+    // === Data Classification & Security ===
+    /// Data classification level (ODCS: classification)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classification: Option<String>,
+    /// Whether this is a critical data element (ODCS: criticalDataElement)
+    #[serde(default)]
+    pub critical_data_element: bool,
+    /// Name of the encrypted version of this column (ODCS: encryptedName)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted_name: Option<String>,
+
+    // === Transformation Metadata ===
+    /// Source objects used in transformation (ODCS: transformSourceObjects)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transform_source_objects: Vec<String>,
+    /// Transformation logic/expression (ODCS: transformLogic)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transform_logic: Option<String>,
+    /// Human-readable transformation description (ODCS: transformDescription)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transform_description: Option<String>,
+
+    // === Examples & Documentation ===
+    /// Example values for this column (ODCS: examples)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<serde_json::Value>,
+    /// Default value for the column
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_value: Option<serde_json::Value>,
+
+    // === Relationships & References ===
     /// ODCS v3.1.0 relationships (property-level references)
-    /// All $ref values are converted to relationships on import
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relationships: Vec<crate::models::PropertyRelationship>,
+    /// Authoritative definitions (ODCS: authoritativeDefinitions)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authoritative_definitions: Vec<crate::models::AuthoritativeDefinition>,
+
+    // === Quality & Validation ===
+    /// Quality rules and checks (ODCS: quality)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality: Option<Vec<std::collections::HashMap<String, serde_json::Value>>>,
     /// Enum values if this column is an enumeration type
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enum_values: Option<Vec<String>>,
+
+    // === Tags & Custom Properties ===
+    /// Property-level tags (ODCS: tags)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Custom properties for format-specific metadata
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub custom_properties: std::collections::HashMap<String, serde_json::Value>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for ColumnData {
+    fn default() -> Self {
+        Self {
+            // Core Identity
+            id: None,
+            name: String::new(),
+            business_name: None,
+            description: None,
+            // Type Information
+            data_type: String::new(),
+            physical_type: None,
+            physical_name: None,
+            logical_type_options: None,
+            // Key Constraints
+            primary_key: false,
+            primary_key_position: None,
+            unique: false,
+            nullable: true,
+            // Partitioning & Clustering
+            partitioned: false,
+            partition_key_position: None,
+            clustered: false,
+            // Data Classification & Security
+            classification: None,
+            critical_data_element: false,
+            encrypted_name: None,
+            // Transformation Metadata
+            transform_source_objects: Vec::new(),
+            transform_logic: None,
+            transform_description: None,
+            // Examples & Documentation
+            examples: Vec::new(),
+            default_value: None,
+            // Relationships & References
+            relationships: Vec::new(),
+            authoritative_definitions: Vec::new(),
+            // Quality & Validation
+            quality: None,
+            enum_values: None,
+            // Tags & Custom Properties
+            tags: Vec::new(),
+            custom_properties: std::collections::HashMap::new(),
+        }
+    }
 }
 
 // Re-export for convenience

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-01-07
+
+### Added
+
+- **feat(models)**: Complete ODCS v3.1.0 property field support in Column model
+  - Added 25+ new fields: `id`, `businessName`, `physicalName`, `logicalTypeOptions`, `primaryKeyPosition`, `unique`, `partitioned`, `partitionKeyPosition`, `clustered`, `classification`, `criticalDataElement`, `encryptedName`, `transformSourceObjects`, `transformLogic`, `transformDescription`, `examples`, `defaultValue`, `authoritativeDefinitions`, `tags`, `customProperties`
+  - Ensures zero data loss during import/export round-trips
+
+- **feat(import)**: ColumnData struct now mirrors Column exactly
+  - All ODCS v3.1.0 property fields preserved through WASM layer
+  - Added `column_to_column_data()` helper for consistent Column→ColumnData conversion
+  - Updated `column_data_to_column()` to preserve all fields during reconstruction
+
+- **feat(models)**: Added new supporting types
+  - `LogicalTypeOptions`: minLength, maxLength, pattern, format, minimum, maximum, precision, scale
+  - `AuthoritativeDefinition`: type and URL for authoritative definition references
+  - Both types exported from models module for external use
+
+### Changed
+
+- **refactor(import)**: All importers now use `..Default::default()` pattern for Column/ColumnData construction
+  - Simplifies code and ensures new fields automatically get sensible defaults
+  - Applied across: avro.rs, json_schema.rs, protobuf.rs, odcs.rs, odcl.rs, odcs_shared.rs, sql.rs
+
 ## [1.10.0] - 2026-01-06
 
 ### Added

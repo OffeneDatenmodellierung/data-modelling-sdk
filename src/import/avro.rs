@@ -6,6 +6,7 @@
 //! - Valid identifier format
 //! - Maximum length limits
 
+use crate::import::odcs_shared::column_to_column_data;
 use crate::import::{ImportError, ImportResult, TableData};
 use crate::models::{Column, Table, Tag};
 use crate::validation::input::{validate_column_name, validate_table_name};
@@ -68,33 +69,7 @@ impl AvroImporter {
                     sdk_tables.push(TableData {
                         table_index: idx,
                         name: Some(table.name.clone()),
-                        columns: table
-                            .columns
-                            .iter()
-                            .map(|c| super::ColumnData {
-                                name: c.name.clone(),
-                                data_type: c.data_type.clone(),
-                                physical_type: c.physical_type.clone(),
-                                nullable: c.nullable,
-                                primary_key: c.primary_key,
-                                description: if c.description.is_empty() {
-                                    None
-                                } else {
-                                    Some(c.description.clone())
-                                },
-                                quality: if c.quality.is_empty() {
-                                    None
-                                } else {
-                                    Some(c.quality.clone())
-                                },
-                                relationships: c.relationships.clone(),
-                                enum_values: if c.enum_values.is_empty() {
-                                    None
-                                } else {
-                                    Some(c.enum_values.clone())
-                                },
-                            })
-                            .collect(),
+                        columns: table.columns.iter().map(column_to_column_data).collect(),
                     });
                 }
                 let sdk_errors: Vec<ImportError> = errors
@@ -340,20 +315,9 @@ impl AvroImporter {
             columns.push(Column {
                 name: field_name,
                 data_type,
-                physical_type: None,
                 nullable,
-                primary_key: false,
-                secondary_key: false,
-                composite_key: None,
-                foreign_key: None,
-                constraints: Vec::new(),
                 description,
-                quality: Vec::new(),
-                relationships: Vec::new(),
-                enum_values: Vec::new(),
-                errors: Vec::new(),
-                column_order: 0,
-                nested_data: None,
+                ..Default::default()
             });
         } else if let Some(type_obj) = avro_type.as_object() {
             // Complex type (record, array, map)
@@ -434,40 +398,18 @@ impl AvroImporter {
                 columns.push(Column {
                     name: field_name,
                     data_type,
-                    physical_type: None,
                     nullable,
-                    primary_key: false,
-                    secondary_key: false,
-                    composite_key: None,
-                    foreign_key: None,
-                    constraints: Vec::new(),
                     description,
-                    quality: Vec::new(),
-                    relationships: Vec::new(),
-                    enum_values: Vec::new(),
-                    errors: Vec::new(),
-                    column_order: 0,
-                    nested_data: None,
+                    ..Default::default()
                 });
             } else {
                 // Other complex types - default to STRUCT
                 columns.push(Column {
                     name: field_name,
                     data_type: "STRUCT".to_string(),
-                    physical_type: None,
                     nullable,
-                    primary_key: false,
-                    secondary_key: false,
-                    composite_key: None,
-                    foreign_key: None,
-                    constraints: Vec::new(),
                     description,
-                    quality: Vec::new(),
-                    relationships: Vec::new(),
-                    enum_values: Vec::new(),
-                    errors: Vec::new(),
-                    column_order: 0,
-                    nested_data: None,
+                    ..Default::default()
                 });
             }
         } else {

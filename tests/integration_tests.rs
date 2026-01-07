@@ -30,17 +30,11 @@ fn create_table_from_import_result(
                     physical_type: c.physical_type.clone(),
                     nullable: c.nullable,
                     primary_key: c.primary_key,
-                    secondary_key: false,
-                    composite_key: None,
-                    foreign_key: None,
-                    constraints: Vec::new(),
                     description: c.description.clone().unwrap_or_default(),
                     quality: c.quality.clone().unwrap_or_default(),
                     relationships: c.relationships.clone(),
                     enum_values: c.enum_values.clone().unwrap_or_default(),
-                    errors: Vec::new(),
-                    column_order: 0,
-                    nested_data: None,
+                    ..Default::default()
                 })
                 .collect(),
             database_type: None,

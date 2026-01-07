@@ -54,17 +54,11 @@ fn parse_struct_columns(parent_name: &str, data_type: &str, col_data: &ColumnDat
                 physical_type: col_data.physical_type.clone(),
                 nullable: col_data.nullable,
                 primary_key: col_data.primary_key,
-                secondary_key: false,
-                composite_key: None,
-                foreign_key: None,
-                constraints: Vec::new(),
                 description: col_data.description.clone().unwrap_or_default(),
-                errors: Vec::new(),
                 quality: col_data.quality.clone().unwrap_or_default(),
                 relationships: col_data.relationships.clone(),
                 enum_values: col_data.enum_values.clone().unwrap_or_default(),
-                column_order: 0,
-                nested_data: None,
+                ..Default::default()
             });
 
             // Add nested columns
@@ -118,25 +112,50 @@ fn table_data_to_table(table_data: &TableData) -> Table {
     Table::new(table_name, all_columns)
 }
 
-/// Convert ColumnData to Column
+/// Convert ColumnData to Column, preserving ALL ODCS v3.1.0 fields
 fn column_data_to_column(col_data: &ColumnData) -> Column {
     Column {
+        // Core Identity
+        id: col_data.id.clone(),
         name: col_data.name.clone(),
+        business_name: col_data.business_name.clone(),
+        description: col_data.description.clone().unwrap_or_default(),
+        // Type Information
         data_type: col_data.data_type.clone(),
         physical_type: col_data.physical_type.clone(),
-        nullable: col_data.nullable,
+        physical_name: col_data.physical_name.clone(),
+        logical_type_options: col_data.logical_type_options.clone(),
+        // Key Constraints
         primary_key: col_data.primary_key,
-        secondary_key: false,
-        composite_key: None,
-        foreign_key: None,
-        constraints: Vec::new(),
-        description: col_data.description.clone().unwrap_or_default(),
-        errors: Vec::new(),
-        quality: col_data.quality.clone().unwrap_or_default(),
+        primary_key_position: col_data.primary_key_position,
+        unique: col_data.unique,
+        nullable: col_data.nullable,
+        // Partitioning & Clustering
+        partitioned: col_data.partitioned,
+        partition_key_position: col_data.partition_key_position,
+        clustered: col_data.clustered,
+        // Data Classification & Security
+        classification: col_data.classification.clone(),
+        critical_data_element: col_data.critical_data_element,
+        encrypted_name: col_data.encrypted_name.clone(),
+        // Transformation Metadata
+        transform_source_objects: col_data.transform_source_objects.clone(),
+        transform_logic: col_data.transform_logic.clone(),
+        transform_description: col_data.transform_description.clone(),
+        // Examples & Documentation
+        examples: col_data.examples.clone(),
+        default_value: col_data.default_value.clone(),
+        // Relationships & References
         relationships: col_data.relationships.clone(),
+        authoritative_definitions: col_data.authoritative_definitions.clone(),
+        // Quality & Validation
+        quality: col_data.quality.clone().unwrap_or_default(),
         enum_values: col_data.enum_values.clone().unwrap_or_default(),
-        column_order: 0,
-        nested_data: None,
+        // Tags & Custom Properties
+        tags: col_data.tags.clone(),
+        custom_properties: col_data.custom_properties.clone(),
+        // Legacy/Internal Fields - use defaults
+        ..Default::default()
     }
 }
 
@@ -419,24 +438,16 @@ mod tests {
                     ColumnData {
                         name: "id".to_string(),
                         data_type: "INTEGER".to_string(),
-                        physical_type: None,
                         nullable: false,
                         primary_key: true,
                         description: Some("User ID".to_string()),
-                        quality: None,
-                        relationships: vec![],
-                        enum_values: None,
+                        ..Default::default()
                     },
                     ColumnData {
                         name: "name".to_string(),
                         data_type: "VARCHAR(100)".to_string(),
-                        physical_type: None,
                         nullable: true,
-                        primary_key: false,
-                        description: None,
-                        quality: None,
-                        relationships: vec![],
-                        enum_values: None,
+                        ..Default::default()
                     },
                 ],
             }],
@@ -489,13 +500,9 @@ mod tests {
                 columns: vec![ColumnData {
                     name: "order_id".to_string(),
                     data_type: "UUID".to_string(),
-                    physical_type: None,
                     nullable: false,
                     primary_key: true,
-                    description: None,
-                    quality: None,
-                    relationships: vec![],
-                    enum_values: None,
+                    ..Default::default()
                 }],
             }],
             tables_requiring_name: vec![],

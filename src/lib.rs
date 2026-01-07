@@ -258,33 +258,16 @@ mod wasm {
                                     quality: col_data.quality.clone(),
                                     relationships: col_data.relationships.clone(),
                                     enum_values: col_data.enum_values.clone(),
+                                    ..Default::default()
                                 });
 
                                 // Add nested columns converted from Column to ColumnData
                                 for nested_col in nested_cols {
-                                    all_columns.push(ColumnData {
-                                        name: nested_col.name,
-                                        data_type: nested_col.data_type,
-                                        physical_type: nested_col.physical_type,
-                                        nullable: nested_col.nullable,
-                                        primary_key: nested_col.primary_key,
-                                        description: if nested_col.description.is_empty() {
-                                            None
-                                        } else {
-                                            Some(nested_col.description)
-                                        },
-                                        quality: if nested_col.quality.is_empty() {
-                                            None
-                                        } else {
-                                            Some(nested_col.quality)
-                                        },
-                                        relationships: nested_col.relationships,
-                                        enum_values: if nested_col.enum_values.is_empty() {
-                                            None
-                                        } else {
-                                            Some(nested_col.enum_values)
-                                        },
-                                    });
+                                    all_columns.push(
+                                        crate::import::odcs_shared::column_to_column_data(
+                                            &nested_col,
+                                        ),
+                                    );
                                 }
                                 continue;
                             }

@@ -107,17 +107,11 @@ fn column_data_to_column(col_data: &ColumnData) -> Column {
         physical_type: col_data.physical_type.clone(),
         nullable: col_data.nullable,
         primary_key: col_data.primary_key,
-        secondary_key: false,
-        composite_key: None,
-        foreign_key: None,
-        constraints: Vec::new(),
         description,
-        errors: Vec::new(),
         quality: col_data.quality.clone().unwrap_or_default(),
         relationships: col_data.relationships.clone(),
         enum_values: col_data.enum_values.clone().unwrap_or_default(),
-        column_order: 0,
-        nested_data: None,
+        ..Default::default()
     }
 }
 
@@ -151,17 +145,11 @@ fn parse_struct_columns(parent_name: &str, data_type: &str, col_data: &ColumnDat
                 physical_type: col_data.physical_type.clone(),
                 nullable: col_data.nullable,
                 primary_key: col_data.primary_key,
-                secondary_key: false,
-                composite_key: None,
-                foreign_key: None,
-                constraints: Vec::new(),
                 description: col_data.description.clone().unwrap_or_default(),
-                errors: Vec::new(),
                 quality: col_data.quality.clone().unwrap_or_default(),
                 relationships: col_data.relationships.clone(),
                 enum_values: col_data.enum_values.clone().unwrap_or_default(),
-                column_order: 0,
-                nested_data: None,
+                ..Default::default()
             });
 
             // Add nested columns
@@ -1256,13 +1244,8 @@ fn flatten_message_to_columns(
             columns.push(ColumnData {
                 name: column_name,
                 data_type,
-                physical_type: None,
                 nullable: field.optional || field.repeated || is_wrapper,
-                primary_key: false,
-                description: None,
-                quality: None,
-                relationships: Vec::new(),
-                enum_values: None,
+                ..Default::default()
             });
         } else {
             // Message type - find and flatten recursively
@@ -1307,13 +1290,9 @@ fn flatten_message_to_columns(
                 columns.push(ColumnData {
                     name: column_name.clone(),
                     data_type: parent_data_type,
-                    physical_type: None,
                     nullable: field.optional || field.repeated,
-                    primary_key: false,
                     description: Some(format!("Nested message type: {}", field.field_type)),
-                    quality: None,
-                    relationships: Vec::new(),
-                    enum_values: None,
+                    ..Default::default()
                 });
 
                 // Recursively flatten nested message with appropriate prefix
@@ -1336,13 +1315,9 @@ fn flatten_message_to_columns(
                 columns.push(ColumnData {
                     name: column_name,
                     data_type,
-                    physical_type: None,
                     nullable: field.optional || field.repeated,
-                    primary_key: false,
                     description: Some(format!("Unknown message type: {}", field.field_type)),
-                    quality: None,
-                    relationships: Vec::new(),
-                    enum_values: None,
+                    ..Default::default()
                 });
             }
         }
@@ -1615,21 +1590,7 @@ pub fn handle_import_openapi(args: &ImportArgs) -> Result<(), CliError> {
                         columns: table
                             .columns
                             .iter()
-                            .map(|col| crate::import::ColumnData {
-                                name: col.name.clone(),
-                                data_type: col.data_type.clone(),
-                                physical_type: col.physical_type.clone(),
-                                nullable: col.nullable,
-                                primary_key: col.primary_key,
-                                description: Some(col.description.clone()),
-                                quality: None,
-                                relationships: col.relationships.clone(),
-                                enum_values: if col.enum_values.is_empty() {
-                                    None
-                                } else {
-                                    Some(col.enum_values.clone())
-                                },
-                            })
+                            .map(crate::import::odcs_shared::column_to_column_data)
                             .collect(),
                     });
                 }

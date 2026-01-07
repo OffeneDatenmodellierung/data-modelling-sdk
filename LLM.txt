@@ -7,7 +7,7 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/pixie79/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 1.7.0
+**Version**: 1.11.0
 
 ## Architecture
 
@@ -145,7 +145,10 @@ Abstracts file operations across different environments:
 Core data structures:
 
 - **`Table`**: Represents a database table/data contract with columns, metadata, and relationships. Supports enhanced tags (Simple, Pair, List)
-- **`Column`**: Column definition with data type, constraints, foreign keys. Includes `description`, `quality`, and `$ref` fields for ODCS/ODCL compatibility
+- **`Column`**: Column definition with complete ODCS v3.1.0 property support. Includes all fields: `id`, `name`, `businessName`, `description`, `dataType`, `physicalType`, `physicalName`, `logicalTypeOptions`, `primaryKey`, `primaryKeyPosition`, `unique`, `nullable`, `partitioned`, `partitionKeyPosition`, `clustered`, `classification`, `criticalDataElement`, `encryptedName`, `transformSourceObjects`, `transformLogic`, `transformDescription`, `examples`, `defaultValue`, `relationships`, `authoritativeDefinitions`, `quality`, `enumValues`, `tags`, `customProperties`
+- **`ColumnData`**: Import-format mirror of Column struct, preserving all ODCS v3.1.0 fields through WASM layer
+- **`LogicalTypeOptions`**: Type constraint options (minLength, maxLength, pattern, format, minimum, maximum, precision, scale)
+- **`AuthoritativeDefinition`**: Authoritative definition reference (type, url)
 - **`Relationship`**: Relationship between tables (source/target, type, metadata)
 - **`DataModel`**: Container for tables, relationships, and domains. Includes filter methods and domain operations (`add_domain`, `add_system_to_domain`, etc.)
 - **`Domain`**: Business domain container with systems, CADS nodes, ODCS nodes, and connections

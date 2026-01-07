@@ -19,6 +19,7 @@
 //! from .proto files, consider using `prost-build` in a build script. This parser is designed
 //! for runtime parsing of .proto file content.
 
+use crate::import::odcs_shared::column_to_column_data;
 use crate::import::{ImportError, ImportResult, TableData};
 use crate::models::{Column, Table, Tag};
 use crate::validation::input::{validate_column_name, validate_data_type, validate_table_name};
@@ -82,33 +83,7 @@ impl ProtobufImporter {
                     sdk_tables.push(TableData {
                         table_index: idx,
                         name: Some(table.name.clone()),
-                        columns: table
-                            .columns
-                            .iter()
-                            .map(|c| super::ColumnData {
-                                name: c.name.clone(),
-                                data_type: c.data_type.clone(),
-                                physical_type: c.physical_type.clone(),
-                                nullable: c.nullable,
-                                primary_key: c.primary_key,
-                                description: if c.description.is_empty() {
-                                    None
-                                } else {
-                                    Some(c.description.clone())
-                                },
-                                quality: if c.quality.is_empty() {
-                                    None
-                                } else {
-                                    Some(c.quality.clone())
-                                },
-                                relationships: c.relationships.clone(),
-                                enum_values: if c.enum_values.is_empty() {
-                                    None
-                                } else {
-                                    Some(c.enum_values.clone())
-                                },
-                            })
-                            .collect(),
+                        columns: table.columns.iter().map(column_to_column_data).collect(),
                     });
                 }
                 let sdk_errors: Vec<ImportError> = errors
@@ -345,20 +320,8 @@ impl ProtobufImporter {
                             columns.push(Column {
                                 name: format!("{}.{}", nested_field_name, deep_nested_field.name),
                                 data_type,
-                                physical_type: None,
                                 nullable: nested_field.nullable || deep_nested_field.nullable,
-                                primary_key: false,
-                                secondary_key: false,
-                                composite_key: None,
-                                foreign_key: None,
-                                constraints: Vec::new(),
-                                description: String::new(),
-                                quality: Vec::new(),
-                                relationships: Vec::new(),
-                                enum_values: Vec::new(),
-                                errors: Vec::new(),
-                                column_order: 0,
-                                nested_data: None,
+                                ..Default::default()
                             });
                         }
                     } else {
@@ -375,20 +338,8 @@ impl ProtobufImporter {
                         columns.push(Column {
                             name: nested_field_name,
                             data_type,
-                            physical_type: None,
                             nullable: nested_field.nullable,
-                            primary_key: false,
-                            secondary_key: false,
-                            composite_key: None,
-                            foreign_key: None,
-                            constraints: Vec::new(),
-                            description: String::new(),
-                            quality: Vec::new(),
-                            relationships: Vec::new(),
-                            enum_values: Vec::new(),
-                            errors: Vec::new(),
-                            column_order: 0,
-                            nested_data: None,
+                            ..Default::default()
                         });
                     }
                 }
@@ -403,20 +354,8 @@ impl ProtobufImporter {
                 columns.push(Column {
                     name: field.name.clone(),
                     data_type,
-                    physical_type: None,
                     nullable: field.nullable,
-                    primary_key: false,
-                    secondary_key: false,
-                    composite_key: None,
-                    foreign_key: None,
-                    constraints: Vec::new(),
-                    description: String::new(),
-                    quality: Vec::new(),
-                    relationships: Vec::new(),
-                    enum_values: Vec::new(),
-                    errors: Vec::new(),
-                    column_order: 0,
-                    nested_data: None,
+                    ..Default::default()
                 });
             }
         }

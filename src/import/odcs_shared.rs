@@ -489,18 +489,8 @@ pub fn expand_nested_column(
                     data_type: "OBJECT".to_string(),
                     physical_type,
                     nullable,
-                    primary_key: false,
-                    secondary_key: false,
-                    composite_key: None,
-                    foreign_key: None,
-                    constraints: Vec::new(),
                     description,
-                    quality: Vec::new(),
-                    relationships: Vec::new(),
-                    enum_values: Vec::new(),
-                    errors: Vec::new(),
-                    column_order: 0,
-                    nested_data: None,
+                    ..Default::default()
                 });
             }
         }
@@ -547,18 +537,8 @@ pub fn expand_nested_column(
                     data_type: "ARRAY<OBJECT>".to_string(),
                     physical_type,
                     nullable,
-                    primary_key: false,
-                    secondary_key: false,
-                    composite_key: None,
-                    foreign_key: None,
-                    constraints: Vec::new(),
                     description,
-                    quality: Vec::new(),
-                    relationships: Vec::new(),
-                    enum_values: Vec::new(),
-                    errors: Vec::new(),
-                    column_order: 0,
-                    nested_data: None,
+                    ..Default::default()
                 });
                 // Also expand nested properties with array prefix
                 // Handle both object format (legacy) and array format (ODCS v3.1.0)
@@ -639,18 +619,8 @@ pub fn expand_nested_column(
                     data_type,
                     physical_type,
                     nullable,
-                    primary_key: false,
-                    secondary_key: false,
-                    composite_key: None,
-                    foreign_key: None,
-                    constraints: Vec::new(),
                     description,
-                    quality: Vec::new(),
-                    relationships: Vec::new(),
-                    enum_values: Vec::new(),
-                    errors: Vec::new(),
-                    column_order: 0,
-                    nested_data: None,
+                    ..Default::default()
                 });
             }
         }
@@ -681,18 +651,9 @@ pub fn expand_nested_column(
                 data_type,
                 physical_type,
                 nullable,
-                primary_key: false,
-                secondary_key: false,
-                composite_key: None,
-                foreign_key: None,
-                constraints: Vec::new(),
                 description,
-                quality: Vec::new(),
-                relationships: Vec::new(),
                 enum_values,
-                errors: Vec::new(),
-                column_order: 0,
-                nested_data: None,
+                ..Default::default()
             });
         }
     }
@@ -765,6 +726,65 @@ pub fn parse_field_definition(field_def: &str) -> Option<(String, String)> {
     }
 
     Some((name, type_part))
+}
+
+/// Convert a Column to ColumnData, preserving all ODCS v3.1.0 fields.
+/// This is used when importers create Column objects internally and need to
+/// return ColumnData in the ImportResult.
+pub fn column_to_column_data(c: &Column) -> super::ColumnData {
+    super::ColumnData {
+        // Core Identity
+        id: c.id.clone(),
+        name: c.name.clone(),
+        business_name: c.business_name.clone(),
+        description: if c.description.is_empty() {
+            None
+        } else {
+            Some(c.description.clone())
+        },
+        // Type Information
+        data_type: c.data_type.clone(),
+        physical_type: c.physical_type.clone(),
+        physical_name: c.physical_name.clone(),
+        logical_type_options: c.logical_type_options.clone(),
+        // Key Constraints
+        primary_key: c.primary_key,
+        primary_key_position: c.primary_key_position,
+        unique: c.unique,
+        nullable: c.nullable,
+        // Partitioning & Clustering
+        partitioned: c.partitioned,
+        partition_key_position: c.partition_key_position,
+        clustered: c.clustered,
+        // Data Classification & Security
+        classification: c.classification.clone(),
+        critical_data_element: c.critical_data_element,
+        encrypted_name: c.encrypted_name.clone(),
+        // Transformation Metadata
+        transform_source_objects: c.transform_source_objects.clone(),
+        transform_logic: c.transform_logic.clone(),
+        transform_description: c.transform_description.clone(),
+        // Examples & Documentation
+        examples: c.examples.clone(),
+        default_value: c.default_value.clone(),
+        // Relationships & References
+        relationships: c.relationships.clone(),
+        authoritative_definitions: c.authoritative_definitions.clone(),
+        // Quality & Validation
+        quality: if c.quality.is_empty() {
+            None
+        } else {
+            Some(c.quality.clone())
+        },
+        enum_values: if c.enum_values.is_empty() {
+            None
+        } else {
+            Some(c.enum_values.clone())
+        },
+        // Tags & Custom Properties
+        tags: c.tags.clone(),
+        custom_properties: c.custom_properties.clone(),
+    }
 }
 
 #[cfg(test)]
