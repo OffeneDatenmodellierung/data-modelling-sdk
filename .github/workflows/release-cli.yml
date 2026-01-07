@@ -16,6 +16,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Reduce parallelism to lower memory usage during DuckDB compilation
+  CARGO_BUILD_JOBS: 2
 
 permissions:
   contents: write
@@ -47,6 +49,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Free up disk space on Linux runners (removes ~30GB of unused tools)
+      - name: Free disk space (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          echo "Disk space before cleanup:"
+          df -h /
+          # Remove large unnecessary tools
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          # Clean apt cache
+          sudo apt-get clean
+          echo "Disk space after cleanup:"
+          df -h /
+
+      # Add swap space for memory-intensive DuckDB linking (Linux)
+      - name: Add swap space (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo swapoff -a || true
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "Swap space configured:"
+          free -h
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -62,14 +94,14 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build CLI binary
         shell: bash
         run: |
-          cargo build --release --bin data-modelling-cli --features cli,openapi,odps-validation --target ${{ matrix.target }}
+          cargo build --release --bin data-modelling-cli --features cli-full,openapi,odps-validation --target ${{ matrix.target }}
 
       - name: Import Code Signing Certificate (macOS)
         if: startsWith(matrix.os, 'macos')
@@ -232,17 +264,9 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Cache cargo build artifacts
-        uses: actions/cache@v4
-        with:
-          path: target/
-          key: ${{ runner.os }}-cargo-target-wasm-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-target-wasm-
+            ${{ runner.os }}-cargo-wasm-
 
       - name: Build WASM with wasm and openapi features
         run: |
@@ -340,6 +364,8 @@ jobs:
             ## Data Modelling SDK v${{ steps.version.outputs.version }}
 
             ### CLI Downloads
+
+            The CLI includes embedded DuckDB database support for high-performance local queries.
 
             **Linux (x86_64)**
             - Binary: [data-modelling-cli-linux-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-cli-linux-x86_64-v${{ steps.version.outputs.version }}.tar.gz)
