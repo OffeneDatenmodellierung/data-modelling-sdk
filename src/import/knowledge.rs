@@ -7,7 +7,7 @@ use super::ImportError;
 use crate::models::knowledge::{KnowledgeArticle, KnowledgeIndex};
 
 #[cfg(feature = "schema-validation")]
-use crate::cli::validation::validate_knowledge_internal;
+use crate::validation::schema::validate_knowledge_internal;
 
 /// Knowledge importer for parsing Knowledge Base article YAML files
 pub struct KnowledgeImporter;

@@ -159,31 +159,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Validate if enabled
     if !args.no_validate {
         println!("🔍 Validating ODPS schema...");
-        #[cfg(feature = "cli")]
-        {
-            use data_modelling_sdk::cli::validation::validate_odps;
-            validate_odps(&content).map_err(|e| format!("Validation failed: {}", e))?;
-        }
-        #[cfg(not(feature = "cli"))]
-        {
-            // Inline validation
-            use jsonschema::Validator;
-            use serde_json::Value;
-
-            let schema_content = include_str!("../../schemas/odps-json-schema-latest.json");
-            let schema: Value = serde_json::from_str(schema_content)
-                .map_err(|e| format!("Failed to load ODPS schema: {}", e))?;
-
-            let validator = Validator::new(&schema)
-                .map_err(|e| format!("Failed to compile ODPS schema: {}", e))?;
-
-            let data: Value = serde_yaml::from_str(&content)
-                .map_err(|e| format!("Failed to parse YAML: {}", e))?;
-
-            if let Err(error) = validator.validate(&data) {
-                return Err(format!("ODPS validation failed: {}", error).into());
-            }
-        }
+        use data_modelling_sdk::validation::schema::validate_odps_internal;
+        validate_odps_internal(&content).map_err(|e| format!("Validation failed: {}", e))?;
         println!("✅ Validation passed");
     } else {
         println!("⚠️  Validation skipped (--no-validate)");
@@ -210,32 +187,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Validate exported YAML if enabled
     if !args.no_validate {
         println!("🔍 Validating exported YAML...");
-        #[cfg(feature = "cli")]
-        {
-            use data_modelling_sdk::cli::validation::validate_odps;
-            validate_odps(&exported_yaml)
-                .map_err(|e| format!("Exported YAML validation failed: {}", e))?;
-        }
-        #[cfg(not(feature = "cli"))]
-        {
-            // Inline validation
-            use jsonschema::Validator;
-            use serde_json::Value;
-
-            let schema_content = include_str!("../../schemas/odps-json-schema-latest.json");
-            let schema: Value = serde_json::from_str(schema_content)
-                .map_err(|e| format!("Failed to load ODPS schema: {}", e))?;
-
-            let validator = Validator::new(&schema)
-                .map_err(|e| format!("Failed to compile ODPS schema: {}", e))?;
-
-            let data: Value = serde_yaml::from_str(&exported_yaml)
-                .map_err(|e| format!("Failed to parse exported YAML: {}", e))?;
-
-            if let Err(error) = validator.validate(&data) {
-                return Err(format!("Exported YAML validation failed: {}", error).into());
-            }
-        }
+        use data_modelling_sdk::validation::schema::validate_odps_internal;
+        validate_odps_internal(&exported_yaml)
+            .map_err(|e| format!("Exported YAML validation failed: {}", e))?;
         println!("✅ Exported YAML validation passed");
     }
 

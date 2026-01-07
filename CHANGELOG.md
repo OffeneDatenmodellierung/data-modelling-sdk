@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-01-07
+
+### Fixed
+
+- **fix(validation)**: Move schema validation from CLI module to core validation module
+  - Schema validation functions are now in `validation::schema` instead of `cli::validation`
+  - Fixes WASM build failure when `cli` feature is not enabled but `schema-validation` is
+  - Validation functions are now available to all SDK consumers (WASM, native, API)
+  - Removed duplicate inline validation code from import/export modules
+  - Removed redundant `cli/validation.rs` wrapper module
+
 ## [1.13.0] - 2026-01-07
 
 ### Added

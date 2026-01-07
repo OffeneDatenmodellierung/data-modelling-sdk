@@ -3,17 +3,18 @@
 use crate::cli::error::CliError;
 use crate::cli::output::{collect_type_mappings, format_compact_output, format_pretty_output};
 use crate::cli::reference::resolve_reference;
-#[cfg(feature = "openapi")]
-use crate::cli::validation::validate_openapi;
-use crate::cli::validation::{
-    validate_avro, validate_json_schema, validate_odcl, validate_odcs, validate_protobuf,
-};
 use crate::export::odcs::ODCSExporter;
 use crate::import::{
     AvroImporter, ColumnData, ImportResult, JSONSchemaImporter, ODCSImporter, ODPSImporter,
     ProtobufImporter, SQLImporter, TableData,
 };
 use crate::models::{Column, Table};
+#[cfg(feature = "openapi")]
+use crate::validation::schema::validate_openapi_internal;
+use crate::validation::schema::{
+    validate_avro_internal, validate_json_schema_internal, validate_odcl_internal,
+    validate_odcs_internal, validate_protobuf_internal,
+};
 use serde_json::Value as JsonValue;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -247,7 +248,7 @@ fn write_odcs_files(
         // Validate exported ODCS YAML before writing (if validation enabled)
         #[cfg(feature = "schema-validation")]
         {
-            validate_odcs(&odcs_yaml).map_err(|e| {
+            validate_odcs_internal(&odcs_yaml).map_err(|e| {
                 CliError::ValidationError(format!("Exported ODCS file failed validation: {}", e))
             })?;
         }
@@ -427,7 +428,7 @@ pub fn handle_import_avro(args: &ImportArgs) -> Result<(), CliError> {
 
     // Validate if enabled
     if args.validate {
-        validate_avro(&avro_content)?;
+        validate_avro_internal(&avro_content).map_err(CliError::ValidationError)?;
     }
 
     // Import AVRO
@@ -581,7 +582,7 @@ pub fn handle_import_json_schema(args: &ImportArgs) -> Result<(), CliError> {
 
     // Validate if enabled
     if args.validate {
-        validate_json_schema(&json_content)?;
+        validate_json_schema_internal(&json_content).map_err(CliError::ValidationError)?;
     }
 
     // Import JSON Schema
@@ -628,7 +629,7 @@ pub fn handle_import_protobuf(args: &ImportArgs) -> Result<(), CliError> {
 
     // Validate if enabled
     if args.validate {
-        validate_protobuf(&proto_content)?;
+        validate_protobuf_internal(&proto_content).map_err(CliError::ValidationError)?;
     }
 
     // Import Protobuf
@@ -1558,7 +1559,7 @@ pub fn handle_import_openapi(args: &ImportArgs) -> Result<(), CliError> {
 
     // Validate if enabled
     if args.validate {
-        validate_openapi(&openapi_content)?;
+        validate_openapi_internal(&openapi_content).map_err(CliError::ValidationError)?;
     }
 
     // Convert OpenAPI to ODCS tables using converter
@@ -1637,14 +1638,14 @@ pub fn handle_import_openapi(args: &ImportArgs) -> Result<(), CliError> {
 /// Handle ODPS import command
 #[cfg(feature = "odps-validation")]
 pub fn handle_import_odps(args: &ImportArgs) -> Result<(), CliError> {
-    use crate::cli::validation::validate_odps;
+    use crate::validation::schema::validate_odps_internal;
 
     // Load ODPS input
     let odps_content = load_input(&args.input)?;
 
     // Validate if enabled
     if args.validate {
-        validate_odps(&odps_content)?;
+        validate_odps_internal(&odps_content).map_err(CliError::ValidationError)?;
     }
 
     // Import ODPS
@@ -1837,7 +1838,7 @@ pub fn handle_import_odcs(args: &ImportArgs) -> Result<(), CliError> {
 
     // Validate if enabled
     if args.validate {
-        validate_odcs(&odcs_content)?;
+        validate_odcs_internal(&odcs_content).map_err(CliError::ValidationError)?;
     }
 
     // Import ODCS
@@ -1879,7 +1880,7 @@ pub fn handle_import_odcl(args: &ImportArgs) -> Result<(), CliError> {
 
     // Validate if enabled
     if args.validate {
-        validate_odcl(&odcl_content)?;
+        validate_odcl_internal(&odcl_content).map_err(CliError::ValidationError)?;
     }
 
     // Import ODCL (ODCSImporter handles ODCL formats internally)

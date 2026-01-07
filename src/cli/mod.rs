@@ -8,8 +8,6 @@ pub mod error;
 pub mod output;
 #[cfg(feature = "cli")]
 pub mod reference;
-#[cfg(feature = "cli")]
-pub mod validation;
 
 #[cfg(feature = "cli")]
 pub use error::CliError;

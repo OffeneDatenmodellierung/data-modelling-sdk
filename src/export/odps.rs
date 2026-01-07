@@ -25,37 +25,8 @@ impl ODPSExporter {
         // Validate exported YAML against ODPS schema (if feature enabled)
         #[cfg(feature = "odps-validation")]
         {
-            #[cfg(feature = "cli")]
-            {
-                use crate::cli::validation::validate_odps_internal;
-                validate_odps_internal(&yaml).map_err(ExportError::ValidationError)?;
-            }
-            #[cfg(not(feature = "cli"))]
-            {
-                // Inline validation when CLI feature is not enabled
-                use jsonschema::Validator;
-                use serde_json::Value;
-
-                let schema_content = include_str!("../../schemas/odps-json-schema-latest.json");
-                let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
-                    ExportError::ValidationError(format!("Failed to load ODPS schema: {}", e))
-                })?;
-
-                let validator = Validator::new(&schema).map_err(|e| {
-                    ExportError::ValidationError(format!("Failed to compile ODPS schema: {}", e))
-                })?;
-
-                let data: Value = serde_yaml::from_str(&yaml).map_err(|e| {
-                    ExportError::ValidationError(format!("Failed to parse YAML: {}", e))
-                })?;
-
-                if let Err(error) = validator.validate(&data) {
-                    return Err(ExportError::ValidationError(format!(
-                        "ODPS validation failed: {}",
-                        error
-                    )));
-                }
-            }
+            use crate::validation::schema::validate_odps_internal;
+            validate_odps_internal(&yaml).map_err(ExportError::ValidationError)?;
         }
 
         Ok(yaml)

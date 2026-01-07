@@ -7,7 +7,7 @@ use super::ImportError;
 use crate::models::decision::{Decision, DecisionIndex};
 
 #[cfg(feature = "schema-validation")]
-use crate::cli::validation::validate_decision_internal;
+use crate::validation::schema::validate_decision_internal;
 
 /// Decision importer for parsing MADR-compliant YAML files
 pub struct DecisionImporter;

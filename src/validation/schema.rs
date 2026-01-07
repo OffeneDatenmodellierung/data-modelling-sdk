@@ -1,6 +1,7 @@
-//! Schema validation helpers
-
-use crate::cli::error::CliError;
+//! JSON Schema validation helpers
+//!
+//! Provides schema validation for various file formats (ODCS, ODCL, ODPS, CADS, Decision, Knowledge, etc.)
+//! This module is gated by the `schema-validation` feature and is available to all SDK consumers.
 
 /// Format validation error with path information
 #[cfg(feature = "schema-validation")]
@@ -27,14 +28,15 @@ fn format_validation_error(error: &jsonschema::ValidationError, schema_type: &st
 
 /// Validate an ODCS file against the ODCS JSON Schema
 /// Automatically detects and validates ODCL format files against ODCL schema
+/// Returns a string error for use by both CLI and import/export modules
 #[cfg(feature = "schema-validation")]
-pub fn validate_odcs(content: &str) -> Result<(), CliError> {
+pub fn validate_odcs_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
     // Parse YAML content to check format
-    let data: Value = serde_yaml::from_str(content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?;
+    let data: Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
     // Check if this is an ODCL format file (legacy format)
     // ODCL files have "dataContractSpecification" field or simple "name"/"columns" structure
@@ -53,134 +55,126 @@ pub fn validate_odcs(content: &str) -> Result<(), CliError> {
 
     // Validate against ODCL schema if ODCL format detected
     if is_odcl_format {
-        return validate_odcl(content);
+        return validate_odcl_internal(content);
     }
 
     // Load ODCS JSON Schema
     let schema_content = include_str!("../../schemas/odcs-json-schema-v3.1.0.json");
     let schema: Value = serde_json::from_str(schema_content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to load ODCS schema: {}", e)))?;
+        .map_err(|e| format!("Failed to load ODCS schema: {}", e))?;
 
-    let validator = Validator::new(&schema)
-        .map_err(|e| CliError::ValidationError(format!("Failed to compile ODCS schema: {}", e)))?;
+    let validator =
+        Validator::new(&schema).map_err(|e| format!("Failed to compile ODCS schema: {}", e))?;
 
     // Validate against ODCS schema
     if let Err(error) = validator.validate(&data) {
         // Extract path information from validation error
         let error_msg = format_validation_error(&error, "ODCS");
-        return Err(CliError::ValidationError(error_msg));
+        return Err(error_msg);
     }
 
     Ok(())
 }
 
+#[cfg(not(feature = "schema-validation"))]
+pub fn validate_odcs_internal(_content: &str) -> Result<(), String> {
+    // Validation disabled - feature not enabled
+    Ok(())
+}
+
 /// Validate an ODCL file against the ODCL JSON Schema
 #[cfg(feature = "schema-validation")]
-pub fn validate_odcl(content: &str) -> Result<(), CliError> {
+pub fn validate_odcl_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
     // Load ODCL JSON Schema
     let schema_content = include_str!("../../schemas/odcl-json-schema-1.2.1.json");
     let schema: Value = serde_json::from_str(schema_content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to load ODCL schema: {}", e)))?;
+        .map_err(|e| format!("Failed to load ODCL schema: {}", e))?;
 
-    let validator = Validator::new(&schema)
-        .map_err(|e| CliError::ValidationError(format!("Failed to compile ODCL schema: {}", e)))?;
+    let validator =
+        Validator::new(&schema).map_err(|e| format!("Failed to compile ODCL schema: {}", e))?;
 
     // Parse YAML content
-    let data: Value = serde_yaml::from_str(content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?;
+    let data: Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
     // Validate
     if let Err(error) = validator.validate(&data) {
         let error_msg = format_validation_error(&error, "ODCL");
-        return Err(CliError::ValidationError(error_msg));
+        return Err(error_msg);
     }
 
     Ok(())
 }
 
 #[cfg(not(feature = "schema-validation"))]
-pub fn validate_odcl(_content: &str) -> Result<(), CliError> {
-    // Validation disabled - feature not enabled
-    Ok(())
-}
-
-#[cfg(not(feature = "schema-validation"))]
-pub fn validate_odcs(_content: &str) -> Result<(), CliError> {
+pub fn validate_odcl_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
 
 /// Validate an OpenAPI file against the OpenAPI JSON Schema
 #[cfg(feature = "schema-validation")]
-pub fn validate_openapi(content: &str) -> Result<(), CliError> {
+pub fn validate_openapi_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
     // Load OpenAPI JSON Schema
     let schema_content = include_str!("../../schemas/openapi-3.1.1.json");
     let schema: Value = serde_json::from_str(schema_content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to load OpenAPI schema: {}", e)))?;
+        .map_err(|e| format!("Failed to load OpenAPI schema: {}", e))?;
 
-    let validator = Validator::new(&schema).map_err(|e| {
-        CliError::ValidationError(format!("Failed to compile OpenAPI schema: {}", e))
-    })?;
+    let validator =
+        Validator::new(&schema).map_err(|e| format!("Failed to compile OpenAPI schema: {}", e))?;
 
     // Parse YAML or JSON content
     let data: Value = if content.trim_start().starts_with('{') {
-        serde_json::from_str(content)
-            .map_err(|e| CliError::ValidationError(format!("Failed to parse JSON: {}", e)))?
+        serde_json::from_str(content).map_err(|e| format!("Failed to parse JSON: {}", e))?
     } else {
-        serde_yaml::from_str(content)
-            .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?
     };
 
     // Validate
     if let Err(error) = validator.validate(&data) {
-        return Err(CliError::ValidationError(format!(
-            "OpenAPI validation failed: {}",
-            error
-        )));
+        return Err(format!("OpenAPI validation failed: {}", error));
     }
 
     Ok(())
 }
 
 #[cfg(not(feature = "schema-validation"))]
-pub fn validate_openapi(_content: &str) -> Result<(), CliError> {
+pub fn validate_openapi_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
 
 /// Validate Protobuf file syntax
-pub fn validate_protobuf(content: &str) -> Result<(), CliError> {
+pub fn validate_protobuf_internal(content: &str) -> Result<(), String> {
     // Basic syntax validation - check for common proto keywords
     if !content.contains("syntax") && !content.contains("message") && !content.contains("enum") {
-        return Err(CliError::ValidationError(
-            "File does not appear to be a valid Protobuf file".to_string(),
-        ));
+        return Err("File does not appear to be a valid Protobuf file".to_string());
     }
 
     // Check for balanced braces (basic syntax check)
     let open_braces = content.matches('{').count();
     let close_braces = content.matches('}').count();
     if open_braces != close_braces {
-        return Err(CliError::ValidationError(format!(
+        return Err(format!(
             "Unbalanced braces in Protobuf file ({} open, {} close)",
             open_braces, close_braces
-        )));
+        ));
     }
 
     Ok(())
 }
 
 /// Validate AVRO file against AVRO specification
-pub fn validate_avro(content: &str) -> Result<(), CliError> {
+pub fn validate_avro_internal(content: &str) -> Result<(), String> {
     // Parse as JSON
-    let _value: serde_json::Value = serde_json::from_str(content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to parse AVRO JSON: {}", e)))?;
+    let _value: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| format!("Failed to parse AVRO JSON: {}", e))?;
 
     // Basic validation - check for required AVRO fields
     // More comprehensive validation would require an AVRO schema validator crate
@@ -189,42 +183,29 @@ pub fn validate_avro(content: &str) -> Result<(), CliError> {
 
 /// Validate JSON Schema file
 #[cfg(feature = "schema-validation")]
-pub fn validate_json_schema(content: &str) -> Result<(), CliError> {
+pub fn validate_json_schema_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
     // Parse JSON Schema
-    let schema: Value = serde_json::from_str(content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to parse JSON Schema: {}", e)))?;
+    let schema: Value =
+        serde_json::from_str(content).map_err(|e| format!("Failed to parse JSON Schema: {}", e))?;
 
     // Try to compile the schema (this validates the schema itself)
-    Validator::new(&schema)
-        .map_err(|e| CliError::ValidationError(format!("Invalid JSON Schema: {}", e)))?;
+    Validator::new(&schema).map_err(|e| format!("Invalid JSON Schema: {}", e))?;
 
     Ok(())
 }
 
 #[cfg(not(feature = "schema-validation"))]
-pub fn validate_json_schema(_content: &str) -> Result<(), CliError> {
-    // Validation disabled - feature not enabled
-    Ok(())
-}
-
-/// Validate an ODPS file against the ODPS JSON Schema
-#[cfg(feature = "schema-validation")]
-pub fn validate_odps(content: &str) -> Result<(), CliError> {
-    validate_odps_internal(content).map_err(CliError::ValidationError)
-}
-
-#[cfg(not(feature = "schema-validation"))]
-pub fn validate_odps(_content: &str) -> Result<(), CliError> {
+pub fn validate_json_schema_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
 
 /// Internal ODPS validation function that returns a string error (used by both CLI and import/export modules)
 #[cfg(feature = "schema-validation")]
-pub(crate) fn validate_odps_internal(content: &str) -> Result<(), String> {
+pub fn validate_odps_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
@@ -259,48 +240,14 @@ pub(crate) fn validate_odps_internal(content: &str) -> Result<(), String> {
 }
 
 #[cfg(not(feature = "schema-validation"))]
-#[allow(dead_code)]
-pub(crate) fn validate_odps_internal(_content: &str) -> Result<(), String> {
-    // Validation disabled - feature not enabled
-    Ok(())
-}
-
-/// Validate a CADS file against the CADS JSON Schema
-#[cfg(feature = "schema-validation")]
-pub fn validate_cads(content: &str) -> Result<(), CliError> {
-    use jsonschema::Validator;
-    use serde_json::Value;
-
-    // Load CADS JSON Schema
-    let schema_content = include_str!("../../schemas/cads.schema.json");
-    let schema: Value = serde_json::from_str(schema_content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to load CADS schema: {}", e)))?;
-
-    let validator = Validator::new(&schema)
-        .map_err(|e| CliError::ValidationError(format!("Failed to compile CADS schema: {}", e)))?;
-
-    // Parse YAML content
-    let data: Value = serde_yaml::from_str(content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?;
-
-    // Validate
-    if let Err(error) = validator.validate(&data) {
-        let error_msg = format_validation_error(&error, "CADS");
-        return Err(CliError::ValidationError(error_msg));
-    }
-
-    Ok(())
-}
-
-#[cfg(not(feature = "schema-validation"))]
-pub fn validate_cads(_content: &str) -> Result<(), CliError> {
+pub fn validate_odps_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
 
 /// Internal CADS validation function that returns a string error (used by export modules)
 #[cfg(feature = "schema-validation")]
-pub(crate) fn validate_cads_internal(content: &str) -> Result<(), String> {
+pub fn validate_cads_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
@@ -335,67 +282,63 @@ pub(crate) fn validate_cads_internal(content: &str) -> Result<(), String> {
 }
 
 #[cfg(not(feature = "schema-validation"))]
-#[allow(dead_code)]
-pub(crate) fn validate_cads_internal(_content: &str) -> Result<(), String> {
+pub fn validate_cads_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
 
 /// Validate SQL syntax using sqlparser
-pub fn validate_sql(content: &str) -> Result<(), CliError> {
+pub fn validate_sql_internal(content: &str) -> Result<(), String> {
     use sqlparser::dialect::GenericDialect;
     use sqlparser::parser::Parser;
 
     let dialect = GenericDialect {};
 
-    Parser::parse_sql(&dialect, content)
-        .map_err(|e| CliError::ValidationError(format!("SQL validation failed: {}", e)))?;
+    Parser::parse_sql(&dialect, content).map_err(|e| format!("SQL validation failed: {}", e))?;
 
     Ok(())
 }
 
 /// Validate a workspace.yaml file against the workspace JSON Schema
 #[cfg(feature = "schema-validation")]
-pub fn validate_workspace(content: &str) -> Result<(), CliError> {
+pub fn validate_workspace_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
     // Load workspace JSON Schema
     let schema_content = include_str!("../../schemas/workspace-schema.json");
-    let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
-        CliError::ValidationError(format!("Failed to load workspace schema: {}", e))
-    })?;
+    let schema: Value = serde_json::from_str(schema_content)
+        .map_err(|e| format!("Failed to load workspace schema: {}", e))?;
 
-    let validator = Validator::new(&schema).map_err(|e| {
-        CliError::ValidationError(format!("Failed to compile workspace schema: {}", e))
-    })?;
+    let validator = Validator::new(&schema)
+        .map_err(|e| format!("Failed to compile workspace schema: {}", e))?;
 
     // Parse YAML content
-    let data: Value = serde_yaml::from_str(content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?;
+    let data: Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
     // Validate
     if let Err(error) = validator.validate(&data) {
         let error_msg = format_validation_error(&error, "Workspace");
-        return Err(CliError::ValidationError(error_msg));
+        return Err(error_msg);
     }
 
     Ok(())
 }
 
 #[cfg(not(feature = "schema-validation"))]
-pub fn validate_workspace(_content: &str) -> Result<(), CliError> {
+pub fn validate_workspace_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
 
 /// Validate a relationships.yaml file
-pub fn validate_relationships(content: &str) -> Result<(), CliError> {
+pub fn validate_relationships_internal(content: &str) -> Result<(), String> {
     use serde_json::Value;
 
     // Parse YAML content
-    let data: Value = serde_yaml::from_str(content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?;
+    let data: Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
     // Check structure - should be an object with "relationships" array or a direct array
     let relationships = data
@@ -407,16 +350,10 @@ pub fn validate_relationships(content: &str) -> Result<(), CliError> {
         for (i, rel) in rels.iter().enumerate() {
             // Each relationship should have source_table_id and target_table_id
             if rel.get("source_table_id").is_none() {
-                return Err(CliError::ValidationError(format!(
-                    "Relationship {} is missing 'source_table_id'",
-                    i
-                )));
+                return Err(format!("Relationship {} is missing 'source_table_id'", i));
             }
             if rel.get("target_table_id").is_none() {
-                return Err(CliError::ValidationError(format!(
-                    "Relationship {} is missing 'target_table_id'",
-                    i
-                )));
+                return Err(format!("Relationship {} is missing 'target_table_id'", i));
             }
         }
     }
@@ -424,21 +361,9 @@ pub fn validate_relationships(content: &str) -> Result<(), CliError> {
     Ok(())
 }
 
-/// Validate a decision (.madr.yaml) file against the decision JSON Schema
-#[cfg(feature = "schema-validation")]
-pub fn validate_decision(content: &str) -> Result<(), CliError> {
-    validate_decision_internal(content).map_err(CliError::ValidationError)
-}
-
-#[cfg(not(feature = "schema-validation"))]
-pub fn validate_decision(_content: &str) -> Result<(), CliError> {
-    // Validation disabled - feature not enabled
-    Ok(())
-}
-
 /// Internal decision validation function that returns a string error (used by import/export modules)
 #[cfg(feature = "schema-validation")]
-pub(crate) fn validate_decision_internal(content: &str) -> Result<(), String> {
+pub fn validate_decision_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
@@ -473,27 +398,14 @@ pub(crate) fn validate_decision_internal(content: &str) -> Result<(), String> {
 }
 
 #[cfg(not(feature = "schema-validation"))]
-#[allow(dead_code)]
-pub(crate) fn validate_decision_internal(_content: &str) -> Result<(), String> {
-    // Validation disabled - feature not enabled
-    Ok(())
-}
-
-/// Validate a knowledge (.kb.yaml) file against the knowledge JSON Schema
-#[cfg(feature = "schema-validation")]
-pub fn validate_knowledge(content: &str) -> Result<(), CliError> {
-    validate_knowledge_internal(content).map_err(CliError::ValidationError)
-}
-
-#[cfg(not(feature = "schema-validation"))]
-pub fn validate_knowledge(_content: &str) -> Result<(), CliError> {
+pub fn validate_decision_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
 
 /// Internal knowledge validation function that returns a string error (used by import/export modules)
 #[cfg(feature = "schema-validation")]
-pub(crate) fn validate_knowledge_internal(content: &str) -> Result<(), String> {
+pub fn validate_knowledge_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
@@ -528,78 +440,73 @@ pub(crate) fn validate_knowledge_internal(content: &str) -> Result<(), String> {
 }
 
 #[cfg(not(feature = "schema-validation"))]
-#[allow(dead_code)]
-pub(crate) fn validate_knowledge_internal(_content: &str) -> Result<(), String> {
+pub fn validate_knowledge_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
 
 /// Validate a decisions index (decisions.yaml) file against the decisions-index JSON Schema
 #[cfg(feature = "schema-validation")]
-pub fn validate_decisions_index(content: &str) -> Result<(), CliError> {
+pub fn validate_decisions_index_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
     // Load Decisions Index JSON Schema
     let schema_content = include_str!("../../schemas/decisions-index-schema.json");
-    let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
-        CliError::ValidationError(format!("Failed to load decisions-index schema: {}", e))
-    })?;
+    let schema: Value = serde_json::from_str(schema_content)
+        .map_err(|e| format!("Failed to load decisions-index schema: {}", e))?;
 
-    let validator = Validator::new(&schema).map_err(|e| {
-        CliError::ValidationError(format!("Failed to compile decisions-index schema: {}", e))
-    })?;
+    let validator = Validator::new(&schema)
+        .map_err(|e| format!("Failed to compile decisions-index schema: {}", e))?;
 
     // Parse YAML content
-    let data: Value = serde_yaml::from_str(content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?;
+    let data: Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
     // Validate
     if let Err(error) = validator.validate(&data) {
         let error_msg = format_validation_error(&error, "Decisions Index");
-        return Err(CliError::ValidationError(error_msg));
+        return Err(error_msg);
     }
 
     Ok(())
 }
 
 #[cfg(not(feature = "schema-validation"))]
-pub fn validate_decisions_index(_content: &str) -> Result<(), CliError> {
+pub fn validate_decisions_index_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
 
 /// Validate a knowledge index (knowledge.yaml) file against the knowledge-index JSON Schema
 #[cfg(feature = "schema-validation")]
-pub fn validate_knowledge_index(content: &str) -> Result<(), CliError> {
+pub fn validate_knowledge_index_internal(content: &str) -> Result<(), String> {
     use jsonschema::Validator;
     use serde_json::Value;
 
     // Load Knowledge Index JSON Schema
     let schema_content = include_str!("../../schemas/knowledge-index-schema.json");
-    let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
-        CliError::ValidationError(format!("Failed to load knowledge-index schema: {}", e))
-    })?;
+    let schema: Value = serde_json::from_str(schema_content)
+        .map_err(|e| format!("Failed to load knowledge-index schema: {}", e))?;
 
-    let validator = Validator::new(&schema).map_err(|e| {
-        CliError::ValidationError(format!("Failed to compile knowledge-index schema: {}", e))
-    })?;
+    let validator = Validator::new(&schema)
+        .map_err(|e| format!("Failed to compile knowledge-index schema: {}", e))?;
 
     // Parse YAML content
-    let data: Value = serde_yaml::from_str(content)
-        .map_err(|e| CliError::ValidationError(format!("Failed to parse YAML: {}", e)))?;
+    let data: Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
     // Validate
     if let Err(error) = validator.validate(&data) {
         let error_msg = format_validation_error(&error, "Knowledge Index");
-        return Err(CliError::ValidationError(error_msg));
+        return Err(error_msg);
     }
 
     Ok(())
 }
 
 #[cfg(not(feature = "schema-validation"))]
-pub fn validate_knowledge_index(_content: &str) -> Result<(), CliError> {
+pub fn validate_knowledge_index_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }

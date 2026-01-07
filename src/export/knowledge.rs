@@ -31,11 +31,8 @@ impl KnowledgeExporter {
         // Validate exported YAML against knowledge schema (if feature enabled)
         #[cfg(feature = "schema-validation")]
         {
-            #[cfg(feature = "cli")]
-            {
-                use crate::cli::validation::validate_knowledge_internal;
-                validate_knowledge_internal(&yaml).map_err(ExportError::ValidationError)?;
-            }
+            use crate::validation::schema::validate_knowledge_internal;
+            validate_knowledge_internal(&yaml).map_err(ExportError::ValidationError)?;
         }
 
         Ok(yaml)

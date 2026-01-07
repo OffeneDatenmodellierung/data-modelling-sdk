@@ -57,51 +57,10 @@ impl OpenAPIExporter {
             // Validate content before returning (if feature enabled)
             #[cfg(all(feature = "schema-validation", feature = "openapi"))]
             {
-                #[cfg(feature = "cli")]
-                {
-                    use crate::cli::validation::validate_openapi;
-                    validate_openapi(content).map_err(|e| {
-                        ExportError::ValidationError(format!("OpenAPI validation failed: {}", e))
-                    })?;
-                }
-                #[cfg(not(feature = "cli"))]
-                {
-                    // Inline validation when CLI feature is not enabled
-                    use jsonschema::Validator;
-                    use serde_json::Value;
-
-                    let schema_content = include_str!("../../schemas/openapi-3.1.1.json");
-                    let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
-                        ExportError::ValidationError(format!(
-                            "Failed to load OpenAPI schema: {}",
-                            e
-                        ))
-                    })?;
-
-                    let validator = Validator::new(&schema).map_err(|e| {
-                        ExportError::ValidationError(format!(
-                            "Failed to compile OpenAPI schema: {}",
-                            e
-                        ))
-                    })?;
-
-                    let data: Value = if content.trim_start().starts_with('{') {
-                        serde_json::from_str(content).map_err(|e| {
-                            ExportError::ValidationError(format!("Failed to parse JSON: {}", e))
-                        })?
-                    } else {
-                        serde_yaml::from_str(content).map_err(|e| {
-                            ExportError::ValidationError(format!("Failed to parse YAML: {}", e))
-                        })?
-                    };
-
-                    if let Err(error) = validator.validate(&data) {
-                        return Err(ExportError::ValidationError(format!(
-                            "OpenAPI validation failed: {}",
-                            error
-                        )));
-                    }
-                }
+                use crate::validation::schema::validate_openapi_internal;
+                validate_openapi_internal(content).map_err(|e| {
+                    ExportError::ValidationError(format!("OpenAPI validation failed: {}", e))
+                })?;
             }
             return Ok(content.to_string());
         }
@@ -129,45 +88,10 @@ impl OpenAPIExporter {
         // Validate exported content against OpenAPI schema (if feature enabled)
         #[cfg(all(feature = "schema-validation", feature = "openapi"))]
         {
-            #[cfg(feature = "cli")]
-            {
-                use crate::cli::validation::validate_openapi;
-                validate_openapi(&result).map_err(|e| {
-                    ExportError::ValidationError(format!("OpenAPI validation failed: {}", e))
-                })?;
-            }
-            #[cfg(not(feature = "cli"))]
-            {
-                // Inline validation when CLI feature is not enabled
-                use jsonschema::Validator;
-                use serde_json::Value;
-
-                let schema_content = include_str!("../../schemas/openapi-3.1.1.json");
-                let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
-                    ExportError::ValidationError(format!("Failed to load OpenAPI schema: {}", e))
-                })?;
-
-                let validator = Validator::new(&schema).map_err(|e| {
-                    ExportError::ValidationError(format!("Failed to compile OpenAPI schema: {}", e))
-                })?;
-
-                let data: Value = if result.trim_start().starts_with('{') {
-                    serde_json::from_str(&result).map_err(|e| {
-                        ExportError::ValidationError(format!("Failed to parse JSON: {}", e))
-                    })?
-                } else {
-                    serde_yaml::from_str(&result).map_err(|e| {
-                        ExportError::ValidationError(format!("Failed to parse YAML: {}", e))
-                    })?
-                };
-
-                if let Err(error) = validator.validate(&data) {
-                    return Err(ExportError::ValidationError(format!(
-                        "OpenAPI validation failed: {}",
-                        error
-                    )));
-                }
-            }
+            use crate::validation::schema::validate_openapi_internal;
+            validate_openapi_internal(&result).map_err(|e| {
+                ExportError::ValidationError(format!("OpenAPI validation failed: {}", e))
+            })?;
         }
 
         Ok(result)

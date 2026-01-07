@@ -31,11 +31,8 @@ impl DecisionExporter {
         // Validate exported YAML against decision schema (if feature enabled)
         #[cfg(feature = "schema-validation")]
         {
-            #[cfg(feature = "cli")]
-            {
-                use crate::cli::validation::validate_decision_internal;
-                validate_decision_internal(&yaml).map_err(ExportError::ValidationError)?;
-            }
+            use crate::validation::schema::validate_decision_internal;
+            validate_decision_internal(&yaml).map_err(ExportError::ValidationError)?;
         }
 
         Ok(yaml)

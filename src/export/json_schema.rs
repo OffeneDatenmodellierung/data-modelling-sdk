@@ -54,28 +54,10 @@ impl JSONSchemaExporter {
         // Validate exported JSON Schema (if feature enabled)
         #[cfg(feature = "schema-validation")]
         {
-            #[cfg(feature = "cli")]
-            {
-                use crate::cli::validation::validate_json_schema;
-                validate_json_schema(&content).map_err(|e| {
-                    ExportError::ValidationError(format!("JSON Schema validation failed: {}", e))
-                })?;
-            }
-            #[cfg(not(feature = "cli"))]
-            {
-                // Inline validation when CLI feature is not enabled
-                use jsonschema::Validator;
-                use serde_json::Value;
-
-                let schema_value: Value = serde_json::from_str(&content).map_err(|e| {
-                    ExportError::ValidationError(format!("Failed to parse JSON Schema: {}", e))
-                })?;
-
-                // Try to compile the schema (this validates the schema itself)
-                Validator::new(&schema_value).map_err(|e| {
-                    ExportError::ValidationError(format!("Invalid JSON Schema: {}", e))
-                })?;
-            }
+            use crate::validation::schema::validate_json_schema_internal;
+            validate_json_schema_internal(&content).map_err(|e| {
+                ExportError::ValidationError(format!("JSON Schema validation failed: {}", e))
+            })?;
         }
 
         Ok(ExportResult {

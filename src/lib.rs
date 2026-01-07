@@ -639,35 +639,8 @@ mod wasm {
     #[cfg(feature = "odps-validation")]
     #[wasm_bindgen]
     pub fn validate_odps(yaml_content: &str) -> Result<(), JsValue> {
-        #[cfg(feature = "cli")]
-        {
-            use crate::cli::validation::validate_odps_internal;
-            validate_odps_internal(yaml_content).map_err(validation_error)
-        }
-        #[cfg(not(feature = "cli"))]
-        {
-            // Inline validation when CLI feature is not enabled
-            use jsonschema::Validator;
-            use serde_json::Value;
-
-            let schema_content = include_str!("../schemas/odps-json-schema-latest.json");
-            let schema: Value = serde_json::from_str(schema_content)
-                .map_err(|e| validation_error(format!("Failed to load ODPS schema: {}", e)))?;
-
-            let validator = Validator::new(&schema)
-                .map_err(|e| validation_error(format!("Failed to compile ODPS schema: {}", e)))?;
-
-            let data: Value = serde_yaml::from_str(yaml_content).map_err(parse_error)?;
-
-            if let Err(error) = validator.validate(&data) {
-                return Err(validation_error(format!(
-                    "ODPS validation failed: {}",
-                    error
-                )));
-            }
-
-            Ok(())
-        }
+        use crate::validation::schema::validate_odps_internal;
+        validate_odps_internal(yaml_content).map_err(validation_error)
     }
 
     #[cfg(not(feature = "odps-validation"))]
