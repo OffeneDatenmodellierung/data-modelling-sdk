@@ -40,18 +40,10 @@ impl AvroExporter {
             .map_err(|e| ExportError::SerializationError(e.to_string()))?;
 
         // Validate exported AVRO schema
-        #[cfg(feature = "cli")]
         {
-            use crate::cli::validation::validate_avro;
-            validate_avro(&content).map_err(|e| {
+            use crate::validation::schema::validate_avro_internal;
+            validate_avro_internal(&content).map_err(|e| {
                 ExportError::ValidationError(format!("AVRO validation failed: {}", e))
-            })?;
-        }
-        #[cfg(not(feature = "cli"))]
-        {
-            // Basic validation - parse as JSON and check for required AVRO fields
-            let _value: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-                ExportError::ValidationError(format!("Failed to parse AVRO JSON: {}", e))
             })?;
         }
 

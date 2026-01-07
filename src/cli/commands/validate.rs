@@ -1,10 +1,12 @@
 //! Validate command implementation
 
 use crate::cli::error::CliError;
-use crate::cli::validation::{
-    validate_avro, validate_cads, validate_decision, validate_decisions_index,
-    validate_json_schema, validate_knowledge, validate_knowledge_index, validate_odcl,
-    validate_odcs, validate_odps, validate_openapi, validate_protobuf, validate_sql,
+use crate::validation::schema::{
+    validate_avro_internal, validate_cads_internal, validate_decision_internal,
+    validate_decisions_index_internal, validate_json_schema_internal,
+    validate_knowledge_index_internal, validate_knowledge_internal, validate_odcl_internal,
+    validate_odcs_internal, validate_odps_internal, validate_openapi_internal,
+    validate_protobuf_internal, validate_sql_internal,
 };
 use std::io::Read;
 use std::path::PathBuf;
@@ -29,27 +31,29 @@ fn load_input(input: &str) -> Result<String, CliError> {
 pub fn handle_validate(format: &str, input: &str) -> Result<(), CliError> {
     let content = load_input(input)?;
 
-    match format {
-        "odcs" => validate_odcs(&content)?,
-        "odcl" => validate_odcl(&content)?,
-        "odps" => validate_odps(&content)?,
-        "cads" => validate_cads(&content)?,
-        "openapi" => validate_openapi(&content)?,
-        "protobuf" => validate_protobuf(&content)?,
-        "avro" => validate_avro(&content)?,
-        "json-schema" => validate_json_schema(&content)?,
-        "sql" => validate_sql(&content)?,
-        "decision" => validate_decision(&content)?,
-        "knowledge" => validate_knowledge(&content)?,
-        "decisions-index" => validate_decisions_index(&content)?,
-        "knowledge-index" => validate_knowledge_index(&content)?,
+    let result = match format {
+        "odcs" => validate_odcs_internal(&content),
+        "odcl" => validate_odcl_internal(&content),
+        "odps" => validate_odps_internal(&content),
+        "cads" => validate_cads_internal(&content),
+        "openapi" => validate_openapi_internal(&content),
+        "protobuf" => validate_protobuf_internal(&content),
+        "avro" => validate_avro_internal(&content),
+        "json-schema" => validate_json_schema_internal(&content),
+        "sql" => validate_sql_internal(&content),
+        "decision" => validate_decision_internal(&content),
+        "knowledge" => validate_knowledge_internal(&content),
+        "decisions-index" => validate_decisions_index_internal(&content),
+        "knowledge-index" => validate_knowledge_index_internal(&content),
         _ => {
             return Err(CliError::InvalidArgument(format!(
                 "Unknown format: {}",
                 format
             )));
         }
-    }
+    };
+
+    result.map_err(CliError::ValidationError)?;
 
     println!("Validation successful");
     Ok(())

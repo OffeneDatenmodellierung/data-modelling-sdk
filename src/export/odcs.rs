@@ -1756,42 +1756,10 @@ impl ODCSExporter {
             // Validate exported YAML against ODCS schema (if feature enabled)
             #[cfg(feature = "schema-validation")]
             {
-                #[cfg(feature = "cli")]
-                {
-                    use crate::cli::validation::validate_odcs;
-                    validate_odcs(&yaml).map_err(|e| {
-                        ExportError::ValidationError(format!("ODCS validation failed: {}", e))
-                    })?;
-                }
-                #[cfg(not(feature = "cli"))]
-                {
-                    // Inline validation when CLI feature is not enabled
-                    use jsonschema::Validator;
-                    use serde_json::Value;
-
-                    let schema_content = include_str!("../../schemas/odcs-json-schema-v3.1.0.json");
-                    let schema: Value = serde_json::from_str(schema_content).map_err(|e| {
-                        ExportError::ValidationError(format!("Failed to load ODCS schema: {}", e))
-                    })?;
-
-                    let validator = Validator::new(&schema).map_err(|e| {
-                        ExportError::ValidationError(format!(
-                            "Failed to compile ODCS schema: {}",
-                            e
-                        ))
-                    })?;
-
-                    let data: Value = serde_yaml::from_str(&yaml).map_err(|e| {
-                        ExportError::ValidationError(format!("Failed to parse YAML: {}", e))
-                    })?;
-
-                    if let Err(error) = validator.validate(&data) {
-                        return Err(ExportError::ValidationError(format!(
-                            "ODCS validation failed: {}",
-                            error
-                        )));
-                    }
-                }
+                use crate::validation::schema::validate_odcs_internal;
+                validate_odcs_internal(&yaml).map_err(|e| {
+                    ExportError::ValidationError(format!("ODCS validation failed: {}", e))
+                })?;
             }
 
             exports.insert(
