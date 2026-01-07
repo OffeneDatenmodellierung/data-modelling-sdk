@@ -112,7 +112,7 @@ impl ODCSImporter {
                     columns: table
                         .columns
                         .iter()
-                        .map(|c| column_to_column_data(c))
+                        .map(column_to_column_data)
                         .collect(),
                 }];
                 let sdk_errors: Vec<ImportError> = errors

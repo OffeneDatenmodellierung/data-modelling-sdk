@@ -72,7 +72,7 @@ impl AvroImporter {
                         columns: table
                             .columns
                             .iter()
-                            .map(|c| column_to_column_data(c))
+                            .map(column_to_column_data)
                             .collect(),
                     });
                 }
