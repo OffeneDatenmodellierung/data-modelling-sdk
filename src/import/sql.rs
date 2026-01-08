@@ -40,6 +40,11 @@ static RE_TBLPROPERTIES: Lazy<Regex> =
 static RE_CLUSTER_BY: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\s+CLUSTER\s+BY\s+(?:AUTO|\([^)]*\)|[\w,\s]+)").expect("Invalid regex")
 });
+// USING clause (e.g., USING DELTA, USING PARQUET, USING CSV, etc.)
+static RE_USING_FORMAT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)\s+USING\s+(?:DELTA|PARQUET|CSV|JSON|ORC|AVRO|TEXT|BINARYFILE|JDBC|ICEBERG)\b")
+        .expect("Invalid regex")
+});
 static RE_VARIABLE_TYPE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r":\s*:([a-zA-Z_][a-zA-Z0-9_]*)").expect("Invalid regex"));
 static RE_ARRAY_VARIABLE: Lazy<Regex> =
@@ -278,6 +283,14 @@ impl SQLImporter {
     /// sqlparser does not support CLUSTER BY, so we remove it before parsing.
     fn preprocess_cluster_by(sql: &str) -> String {
         RE_CLUSTER_BY.replace_all(sql, "").to_string()
+    }
+
+    /// Preprocess USING format clause removal
+    ///
+    /// Databricks supports USING DELTA, USING PARQUET, etc. which sqlparser doesn't support.
+    /// We remove these clauses before parsing as they don't affect the table structure.
+    fn preprocess_using_format(sql: &str) -> String {
+        RE_USING_FORMAT.replace_all(sql, "").to_string()
     }
 
     /// Normalize SQL while preserving quoted strings
@@ -643,6 +656,7 @@ impl SQLImporter {
             preprocessed = Self::preprocess_table_comment(&preprocessed);
             preprocessed = Self::preprocess_tblproperties(&preprocessed);
             preprocessed = Self::preprocess_cluster_by(&preprocessed);
+            preprocessed = Self::preprocess_using_format(&preprocessed);
             // Step 5: Normalize SQL (handle multiline) - needed for regex matching
             let normalized = Self::normalize_sql_preserving_quotes(&preprocessed);
             // Step 6: Convert backslash-escaped quotes (sqlparser doesn't support \' escape sequences)
@@ -1220,5 +1234,55 @@ mod tests {
         assert!(result.errors.is_empty());
         assert_eq!(result.tables.len(), 1);
         assert_eq!(result.tables[0].name.as_deref(), Some("mv_example"));
+    }
+
+    #[test]
+    fn test_databricks_using_delta() {
+        let importer = SQLImporter::new("databricks");
+        // USING DELTA is preprocessed out for sqlparser compatibility
+        let sql = "CREATE TABLE delta_table (id INT, name STRING) USING DELTA;";
+        let result = importer.parse(sql).unwrap();
+        assert!(result.errors.is_empty(), "Errors: {:?}", result.errors);
+        assert_eq!(result.tables.len(), 1);
+        assert_eq!(result.tables[0].name.as_deref(), Some("delta_table"));
+        assert_eq!(result.tables[0].columns.len(), 2);
+    }
+
+    #[test]
+    fn test_databricks_using_parquet() {
+        let importer = SQLImporter::new("databricks");
+        // USING PARQUET is preprocessed out for sqlparser compatibility
+        let sql = "CREATE TABLE parquet_table (id INT, data STRING) USING PARQUET;";
+        let result = importer.parse(sql).unwrap();
+        assert!(result.errors.is_empty(), "Errors: {:?}", result.errors);
+        assert_eq!(result.tables.len(), 1);
+        assert_eq!(result.tables[0].name.as_deref(), Some("parquet_table"));
+    }
+
+    #[test]
+    fn test_databricks_using_delta_with_tblproperties() {
+        let importer = SQLImporter::new("databricks");
+        // Combined USING DELTA and TBLPROPERTIES - both should be removed
+        let sql = r#"CREATE TABLE complex_table (
+            id INT,
+            name STRING
+        ) USING DELTA
+        TBLPROPERTIES ('delta.autoOptimize.optimizeWrite' = 'true');"#;
+        let result = importer.parse(sql).unwrap();
+        assert!(result.errors.is_empty(), "Errors: {:?}", result.errors);
+        assert_eq!(result.tables.len(), 1);
+        assert_eq!(result.tables[0].name.as_deref(), Some("complex_table"));
+        assert_eq!(result.tables[0].columns.len(), 2);
+    }
+
+    #[test]
+    fn test_databricks_materialized_view_using_delta() {
+        let importer = SQLImporter::new("databricks");
+        // Combined MATERIALIZED VIEW - should work
+        let sql = "CREATE MATERIALIZED VIEW mv_delta AS SELECT id FROM source;";
+        let result = importer.parse(sql).unwrap();
+        assert!(result.errors.is_empty(), "Errors: {:?}", result.errors);
+        assert_eq!(result.tables.len(), 1);
+        assert_eq!(result.tables[0].name.as_deref(), Some("mv_delta"));
     }
 }
