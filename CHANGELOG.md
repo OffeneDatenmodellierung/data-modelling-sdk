@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.4] - 2026-01-08
+
+### Added
+
+- **feat(sql)**: Databricks SQL `USING` clause support for table format specifications
+  - `USING DELTA` - Delta Lake tables
+  - `USING PARQUET` - Parquet format tables
+  - `USING CSV`, `USING JSON`, `USING ORC`, `USING AVRO` - Other formats
+  - `USING ICEBERG` - Apache Iceberg tables
+  - These clauses are now stripped during preprocessing, allowing table imports to succeed
+
+### Fixed
+
+- **fix(sql)**: Databricks SQL imports now correctly handle:
+  - `CREATE TABLE ... USING DELTA` statements
+  - `CREATE VIEW` statements (already supported, now tested)
+  - `CREATE MATERIALIZED VIEW` statements (already supported, now tested)
+  - Combined clauses like `USING DELTA TBLPROPERTIES (...)`
+
 ## [1.13.3] - 2026-01-08
 
 ### Fixed
