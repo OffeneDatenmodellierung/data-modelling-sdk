@@ -81,6 +81,16 @@
           "items": {
             "$ref": "#/definitions/SystemReference"
           }
+        },
+        "view_positions": {
+          "type": "object",
+          "description": "Per-view node positions for canvas rendering. Keys are view types (operational, analytical, process, systems), values are objects mapping entity IDs to x/y coordinates.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/definitions/ViewPosition"
+            }
+          }
         }
       },
       "additionalProperties": false
@@ -206,9 +216,61 @@
           "type": "string",
           "description": "Color for the relationship line in the UI (hex color code or named color)",
           "pattern": "^(#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3}|[a-zA-Z]+)$"
+        },
+        "source_handle": {
+          "type": "string",
+          "description": "Edge attachment point on the source node",
+          "enum": [
+            "top-left",
+            "top-center",
+            "top-right",
+            "right-top",
+            "right-center",
+            "right-bottom",
+            "bottom-right",
+            "bottom-center",
+            "bottom-left",
+            "left-bottom",
+            "left-center",
+            "left-top"
+          ]
+        },
+        "target_handle": {
+          "type": "string",
+          "description": "Edge attachment point on the target node",
+          "enum": [
+            "top-left",
+            "top-center",
+            "top-right",
+            "right-top",
+            "right-center",
+            "right-bottom",
+            "bottom-right",
+            "bottom-center",
+            "bottom-left",
+            "left-bottom",
+            "left-center",
+            "left-top"
+          ]
         }
       },
       "additionalProperties": true
+    },
+    "ViewPosition": {
+      "type": "object",
+      "description": "X/Y coordinates for node positioning on canvas",
+      "required": ["x", "y"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X coordinate on canvas"
+        },
+        "y": {
+          "type": "number",
+          "description": "Y coordinate on canvas"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "examples": [

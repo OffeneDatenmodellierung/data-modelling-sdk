@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.6] - 2026-01-08
+
+### Added
+
+- **feat(workspace)**: Add `view_positions` to DomainReference for per-view canvas node positioning (#37)
+  - Supports view types: `operational`, `analytical`, `process`, `systems`
+  - Each node (table, system, asset) stores x/y coordinates specific to its view context
+  - Matches existing `DomainConfig.view_positions` structure for consistency
+
+- **feat(relationship)**: Add `source_handle` and `target_handle` for edge connection points (#37)
+  - New `ConnectionHandle` enum with 12 positions around node perimeter
+  - Positions: `top-left`, `top-center`, `top-right`, `right-top`, `right-center`, `right-bottom`, `bottom-right`, `bottom-center`, `bottom-left`, `left-bottom`, `left-center`, `left-top`
+  - Enables precise control over edge attachment points to prevent overlapping lines
+
 ## [1.13.5] - 2026-01-08
 
 ### Added

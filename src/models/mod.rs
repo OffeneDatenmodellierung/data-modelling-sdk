@@ -56,7 +56,8 @@ pub use odps::{
 #[cfg(feature = "openapi")]
 pub use openapi::{OpenAPIFormat, OpenAPIModel};
 pub use relationship::{
-    ConnectionPoint, ETLJobMetadata, ForeignKeyDetails, Relationship, VisualMetadata,
+    ConnectionHandle, ConnectionPoint, ETLJobMetadata, ForeignKeyDetails, Relationship,
+    VisualMetadata,
 };
 pub use table::{ContactDetails, Position, SlaProperty, Table};
 pub use tag::Tag;

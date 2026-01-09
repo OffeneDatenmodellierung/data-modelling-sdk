@@ -15,9 +15,11 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::Relationship;
+use super::domain_config::ViewPosition;
 
 /// Asset reference within a workspace
 ///
@@ -182,6 +184,10 @@ pub struct DomainReference {
     /// Systems within this domain
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub systems: Vec<SystemReference>,
+    /// View positions for different view modes (operational, analytical, process, systems)
+    /// Key: view mode name, Value: Map of entity ID to position
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub view_positions: HashMap<String, HashMap<String, ViewPosition>>,
 }
 
 /// System reference within a domain
@@ -310,6 +316,7 @@ impl Workspace {
             name: domain_name,
             description: None,
             systems: Vec::new(),
+            view_positions: HashMap::new(),
         });
         self.last_modified_at = Utc::now();
     }
@@ -329,6 +336,7 @@ impl Workspace {
             name: domain_name,
             description,
             systems: Vec::new(),
+            view_positions: HashMap::new(),
         });
         self.last_modified_at = Utc::now();
     }

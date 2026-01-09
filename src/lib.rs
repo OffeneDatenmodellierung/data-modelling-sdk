@@ -1720,6 +1720,7 @@ mod wasm {
             name: domain_name.to_string(),
             description: None,
             systems: Vec::new(),
+            view_positions: std::collections::HashMap::new(),
         });
         workspace.last_modified_at = Utc::now();
 

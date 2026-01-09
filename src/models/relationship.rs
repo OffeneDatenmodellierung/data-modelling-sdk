@@ -54,6 +54,39 @@ pub struct VisualMetadata {
     pub label_position: Option<ConnectionPoint>,
 }
 
+/// Edge attachment point positions on a node
+///
+/// Defines 12 possible handle positions around the perimeter of a node,
+/// organized by edge (top, right, bottom, left) and position on that edge.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConnectionHandle {
+    /// Top edge, left position
+    TopLeft,
+    /// Top edge, center position
+    TopCenter,
+    /// Top edge, right position
+    TopRight,
+    /// Right edge, top position
+    RightTop,
+    /// Right edge, center position
+    RightCenter,
+    /// Right edge, bottom position
+    RightBottom,
+    /// Bottom edge, right position
+    BottomRight,
+    /// Bottom edge, center position
+    BottomCenter,
+    /// Bottom edge, left position
+    BottomLeft,
+    /// Left edge, bottom position
+    LeftBottom,
+    /// Left edge, center position
+    LeftCenter,
+    /// Left edge, top position
+    LeftTop,
+}
+
 /// Relationship model representing a connection between two tables
 ///
 /// Relationships can represent foreign keys, data flows, dependencies, or ETL transformations.
@@ -151,6 +184,12 @@ pub struct Relationship {
     /// Color for the relationship line in the UI (hex color code or named color)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// Edge attachment point on the source node
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_handle: Option<ConnectionHandle>,
+    /// Edge attachment point on the target node
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_handle: Option<ConnectionHandle>,
     /// Creation timestamp
     pub created_at: DateTime<Utc>,
     /// Last update timestamp
@@ -199,6 +238,8 @@ impl Relationship {
             visual_metadata: None,
             drawio_edge_id: None,
             color: None,
+            source_handle: None,
+            target_handle: None,
             created_at: now,
             updated_at: now,
         }
