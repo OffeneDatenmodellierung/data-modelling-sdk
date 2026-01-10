@@ -43,8 +43,6 @@ pub enum KnowledgeType {
     Standard,
     /// Reference documentation
     Reference,
-    /// Glossary of terms
-    Glossary,
     /// Step-by-step how-to
     HowTo,
     /// Troubleshooting guide
@@ -53,6 +51,10 @@ pub enum KnowledgeType {
     Policy,
     /// Template or boilerplate
     Template,
+    /// Conceptual documentation
+    Concept,
+    /// Runbook for operations
+    Runbook,
 }
 
 impl std::fmt::Display for KnowledgeType {
@@ -61,11 +63,12 @@ impl std::fmt::Display for KnowledgeType {
             KnowledgeType::Guide => write!(f, "Guide"),
             KnowledgeType::Standard => write!(f, "Standard"),
             KnowledgeType::Reference => write!(f, "Reference"),
-            KnowledgeType::Glossary => write!(f, "Glossary"),
             KnowledgeType::HowTo => write!(f, "How-To"),
             KnowledgeType::Troubleshooting => write!(f, "Troubleshooting"),
             KnowledgeType::Policy => write!(f, "Policy"),
             KnowledgeType::Template => write!(f, "Template"),
+            KnowledgeType::Concept => write!(f, "Concept"),
+            KnowledgeType::Runbook => write!(f, "Runbook"),
         }
     }
 }
@@ -77,6 +80,8 @@ pub enum KnowledgeStatus {
     /// Article is being drafted
     #[default]
     Draft,
+    /// Article is under review
+    Review,
     /// Article is published and active
     Published,
     /// Article is archived (historical reference)
@@ -89,6 +94,7 @@ impl std::fmt::Display for KnowledgeStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             KnowledgeStatus::Draft => write!(f, "Draft"),
+            KnowledgeStatus::Review => write!(f, "Review"),
             KnowledgeStatus::Published => write!(f, "Published"),
             KnowledgeStatus::Archived => write!(f, "Archived"),
             KnowledgeStatus::Deprecated => write!(f, "Deprecated"),
@@ -192,6 +198,62 @@ impl RelatedArticle {
     }
 }
 
+/// Custom deserializer for knowledge article number that supports both:
+/// - Legacy string format: "KB-0001"
+/// - New numeric format: 1 or 2601101234 (timestamp)
+fn deserialize_knowledge_number<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+
+    struct NumberVisitor;
+
+    impl<'de> Visitor<'de> for NumberVisitor {
+        type Value = u64;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a number or a string like 'KB-0001'")
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(value)
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if value >= 0 {
+                Ok(value as u64)
+            } else {
+                Err(E::custom("negative numbers are not allowed"))
+            }
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            // Handle "KB-0001" format
+            let num_str = value
+                .to_uppercase()
+                .strip_prefix("KB-")
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| value.to_string());
+
+            num_str
+                .parse::<u64>()
+                .map_err(|_| E::custom(format!("invalid knowledge number format: {}", value)))
+        }
+    }
+
+    deserializer.deserialize_any(NumberVisitor)
+}
+
 /// Knowledge Base Article
 ///
 /// Represents a knowledge article that can be categorized by domain,
@@ -200,17 +262,25 @@ impl RelatedArticle {
 pub struct KnowledgeArticle {
     /// Unique identifier for the article
     pub id: Uuid,
-    /// Article number (KB-0001, KB-0002, etc.)
-    pub number: String,
+    /// Article number - can be sequential (1, 2, 3) or timestamp-based (YYMMDDHHmm format)
+    /// Timestamp format prevents merge conflicts in distributed Git workflows
+    #[serde(deserialize_with = "deserialize_knowledge_number")]
+    pub number: u64,
     /// Article title
     pub title: String,
     /// Type of article
     pub article_type: KnowledgeType,
     /// Publication status
     pub status: KnowledgeStatus,
-    /// Domain this article belongs to (optional)
+    /// Domain this article belongs to (optional, string name)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
+    /// Domain UUID reference (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub domain_id: Option<Uuid>,
+    /// Workspace UUID reference (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<Uuid>,
 
     // Content
     /// Brief summary of the article
@@ -219,8 +289,9 @@ pub struct KnowledgeArticle {
     pub content: String,
 
     // Authorship
-    /// Article author (email or name)
-    pub author: String,
+    /// Article authors (emails or names) - changed from single author to array
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<String>,
     /// List of reviewers
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reviewers: Vec<String>,
@@ -267,24 +338,25 @@ pub struct KnowledgeArticle {
 impl KnowledgeArticle {
     /// Create a new knowledge article with required fields
     pub fn new(
-        number: u32,
+        number: u64,
         title: impl Into<String>,
         summary: impl Into<String>,
         content: impl Into<String>,
         author: impl Into<String>,
     ) -> Self {
         let now = Utc::now();
-        let number_str = format!("KB-{:04}", number);
         Self {
             id: Self::generate_id(number),
-            number: number_str,
+            number,
             title: title.into(),
             article_type: KnowledgeType::Guide,
             status: KnowledgeStatus::Draft,
             domain: None,
+            domain_id: None,
+            workspace_id: None,
             summary: summary.into(),
             content: content.into(),
-            author: author.into(),
+            authors: vec![author.into()],
             reviewers: Vec::new(),
             last_reviewed: None,
             review_frequency: None,
@@ -300,17 +372,67 @@ impl KnowledgeArticle {
         }
     }
 
+    /// Create a new knowledge article with a timestamp-based number (YYMMDDHHmm format)
+    /// This format prevents merge conflicts in distributed Git workflows
+    pub fn new_with_timestamp(
+        title: impl Into<String>,
+        summary: impl Into<String>,
+        content: impl Into<String>,
+        author: impl Into<String>,
+    ) -> Self {
+        let now = Utc::now();
+        let number = Self::generate_timestamp_number(&now);
+        Self::new(number, title, summary, content, author)
+    }
+
+    /// Generate a timestamp-based article number in YYMMDDHHmm format
+    pub fn generate_timestamp_number(dt: &DateTime<Utc>) -> u64 {
+        let formatted = dt.format("%y%m%d%H%M").to_string();
+        formatted.parse().unwrap_or(0)
+    }
+
     /// Generate a deterministic UUID for an article based on its number
-    pub fn generate_id(number: u32) -> Uuid {
+    pub fn generate_id(number: u64) -> Uuid {
         // Use UUID v5 with a namespace for knowledge articles
         let namespace = Uuid::parse_str("6ba7b810-9dad-11d1-80b4-00c04fd430c8").unwrap(); // URL namespace
         let name = format!("knowledge:{}", number);
         Uuid::new_v5(&namespace, name.as_bytes())
     }
 
-    /// Parse the numeric part of the article number
-    pub fn parse_number(&self) -> Option<u32> {
-        self.number.strip_prefix("KB-").and_then(|s| s.parse().ok())
+    /// Check if the article number is timestamp-based (YYMMDDHHmm format - 10 digits)
+    pub fn is_timestamp_number(&self) -> bool {
+        self.number >= 1000000000 && self.number <= 9999999999
+    }
+
+    /// Format the article number for display
+    /// Returns "KB-0001" for sequential or "KB-2601101234" for timestamp-based
+    pub fn formatted_number(&self) -> String {
+        if self.is_timestamp_number() {
+            format!("KB-{}", self.number)
+        } else {
+            format!("KB-{:04}", self.number)
+        }
+    }
+
+    /// Add an author
+    pub fn add_author(mut self, author: impl Into<String>) -> Self {
+        self.authors.push(author.into());
+        self.updated_at = Utc::now();
+        self
+    }
+
+    /// Set the domain ID
+    pub fn with_domain_id(mut self, domain_id: Uuid) -> Self {
+        self.domain_id = Some(domain_id);
+        self.updated_at = Utc::now();
+        self
+    }
+
+    /// Set the workspace ID
+    pub fn with_workspace_id(mut self, workspace_id: Uuid) -> Self {
+        self.workspace_id = Some(workspace_id);
+        self.updated_at = Utc::now();
+        self
     }
 
     /// Set the article type
@@ -400,22 +522,31 @@ impl KnowledgeArticle {
 
     /// Generate the YAML filename for this article
     pub fn filename(&self, workspace_name: &str) -> String {
-        let number = self.parse_number().unwrap_or(0);
+        let number_str = if self.is_timestamp_number() {
+            format!("{}", self.number)
+        } else {
+            format!("{:04}", self.number)
+        };
+
         match &self.domain {
             Some(domain) => format!(
-                "{}_{}_kb-{:04}.kb.yaml",
+                "{}_{}_kb-{}.kb.yaml",
                 sanitize_name(workspace_name),
                 sanitize_name(domain),
-                number
+                number_str
             ),
-            None => format!("{}_kb-{:04}.kb.yaml", sanitize_name(workspace_name), number),
+            None => format!(
+                "{}_kb-{}.kb.yaml",
+                sanitize_name(workspace_name),
+                number_str
+            ),
         }
     }
 
     /// Generate the Markdown filename for this article
     pub fn markdown_filename(&self) -> String {
         let slug = slugify(&self.title);
-        format!("{}-{}.md", self.number, slug)
+        format!("{}-{}.md", self.formatted_number(), slug)
     }
 
     /// Import from YAML
@@ -432,8 +563,8 @@ impl KnowledgeArticle {
 /// Knowledge article index entry for the knowledge.yaml file
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct KnowledgeIndexEntry {
-    /// Article number (e.g., "KB-0001")
-    pub number: String,
+    /// Article number (can be sequential or timestamp-based)
+    pub number: u64,
     /// Article UUID
     pub id: Uuid,
     /// Article title
@@ -452,7 +583,7 @@ pub struct KnowledgeIndexEntry {
 impl From<&KnowledgeArticle> for KnowledgeIndexEntry {
     fn from(article: &KnowledgeArticle) -> Self {
         Self {
-            number: article.number.clone(),
+            number: article.number,
             id: article.id,
             title: article.title.clone(),
             article_type: article.article_type.clone(),
@@ -474,8 +605,11 @@ pub struct KnowledgeIndex {
     /// List of articles
     #[serde(default)]
     pub articles: Vec<KnowledgeIndexEntry>,
-    /// Next available article number
-    pub next_number: u32,
+    /// Next available article number (for sequential numbering)
+    pub next_number: u64,
+    /// Whether to use timestamp-based numbering (YYMMDDHHmm format)
+    #[serde(default)]
+    pub use_timestamp_numbering: bool,
 }
 
 impl Default for KnowledgeIndex {
@@ -492,6 +626,18 @@ impl KnowledgeIndex {
             last_updated: Some(Utc::now()),
             articles: Vec::new(),
             next_number: 1,
+            use_timestamp_numbering: false,
+        }
+    }
+
+    /// Create a new knowledge index with timestamp-based numbering
+    pub fn new_with_timestamp_numbering() -> Self {
+        Self {
+            schema_version: "1.0".to_string(),
+            last_updated: Some(Utc::now()),
+            articles: Vec::new(),
+            next_number: 1,
+            use_timestamp_numbering: true,
         }
     }
 
@@ -507,23 +653,27 @@ impl KnowledgeIndex {
         // Sort by number
         self.articles.sort_by(|a, b| a.number.cmp(&b.number));
 
-        // Update next number
-        if let Some(num) = article.parse_number()
-            && num >= self.next_number
-        {
-            self.next_number = num + 1;
+        // Update next number only for sequential numbering
+        if !self.use_timestamp_numbering && article.number >= self.next_number {
+            self.next_number = article.number + 1;
         }
 
         self.last_updated = Some(Utc::now());
     }
 
     /// Get the next available article number
-    pub fn get_next_number(&self) -> u32 {
-        self.next_number
+    /// For timestamp-based numbering, generates a new timestamp
+    /// For sequential numbering, returns the next sequential number
+    pub fn get_next_number(&self) -> u64 {
+        if self.use_timestamp_numbering {
+            KnowledgeArticle::generate_timestamp_number(&Utc::now())
+        } else {
+            self.next_number
+        }
     }
 
     /// Find an article by number
-    pub fn find_by_number(&self, number: &str) -> Option<&KnowledgeIndexEntry> {
+    pub fn find_by_number(&self, number: u64) -> Option<&KnowledgeIndexEntry> {
         self.articles.iter().find(|a| a.number == number)
     }
 
@@ -579,10 +729,12 @@ mod tests {
             "data-governance@example.com",
         );
 
-        assert_eq!(article.number, "KB-0001");
+        assert_eq!(article.number, 1);
+        assert_eq!(article.formatted_number(), "KB-0001");
         assert_eq!(article.title, "Data Classification Guide");
         assert_eq!(article.status, KnowledgeStatus::Draft);
         assert_eq!(article.article_type, KnowledgeType::Guide);
+        assert_eq!(article.authors.len(), 1);
     }
 
     #[test]
@@ -665,12 +817,6 @@ mod tests {
     }
 
     #[test]
-    fn test_knowledge_article_parse_number() {
-        let article = KnowledgeArticle::new(42, "Test", "Summary", "Content", "author");
-        assert_eq!(article.parse_number(), Some(42));
-    }
-
-    #[test]
     fn test_knowledge_index() {
         let mut index = KnowledgeIndex::new();
         assert_eq!(index.get_next_number(), 1);
@@ -708,12 +854,87 @@ mod tests {
         assert_eq!(format!("{}", KnowledgeType::Guide), "Guide");
         assert_eq!(format!("{}", KnowledgeType::Standard), "Standard");
         assert_eq!(format!("{}", KnowledgeType::HowTo), "How-To");
+        assert_eq!(format!("{}", KnowledgeType::Concept), "Concept");
+        assert_eq!(format!("{}", KnowledgeType::Runbook), "Runbook");
     }
 
     #[test]
     fn test_knowledge_status_display() {
         assert_eq!(format!("{}", KnowledgeStatus::Draft), "Draft");
+        assert_eq!(format!("{}", KnowledgeStatus::Review), "Review");
         assert_eq!(format!("{}", KnowledgeStatus::Published), "Published");
         assert_eq!(format!("{}", KnowledgeStatus::Archived), "Archived");
+    }
+
+    #[test]
+    fn test_timestamp_number_generation() {
+        use chrono::TimeZone;
+        let dt = Utc.with_ymd_and_hms(2026, 1, 10, 14, 30, 0).unwrap();
+        let number = KnowledgeArticle::generate_timestamp_number(&dt);
+        assert_eq!(number, 2601101430);
+    }
+
+    #[test]
+    fn test_is_timestamp_number() {
+        let sequential_article =
+            KnowledgeArticle::new(1, "Test", "Summary", "Content", "author@example.com");
+        assert!(!sequential_article.is_timestamp_number());
+
+        let timestamp_article = KnowledgeArticle::new(
+            2601101430,
+            "Test",
+            "Summary",
+            "Content",
+            "author@example.com",
+        );
+        assert!(timestamp_article.is_timestamp_number());
+    }
+
+    #[test]
+    fn test_timestamp_article_filename() {
+        let article = KnowledgeArticle::new(
+            2601101430,
+            "Test",
+            "Summary",
+            "Content",
+            "author@example.com",
+        );
+        assert_eq!(
+            article.filename("enterprise"),
+            "enterprise_kb-2601101430.kb.yaml"
+        );
+    }
+
+    #[test]
+    fn test_timestamp_article_markdown_filename() {
+        let article = KnowledgeArticle::new(
+            2601101430,
+            "Test Article",
+            "Summary",
+            "Content",
+            "author@example.com",
+        );
+        let filename = article.markdown_filename();
+        assert!(filename.starts_with("KB-2601101430-"));
+        assert!(filename.ends_with(".md"));
+    }
+
+    #[test]
+    fn test_article_with_multiple_authors() {
+        let article = KnowledgeArticle::new(1, "Test", "Summary", "Content", "author1@example.com")
+            .add_author("author2@example.com")
+            .add_author("author3@example.com");
+
+        assert_eq!(article.authors.len(), 3);
+    }
+
+    #[test]
+    fn test_knowledge_index_with_timestamp_numbering() {
+        let index = KnowledgeIndex::new_with_timestamp_numbering();
+        assert!(index.use_timestamp_numbering);
+
+        // The next number should be a timestamp
+        let next = index.get_next_number();
+        assert!(next >= 1000000000); // Timestamp format check
     }
 }

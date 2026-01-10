@@ -9,8 +9,9 @@ use data_modelling_sdk::cli::commands::db::{
 };
 #[cfg(feature = "cli")]
 use data_modelling_sdk::cli::commands::export::{
-    ExportArgs, ExportFormat, handle_export_avro, handle_export_json_schema, handle_export_odcs,
-    handle_export_odps, handle_export_protobuf, handle_export_protobuf_descriptor,
+    ExportArgs, ExportFormat, handle_export_avro, handle_export_branded_markdown,
+    handle_export_json_schema, handle_export_markdown, handle_export_odcs, handle_export_odps,
+    handle_export_pdf, handle_export_protobuf, handle_export_protobuf_descriptor,
 };
 #[cfg(all(feature = "cli", feature = "odps-validation"))]
 use data_modelling_sdk::cli::commands::import::handle_import_odps;
@@ -82,7 +83,7 @@ enum Commands {
         /// Format to export to
         #[arg(value_enum)]
         format: ExportFormatArg,
-        /// Input ODCS YAML file (.odcs.yaml)
+        /// Input file (.odcs.yaml, .madr.yaml, or .kb.yaml)
         input: PathBuf,
         /// Output file path
         output: PathBuf,
@@ -95,6 +96,25 @@ enum Commands {
         /// Protobuf syntax version (proto2 or proto3, default: proto3)
         #[arg(long, default_value = "proto3")]
         protobuf_version: String,
+        // Branding options for PDF and branded Markdown exports
+        /// Logo URL for branding (PDF and branded-markdown formats)
+        #[arg(long)]
+        logo_url: Option<String>,
+        /// Header text for branding (PDF and branded-markdown formats)
+        #[arg(long)]
+        header: Option<String>,
+        /// Footer text for branding (PDF and branded-markdown formats)
+        #[arg(long)]
+        footer: Option<String>,
+        /// Brand color in hex format, e.g., "#0066CC" (PDF and branded-markdown formats)
+        #[arg(long)]
+        brand_color: Option<String>,
+        /// Company or organization name (PDF and branded-markdown formats)
+        #[arg(long)]
+        company_name: Option<String>,
+        /// Include table of contents (branded-markdown format)
+        #[arg(long)]
+        include_toc: bool,
     },
     /// Validate a file against its schema
     Validate {
@@ -193,6 +213,12 @@ enum ExportFormatArg {
     Protobuf,
     ProtobufDescriptor,
     Odps,
+    /// PDF export for decision records and knowledge articles
+    Pdf,
+    /// Markdown export for decision records and knowledge articles
+    Markdown,
+    /// Branded Markdown export with logo, header, footer
+    BrandedMarkdown,
 }
 
 #[cfg(feature = "cli")]
@@ -249,6 +275,9 @@ fn convert_export_format(format: ExportFormatArg) -> ExportFormat {
         ExportFormatArg::Protobuf => ExportFormat::Protobuf,
         ExportFormatArg::ProtobufDescriptor => ExportFormat::ProtobufDescriptor,
         ExportFormatArg::Odps => ExportFormat::Odps,
+        ExportFormatArg::Pdf => ExportFormat::Pdf,
+        ExportFormatArg::Markdown => ExportFormat::BrandedMarkdown, // Use same handler, no branding
+        ExportFormatArg::BrandedMarkdown => ExportFormat::BrandedMarkdown,
     }
 }
 
@@ -345,8 +374,14 @@ fn main() {
             force,
             protoc_path,
             protobuf_version,
+            logo_url,
+            header,
+            footer,
+            brand_color,
+            company_name,
+            include_toc,
         } => {
-            let export_format = convert_export_format(format);
+            let export_format = convert_export_format(format.clone());
 
             let args = ExportArgs {
                 format: export_format,
@@ -355,6 +390,12 @@ fn main() {
                 force,
                 protoc_path,
                 protobuf_version: Some(protobuf_version),
+                logo_url,
+                header,
+                footer,
+                brand_color,
+                company_name,
+                include_toc,
             };
 
             match args.format {
@@ -364,6 +405,21 @@ fn main() {
                 ExportFormat::Protobuf => handle_export_protobuf(&args),
                 ExportFormat::ProtobufDescriptor => handle_export_protobuf_descriptor(&args),
                 ExportFormat::Odps => handle_export_odps(&args),
+                ExportFormat::Pdf => handle_export_pdf(&args),
+                ExportFormat::BrandedMarkdown => {
+                    // If no branding options provided, use standard markdown export
+                    if args.logo_url.is_none()
+                        && args.header.is_none()
+                        && args.footer.is_none()
+                        && args.company_name.is_none()
+                        && !args.include_toc
+                        && matches!(format, ExportFormatArg::Markdown)
+                    {
+                        handle_export_markdown(&args)
+                    } else {
+                        handle_export_branded_markdown(&args)
+                    }
+                }
             }
         }
         Commands::Validate { format, input } => {

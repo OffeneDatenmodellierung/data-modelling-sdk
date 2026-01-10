@@ -37,7 +37,7 @@ use super::Tag;
 
 /// Decision status in lifecycle
 ///
-/// Decisions follow a lifecycle: Proposed → Accepted → [Deprecated | Superseded]
+/// Decisions follow a lifecycle: Proposed → Accepted → [Deprecated | Superseded | Rejected]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DecisionStatus {
@@ -50,6 +50,8 @@ pub enum DecisionStatus {
     Deprecated,
     /// Decision has been replaced by another decision
     Superseded,
+    /// Decision was rejected
+    Rejected,
 }
 
 impl std::fmt::Display for DecisionStatus {
@@ -59,6 +61,7 @@ impl std::fmt::Display for DecisionStatus {
             DecisionStatus::Accepted => write!(f, "Accepted"),
             DecisionStatus::Deprecated => write!(f, "Deprecated"),
             DecisionStatus::Superseded => write!(f, "Superseded"),
+            DecisionStatus::Rejected => write!(f, "Rejected"),
         }
     }
 }
@@ -90,6 +93,10 @@ pub enum DecisionCategory {
     Infrastructure,
     /// Tooling and technology choices
     Tooling,
+    /// Data-related decisions
+    Data,
+    /// Integration decisions
+    Integration,
 }
 
 impl std::fmt::Display for DecisionCategory {
@@ -105,6 +112,8 @@ impl std::fmt::Display for DecisionCategory {
             DecisionCategory::Compliance => write!(f, "Compliance"),
             DecisionCategory::Infrastructure => write!(f, "Infrastructure"),
             DecisionCategory::Tooling => write!(f, "Tooling"),
+            DecisionCategory::Data => write!(f, "Data"),
+            DecisionCategory::Integration => write!(f, "Integration"),
         }
     }
 }
@@ -293,6 +302,33 @@ pub struct DecisionContact {
     pub role: Option<String>,
 }
 
+/// RACI matrix for decision responsibility assignment
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct RaciMatrix {
+    /// Responsible - Those who do the work to complete the task
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub responsible: Vec<String>,
+    /// Accountable - The one ultimately answerable for the decision
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accountable: Vec<String>,
+    /// Consulted - Those whose opinions are sought
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub consulted: Vec<String>,
+    /// Informed - Those who are kept up-to-date on progress
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub informed: Vec<String>,
+}
+
+impl RaciMatrix {
+    /// Check if the RACI matrix is empty
+    pub fn is_empty(&self) -> bool {
+        self.responsible.is_empty()
+            && self.accountable.is_empty()
+            && self.consulted.is_empty()
+            && self.informed.is_empty()
+    }
+}
+
 /// MADR-compliant Decision Record
 ///
 /// Represents an architectural or data decision following the MADR template.
@@ -300,24 +336,37 @@ pub struct DecisionContact {
 pub struct Decision {
     /// Unique identifier for the decision
     pub id: Uuid,
-    /// Sequential decision number (ADR-0001, ADR-0002, etc.)
-    pub number: u32,
+    /// Decision number - can be sequential (1, 2, 3) or timestamp-based (YYMMDDHHmm format)
+    /// Timestamp format prevents merge conflicts in distributed Git workflows
+    pub number: u64,
     /// Short title describing the decision
     pub title: String,
     /// Current status of the decision
     pub status: DecisionStatus,
     /// Category of the decision
     pub category: DecisionCategory,
-    /// Domain this decision belongs to (optional)
+    /// Domain this decision belongs to (optional, string name)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
+    /// Domain UUID reference (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub domain_id: Option<Uuid>,
+    /// Workspace UUID reference (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<Uuid>,
 
     // MADR template fields
     /// Date the decision was made
     pub date: DateTime<Utc>,
-    /// People or teams who made the decision
+    /// Authors of the decision record
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<String>,
+    /// People or teams who made the decision (deciders)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deciders: Vec<String>,
+    /// RACI matrix for responsibility assignment
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raci: Option<RaciMatrix>,
     /// Problem statement and context for the decision
     pub context: String,
     /// Reasons driving this decision
@@ -373,7 +422,7 @@ pub struct Decision {
 impl Decision {
     /// Create a new decision with required fields
     pub fn new(
-        number: u32,
+        number: u64,
         title: impl Into<String>,
         context: impl Into<String>,
         decision: impl Into<String>,
@@ -386,8 +435,12 @@ impl Decision {
             status: DecisionStatus::Proposed,
             category: DecisionCategory::Architecture,
             domain: None,
+            domain_id: None,
+            workspace_id: None,
             date: now,
+            authors: Vec::new(),
             deciders: Vec::new(),
+            raci: None,
             context: context.into(),
             drivers: Vec::new(),
             options: Vec::new(),
@@ -406,12 +459,58 @@ impl Decision {
         }
     }
 
+    /// Create a new decision with a timestamp-based number (YYMMDDHHmm format)
+    /// This format prevents merge conflicts in distributed Git workflows
+    pub fn new_with_timestamp(
+        title: impl Into<String>,
+        context: impl Into<String>,
+        decision: impl Into<String>,
+    ) -> Self {
+        let now = Utc::now();
+        let number = Self::generate_timestamp_number(&now);
+        Self::new(number, title, context, decision)
+    }
+
+    /// Generate a timestamp-based decision number in YYMMDDHHmm format
+    pub fn generate_timestamp_number(dt: &DateTime<Utc>) -> u64 {
+        let formatted = dt.format("%y%m%d%H%M").to_string();
+        formatted.parse().unwrap_or(0)
+    }
+
     /// Generate a deterministic UUID for a decision based on its number
-    pub fn generate_id(number: u32) -> Uuid {
+    pub fn generate_id(number: u64) -> Uuid {
         // Use UUID v5 with a namespace for decisions
         let namespace = Uuid::parse_str("6ba7b810-9dad-11d1-80b4-00c04fd430c8").unwrap(); // URL namespace
         let name = format!("decision:{}", number);
         Uuid::new_v5(&namespace, name.as_bytes())
+    }
+
+    /// Add an author
+    pub fn add_author(mut self, author: impl Into<String>) -> Self {
+        self.authors.push(author.into());
+        self.updated_at = Utc::now();
+        self
+    }
+
+    /// Set the RACI matrix
+    pub fn with_raci(mut self, raci: RaciMatrix) -> Self {
+        self.raci = Some(raci);
+        self.updated_at = Utc::now();
+        self
+    }
+
+    /// Set the domain ID
+    pub fn with_domain_id(mut self, domain_id: Uuid) -> Self {
+        self.domain_id = Some(domain_id);
+        self.updated_at = Utc::now();
+        self
+    }
+
+    /// Set the workspace ID
+    pub fn with_workspace_id(mut self, workspace_id: Uuid) -> Self {
+        self.workspace_id = Some(workspace_id);
+        self.updated_at = Utc::now();
+        self
     }
 
     /// Set the decision status
@@ -498,19 +597,40 @@ impl Decision {
         self
     }
 
+    /// Check if the decision number is timestamp-based (YYMMDDHHmm format - 10 digits)
+    pub fn is_timestamp_number(&self) -> bool {
+        self.number >= 1000000000 && self.number <= 9999999999
+    }
+
+    /// Format the decision number for display
+    /// Returns "ADR-0001" for sequential or "ADR-2601101234" for timestamp-based
+    pub fn formatted_number(&self) -> String {
+        if self.is_timestamp_number() {
+            format!("ADR-{}", self.number)
+        } else {
+            format!("ADR-{:04}", self.number)
+        }
+    }
+
     /// Generate the YAML filename for this decision
     pub fn filename(&self, workspace_name: &str) -> String {
+        let number_str = if self.is_timestamp_number() {
+            format!("{}", self.number)
+        } else {
+            format!("{:04}", self.number)
+        };
+
         match &self.domain {
             Some(domain) => format!(
-                "{}_{}_adr-{:04}.madr.yaml",
+                "{}_{}_adr-{}.madr.yaml",
                 sanitize_name(workspace_name),
                 sanitize_name(domain),
-                self.number
+                number_str
             ),
             None => format!(
-                "{}_adr-{:04}.madr.yaml",
+                "{}_adr-{}.madr.yaml",
                 sanitize_name(workspace_name),
-                self.number
+                number_str
             ),
         }
     }
@@ -518,7 +638,11 @@ impl Decision {
     /// Generate the Markdown filename for this decision
     pub fn markdown_filename(&self) -> String {
         let slug = slugify(&self.title);
-        format!("ADR-{:04}-{}.md", self.number, slug)
+        if self.is_timestamp_number() {
+            format!("ADR-{}-{}.md", self.number, slug)
+        } else {
+            format!("ADR-{:04}-{}.md", self.number, slug)
+        }
     }
 
     /// Import from YAML
@@ -541,8 +665,8 @@ impl Decision {
 /// Decision index entry for the decisions.yaml file
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DecisionIndexEntry {
-    /// Decision number
-    pub number: u32,
+    /// Decision number (can be sequential or timestamp-based)
+    pub number: u64,
     /// Decision UUID
     pub id: Uuid,
     /// Decision title
@@ -583,8 +707,11 @@ pub struct DecisionIndex {
     /// List of decisions
     #[serde(default)]
     pub decisions: Vec<DecisionIndexEntry>,
-    /// Next available decision number
-    pub next_number: u32,
+    /// Next available decision number (for sequential numbering)
+    pub next_number: u64,
+    /// Whether to use timestamp-based numbering (YYMMDDHHmm format)
+    #[serde(default)]
+    pub use_timestamp_numbering: bool,
 }
 
 impl Default for DecisionIndex {
@@ -601,6 +728,18 @@ impl DecisionIndex {
             last_updated: Some(Utc::now()),
             decisions: Vec::new(),
             next_number: 1,
+            use_timestamp_numbering: false,
+        }
+    }
+
+    /// Create a new decision index with timestamp-based numbering
+    pub fn new_with_timestamp_numbering() -> Self {
+        Self {
+            schema_version: "1.0".to_string(),
+            last_updated: Some(Utc::now()),
+            decisions: Vec::new(),
+            next_number: 1,
+            use_timestamp_numbering: true,
         }
     }
 
@@ -616,8 +755,8 @@ impl DecisionIndex {
         // Sort by number
         self.decisions.sort_by_key(|d| d.number);
 
-        // Update next number
-        if decision.number >= self.next_number {
+        // Update next number only for sequential numbering
+        if !self.use_timestamp_numbering && decision.number >= self.next_number {
             self.next_number = decision.number + 1;
         }
 
@@ -625,12 +764,18 @@ impl DecisionIndex {
     }
 
     /// Get the next available decision number
-    pub fn get_next_number(&self) -> u32 {
-        self.next_number
+    /// For timestamp-based numbering, generates a new timestamp
+    /// For sequential numbering, returns the next sequential number
+    pub fn get_next_number(&self) -> u64 {
+        if self.use_timestamp_numbering {
+            Decision::generate_timestamp_number(&Utc::now())
+        } else {
+            self.next_number
+        }
     }
 
     /// Find a decision by number
-    pub fn find_by_number(&self, number: u32) -> Option<&DecisionIndexEntry> {
+    pub fn find_by_number(&self, number: u64) -> Option<&DecisionIndexEntry> {
         self.decisions.iter().find(|d| d.number == number)
     }
 
@@ -798,6 +943,7 @@ mod tests {
         assert_eq!(format!("{}", DecisionStatus::Accepted), "Accepted");
         assert_eq!(format!("{}", DecisionStatus::Deprecated), "Deprecated");
         assert_eq!(format!("{}", DecisionStatus::Superseded), "Superseded");
+        assert_eq!(format!("{}", DecisionStatus::Rejected), "Rejected");
     }
 
     #[test]
@@ -812,5 +958,93 @@ mod tests {
         assert_eq!(link.asset_type, "odcs");
         assert_eq!(link.asset_name, "orders");
         assert_eq!(link.relationship, Some(AssetRelationship::Implements));
+    }
+
+    #[test]
+    fn test_timestamp_number_generation() {
+        use chrono::TimeZone;
+        let dt = Utc.with_ymd_and_hms(2026, 1, 10, 14, 30, 0).unwrap();
+        let number = Decision::generate_timestamp_number(&dt);
+        assert_eq!(number, 2601101430);
+    }
+
+    #[test]
+    fn test_is_timestamp_number() {
+        let sequential_decision = Decision::new(1, "Test", "Context", "Decision");
+        assert!(!sequential_decision.is_timestamp_number());
+
+        let timestamp_decision = Decision::new(2601101430, "Test", "Context", "Decision");
+        assert!(timestamp_decision.is_timestamp_number());
+    }
+
+    #[test]
+    fn test_timestamp_decision_filename() {
+        let decision = Decision::new(2601101430, "Test", "Context", "Decision");
+        assert_eq!(
+            decision.filename("enterprise"),
+            "enterprise_adr-2601101430.madr.yaml"
+        );
+    }
+
+    #[test]
+    fn test_timestamp_decision_markdown_filename() {
+        let decision = Decision::new(2601101430, "Test Decision", "Context", "Decision");
+        let filename = decision.markdown_filename();
+        assert!(filename.starts_with("ADR-2601101430-"));
+        assert!(filename.ends_with(".md"));
+    }
+
+    #[test]
+    fn test_decision_with_raci() {
+        let raci = RaciMatrix {
+            responsible: vec!["dev-team@example.com".to_string()],
+            accountable: vec!["architect@example.com".to_string()],
+            consulted: vec!["security@example.com".to_string()],
+            informed: vec!["stakeholders@example.com".to_string()],
+        };
+
+        let decision = Decision::new(1, "Test", "Context", "Decision").with_raci(raci.clone());
+
+        assert!(decision.raci.is_some());
+        let decision_raci = decision.raci.unwrap();
+        assert_eq!(decision_raci.responsible.len(), 1);
+        assert_eq!(decision_raci.accountable.len(), 1);
+    }
+
+    #[test]
+    fn test_decision_with_authors() {
+        let decision = Decision::new(1, "Test", "Context", "Decision")
+            .add_author("author1@example.com")
+            .add_author("author2@example.com");
+
+        assert_eq!(decision.authors.len(), 2);
+    }
+
+    #[test]
+    fn test_decision_index_with_timestamp_numbering() {
+        let index = DecisionIndex::new_with_timestamp_numbering();
+        assert!(index.use_timestamp_numbering);
+
+        // The next number should be a timestamp
+        let next = index.get_next_number();
+        assert!(next >= 1000000000); // Timestamp format check
+    }
+
+    #[test]
+    fn test_new_categories() {
+        assert_eq!(format!("{}", DecisionCategory::Data), "Data");
+        assert_eq!(format!("{}", DecisionCategory::Integration), "Integration");
+    }
+
+    #[test]
+    fn test_raci_is_empty() {
+        let empty_raci = RaciMatrix::default();
+        assert!(empty_raci.is_empty());
+
+        let non_empty_raci = RaciMatrix {
+            responsible: vec!["someone".to_string()],
+            ..Default::default()
+        };
+        assert!(!non_empty_raci.is_empty());
     }
 }

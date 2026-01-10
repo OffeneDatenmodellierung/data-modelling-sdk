@@ -238,7 +238,7 @@ updated_at: "2024-01-15T10:00:00Z"
         assert!(result.is_ok());
         let article = result.unwrap();
         assert_eq!(article.title, "Data Classification Guide");
-        assert_eq!(article.number, "KB-0001");
+        assert_eq!(article.number, 1); // "KB-0001" is parsed to 1
     }
 
     #[test]

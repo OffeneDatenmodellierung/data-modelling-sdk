@@ -7,6 +7,7 @@
 //! - Protobuf
 //! - ODCS (Open Data Contract Standard) v3.1.0
 //! - PNG
+//! - PDF (with branding support)
 //! - Decision (MADR-compliant decision records)
 //! - Knowledge (Knowledge Base articles)
 //! - Markdown (for GitHub readability)
@@ -26,6 +27,7 @@ pub mod odcs;
 pub mod odps;
 #[cfg(feature = "openapi")]
 pub mod openapi;
+pub mod pdf;
 #[cfg(feature = "png-export")]
 pub mod png;
 pub mod protobuf;
@@ -84,12 +86,13 @@ pub use decision::DecisionExporter;
 pub use dmn::DMNExporter;
 pub use json_schema::JSONSchemaExporter;
 pub use knowledge::KnowledgeExporter;
-pub use markdown::MarkdownExporter;
+pub use markdown::{BrandedMarkdownExporter, MarkdownBrandingConfig, MarkdownExporter};
 pub use odcl::ODCLExporter;
 pub use odcs::ODCSExporter;
 pub use odps::ODPSExporter;
 #[cfg(feature = "openapi")]
 pub use openapi::OpenAPIExporter;
+pub use pdf::{BrandingConfig, PageSize, PdfExportResult, PdfExporter};
 #[cfg(feature = "png-export")]
 pub use png::PNGExporter;
 pub use protobuf::ProtobufExporter;

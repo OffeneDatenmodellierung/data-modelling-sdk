@@ -120,8 +120,13 @@ pub fn handle_decision_new(args: &DecisionNewArgs) -> Result<(), CliError> {
         .export(&decision)
         .map_err(|e| CliError::IoError(format!("Failed to export decision: {}", e)))?;
 
-    // Generate filename
-    let filename = format!("adr-{:04}.madr.yaml", number);
+    // Generate filename - use formatted number (handles both sequential and timestamp)
+    let number_str = if number >= 1000000000 {
+        format!("{}", number) // Timestamp format
+    } else {
+        format!("{:04}", number) // Sequential format
+    };
+    let filename = format!("adr-{}.madr.yaml", number_str);
     let file_path = if let Some(ref domain) = args.domain {
         args.workspace.join(format!(
             "{}_{}",
@@ -168,11 +173,19 @@ pub fn handle_decision_new(args: &DecisionNewArgs) -> Result<(), CliError> {
         fs::write(&md_path, &markdown)
             .map_err(|e| CliError::IoError(format!("Failed to write Markdown file: {}", e)))?;
 
-        println!("Created decision ADR-{:04}: {}", number, args.title);
+        println!(
+            "Created decision {}: {}",
+            decision.formatted_number(),
+            args.title
+        );
         println!("  YAML: {}", file_path.display());
         println!("  Markdown: {}", md_path.display());
     } else {
-        println!("Created decision ADR-{:04}: {}", number, args.title);
+        println!(
+            "Created decision {}: {}",
+            decision.formatted_number(),
+            args.title
+        );
         println!("  File: {}", file_path.display());
     }
 
@@ -219,8 +232,8 @@ pub fn handle_decision_list(args: &DecisionListArgs) -> Result<(), CliError> {
             println!("number,title,status,category,domain,date");
             for d in &filtered {
                 println!(
-                    "ADR-{:04},{},{},{},{},{}",
-                    d.number,
+                    "{},{},{},{},{},{}",
+                    d.formatted_number(),
                     escape_csv(&d.title),
                     d.status,
                     d.category,
@@ -246,8 +259,8 @@ pub fn handle_decision_list(args: &DecisionListArgs) -> Result<(), CliError> {
                         d.title.clone()
                     };
                     println!(
-                        "ADR-{:04}   {:<40} {:<12} {:<15} {:<15}",
-                        d.number,
+                        "{:<14} {:<40} {:<12} {:<15} {:<15}",
+                        d.formatted_number(),
                         title,
                         d.status,
                         d.category,
@@ -325,8 +338,10 @@ pub fn handle_decision_status(args: &DecisionStatusArgs) -> Result<(), CliError>
     }
 
     println!(
-        "Updated ADR-{:04} status: {} -> {}",
-        number, old_status, new_status
+        "Updated {} status: {} -> {}",
+        decision.formatted_number(),
+        old_status,
+        new_status
     );
 
     Ok(())
@@ -370,8 +385,9 @@ pub fn handle_decision_export(args: &DecisionExportArgs) -> Result<(), CliError>
         for decision in &decisions {
             let markdown = md_exporter.export_decision(decision).map_err(|e| {
                 CliError::IoError(format!(
-                    "Failed to export ADR-{:04}: {}",
-                    decision.number, e
+                    "Failed to export {}: {}",
+                    decision.formatted_number(),
+                    e
                 ))
             })?;
 
@@ -411,8 +427,10 @@ fn parse_category(s: &str) -> Result<DecisionCategory, CliError> {
         "compliance" => Ok(DecisionCategory::Compliance),
         "infrastructure" => Ok(DecisionCategory::Infrastructure),
         "tooling" => Ok(DecisionCategory::Tooling),
+        "data" => Ok(DecisionCategory::Data),
+        "integration" => Ok(DecisionCategory::Integration),
         _ => Err(CliError::InvalidArgument(format!(
-            "Unknown category: {}. Valid categories: architecture, datadesign, workflow, model, governance, security, performance, compliance, infrastructure, tooling",
+            "Unknown category: {}. Valid categories: architecture, datadesign, workflow, model, governance, security, performance, compliance, infrastructure, tooling, data, integration",
             s
         ))),
     }
@@ -422,17 +440,18 @@ fn parse_status(s: &str) -> Result<DecisionStatus, CliError> {
     match s.to_lowercase().as_str() {
         "proposed" => Ok(DecisionStatus::Proposed),
         "accepted" => Ok(DecisionStatus::Accepted),
+        "rejected" => Ok(DecisionStatus::Rejected),
         "deprecated" => Ok(DecisionStatus::Deprecated),
         "superseded" => Ok(DecisionStatus::Superseded),
         _ => Err(CliError::InvalidArgument(format!(
-            "Unknown status: {}. Valid statuses: proposed, accepted, deprecated, superseded",
+            "Unknown status: {}. Valid statuses: proposed, accepted, rejected, deprecated, superseded",
             s
         ))),
     }
 }
 
-fn parse_decision_number(s: &str) -> Result<u32, CliError> {
-    // Handle "ADR-0001", "ADR-1", "0001", or "1"
+fn parse_decision_number(s: &str) -> Result<u64, CliError> {
+    // Handle "ADR-0001", "ADR-1", "0001", "1", or timestamp format "2601101234"
     let num_str = s
         .to_uppercase()
         .strip_prefix("ADR-")
@@ -440,7 +459,7 @@ fn parse_decision_number(s: &str) -> Result<u32, CliError> {
         .unwrap_or_else(|| s.to_string());
 
     num_str
-        .parse::<u32>()
+        .parse::<u64>()
         .map_err(|_| CliError::InvalidArgument(format!("Invalid decision number: {}", s)))
 }
 
@@ -477,17 +496,17 @@ fn load_all_decisions(workspace: &Path) -> Result<Vec<Decision>, CliError> {
     Ok(decisions)
 }
 
-fn find_decision_by_number(workspace: &Path, number: u32) -> Result<Decision, CliError> {
+fn find_decision_by_number(workspace: &Path, number: u64) -> Result<Decision, CliError> {
     let decisions = load_all_decisions(workspace)?;
     decisions
         .into_iter()
         .find(|d| d.number == number)
-        .ok_or_else(|| CliError::NotFound(format!("Decision ADR-{:04} not found", number)))
+        .ok_or_else(|| CliError::NotFound(format!("Decision ADR-{} not found", number)))
 }
 
 fn find_decision_file_and_load(
     workspace: &Path,
-    number: u32,
+    number: u64,
 ) -> Result<(PathBuf, Decision), CliError> {
     let importer = DecisionImporter;
 
@@ -514,9 +533,14 @@ fn find_decision_file_and_load(
         }
     }
 
+    let formatted = if number >= 1000000000 {
+        format!("ADR-{}", number)
+    } else {
+        format!("ADR-{:04}", number)
+    };
     Err(CliError::NotFound(format!(
-        "Decision ADR-{:04} not found",
-        number
+        "Decision {} not found",
+        formatted
     )))
 }
 

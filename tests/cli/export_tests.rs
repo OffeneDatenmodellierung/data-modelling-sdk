@@ -42,6 +42,12 @@ fn test_cli_export_odcs_single_table() {
         force: true,
         protoc_path: None,
         protobuf_version: None,
+        logo_url: None,
+        header: None,
+        footer: None,
+        brand_color: None,
+        company_name: None,
+        include_toc: false,
     };
 
     let result = handle_export_odcs(&args);
@@ -62,6 +68,12 @@ fn test_cli_export_avro() {
         force: true,
         protoc_path: None,
         protobuf_version: None,
+        logo_url: None,
+        header: None,
+        footer: None,
+        brand_color: None,
+        company_name: None,
+        include_toc: false,
     };
 
     let result = handle_export_avro(&args);
@@ -82,6 +94,12 @@ fn test_cli_export_json_schema() {
         force: true,
         protoc_path: None,
         protobuf_version: None,
+        logo_url: None,
+        header: None,
+        footer: None,
+        brand_color: None,
+        company_name: None,
+        include_toc: false,
     };
 
     let result = handle_export_json_schema(&args);
@@ -102,6 +120,12 @@ fn test_cli_export_protobuf() {
         force: true,
         protoc_path: None,
         protobuf_version: None,
+        logo_url: None,
+        header: None,
+        footer: None,
+        brand_color: None,
+        company_name: None,
+        include_toc: false,
     };
 
     let result = handle_export_protobuf(&args);
@@ -123,6 +147,12 @@ fn test_cli_export_odcs_file_overwrite_prompt() {
         force: false, // Don't force overwrite
         protoc_path: None,
         protobuf_version: None,
+        logo_url: None,
+        header: None,
+        footer: None,
+        brand_color: None,
+        company_name: None,
+        include_toc: false,
     };
 
     let result = handle_export_odcs(&args);
@@ -148,6 +178,12 @@ mod odps_export_tests {
             force: true,
             protoc_path: None,
             protobuf_version: None,
+            logo_url: None,
+            header: None,
+            footer: None,
+            brand_color: None,
+            company_name: None,
+            include_toc: false,
         };
 
         let result = handle_export_odps(&args);
@@ -182,6 +218,12 @@ mod odps_export_tests {
             force: true,
             protoc_path: None,
             protobuf_version: None,
+            logo_url: None,
+            header: None,
+            footer: None,
+            brand_color: None,
+            company_name: None,
+            include_toc: false,
         };
 
         // ODPS export should reject ODCS input
@@ -223,6 +265,12 @@ outputPorts:
             force: false,
             protoc_path: None,
             protobuf_version: None,
+            logo_url: None,
+            header: None,
+            footer: None,
+            brand_color: None,
+            company_name: None,
+            include_toc: false,
         };
 
         let result = handle_export_odps(&args);

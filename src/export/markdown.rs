@@ -34,11 +34,13 @@ impl MarkdownExporter {
             DecisionStatus::Accepted => "🟢 Accepted",
             DecisionStatus::Deprecated => "🔴 Deprecated",
             DecisionStatus::Superseded => "⚫ Superseded",
+            DecisionStatus::Rejected => "🔴 Rejected",
         };
 
         md.push_str(&format!(
-            "# ADR-{:04}: {}\n\n",
-            decision.number, decision.title
+            "# {}: {}\n\n",
+            decision.formatted_number(),
+            decision.title
         ));
 
         // Metadata table
@@ -53,6 +55,12 @@ impl MarkdownExporter {
             "| **Date** | {} |\n",
             decision.date.format("%Y-%m-%d")
         ));
+        if !decision.authors.is_empty() {
+            md.push_str(&format!(
+                "| **Authors** | {} |\n",
+                decision.authors.join(", ")
+            ));
+        }
         if !decision.deciders.is_empty() {
             md.push_str(&format!(
                 "| **Deciders** | {} |\n",
@@ -60,6 +68,40 @@ impl MarkdownExporter {
             ));
         }
         md.push('\n');
+
+        // RACI Matrix section (if present)
+        if let Some(raci) = &decision.raci
+            && !raci.is_empty()
+        {
+            md.push_str("## RACI Matrix\n\n");
+            md.push_str("| Role | Participants |\n");
+            md.push_str("|------|-------------|\n");
+            if !raci.responsible.is_empty() {
+                md.push_str(&format!(
+                    "| **Responsible** | {} |\n",
+                    raci.responsible.join(", ")
+                ));
+            }
+            if !raci.accountable.is_empty() {
+                md.push_str(&format!(
+                    "| **Accountable** | {} |\n",
+                    raci.accountable.join(", ")
+                ));
+            }
+            if !raci.consulted.is_empty() {
+                md.push_str(&format!(
+                    "| **Consulted** | {} |\n",
+                    raci.consulted.join(", ")
+                ));
+            }
+            if !raci.informed.is_empty() {
+                md.push_str(&format!(
+                    "| **Informed** | {} |\n",
+                    raci.informed.join(", ")
+                ));
+            }
+            md.push('\n');
+        }
 
         // Context section
         md.push_str("## Context\n\n");
@@ -221,21 +263,27 @@ impl MarkdownExporter {
             KnowledgeType::Guide => "📖 Guide",
             KnowledgeType::Standard => "📋 Standard",
             KnowledgeType::Reference => "📚 Reference",
-            KnowledgeType::Glossary => "📝 Glossary",
             KnowledgeType::HowTo => "🔧 How-To",
             KnowledgeType::Troubleshooting => "🔍 Troubleshooting",
             KnowledgeType::Policy => "⚖️ Policy",
             KnowledgeType::Template => "📄 Template",
+            KnowledgeType::Concept => "💡 Concept",
+            KnowledgeType::Runbook => "📓 Runbook",
         };
 
         let status_badge = match article.status {
             KnowledgeStatus::Draft => "🟡 Draft",
+            KnowledgeStatus::Review => "🟠 Review",
             KnowledgeStatus::Published => "🟢 Published",
             KnowledgeStatus::Archived => "📦 Archived",
             KnowledgeStatus::Deprecated => "🔴 Deprecated",
         };
 
-        md.push_str(&format!("# {}: {}\n\n", article.number, article.title));
+        md.push_str(&format!(
+            "# {}: {}\n\n",
+            article.formatted_number(),
+            article.title
+        ));
 
         // Metadata table
         md.push_str("| Property | Value |\n");
@@ -245,7 +293,12 @@ impl MarkdownExporter {
         if let Some(domain) = &article.domain {
             md.push_str(&format!("| **Domain** | {} |\n", domain));
         }
-        md.push_str(&format!("| **Author** | {} |\n", article.author));
+        if !article.authors.is_empty() {
+            md.push_str(&format!(
+                "| **Authors** | {} |\n",
+                article.authors.join(", ")
+            ));
+        }
         if let Some(skill) = &article.skill_level {
             md.push_str(&format!("| **Skill Level** | {} |\n", skill));
         }
@@ -507,11 +560,12 @@ impl MarkdownExporter {
                 DecisionStatus::Accepted => "🟢",
                 DecisionStatus::Deprecated => "🔴",
                 DecisionStatus::Superseded => "⚫",
+                DecisionStatus::Rejected => "🔴",
             };
             let filename = decision.markdown_filename();
             md.push_str(&format!(
-                "| [ADR-{:04}]({}) | {} | {} | {} | {} |\n",
-                decision.number,
+                "| [{}]({}) | {} | {} | {} | {} |\n",
+                decision.formatted_number(),
                 filename,
                 decision.title,
                 status_icon,
@@ -559,14 +613,16 @@ impl MarkdownExporter {
                     KnowledgeType::Guide => "📖",
                     KnowledgeType::Standard => "📋",
                     KnowledgeType::Reference => "📚",
-                    KnowledgeType::Glossary => "📝",
                     KnowledgeType::HowTo => "🔧",
                     KnowledgeType::Troubleshooting => "🔍",
                     KnowledgeType::Policy => "⚖️",
                     KnowledgeType::Template => "📄",
+                    KnowledgeType::Concept => "💡",
+                    KnowledgeType::Runbook => "📓",
                 };
                 let status_icon = match article.status {
                     KnowledgeStatus::Draft => "🟡",
+                    KnowledgeStatus::Review => "🟠",
                     KnowledgeStatus::Published => "🟢",
                     KnowledgeStatus::Archived => "📦",
                     KnowledgeStatus::Deprecated => "🔴",
@@ -579,7 +635,11 @@ impl MarkdownExporter {
                 };
                 md.push_str(&format!(
                     "| [{}]({}) | {} | {} | {} |\n",
-                    article.number, link_path, article.title, type_icon, status_icon
+                    article.formatted_number(),
+                    link_path,
+                    article.title,
+                    type_icon,
+                    status_icon
                 ));
             }
 
@@ -593,6 +653,299 @@ impl MarkdownExporter {
 impl Default for MarkdownExporter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Branding configuration for Markdown exports
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct MarkdownBrandingConfig {
+    /// Logo URL or path (for HTML image tag in markdown)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logo_url: Option<String>,
+
+    /// Logo alt text
+    #[serde(default = "default_logo_alt")]
+    pub logo_alt: String,
+
+    /// Header text (appears at top of document)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub header: Option<String>,
+
+    /// Footer text (appears at bottom of document)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub footer: Option<String>,
+
+    /// Company or organization name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub company_name: Option<String>,
+
+    /// Copyright text
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copyright: Option<String>,
+
+    /// Include generation timestamp
+    #[serde(default = "default_true")]
+    pub show_timestamp: bool,
+
+    /// Include table of contents
+    #[serde(default)]
+    pub include_toc: bool,
+
+    /// Custom CSS class for styling (useful for HTML rendering)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub css_class: Option<String>,
+
+    /// Primary brand color (hex format, e.g., "#0066CC")
+    #[serde(default = "default_brand_color")]
+    pub brand_color: String,
+}
+
+fn default_logo_alt() -> String {
+    "Logo".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_brand_color() -> String {
+    "#0066CC".to_string()
+}
+
+/// Branded Markdown exporter with customizable branding
+///
+/// Extends the standard MarkdownExporter with branding options like
+/// logo, header, footer, and company information.
+pub struct BrandedMarkdownExporter {
+    branding: MarkdownBrandingConfig,
+    base_exporter: MarkdownExporter,
+}
+
+impl Default for BrandedMarkdownExporter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BrandedMarkdownExporter {
+    /// Create a new branded Markdown exporter with default branding
+    pub fn new() -> Self {
+        Self {
+            branding: MarkdownBrandingConfig::default(),
+            base_exporter: MarkdownExporter::new(),
+        }
+    }
+
+    /// Create a new branded Markdown exporter with custom branding
+    pub fn with_branding(branding: MarkdownBrandingConfig) -> Self {
+        Self {
+            branding,
+            base_exporter: MarkdownExporter::new(),
+        }
+    }
+
+    /// Update branding configuration
+    pub fn set_branding(&mut self, branding: MarkdownBrandingConfig) {
+        self.branding = branding;
+    }
+
+    /// Get current branding configuration
+    pub fn branding(&self) -> &MarkdownBrandingConfig {
+        &self.branding
+    }
+
+    /// Generate branded header section
+    fn generate_header(&self) -> String {
+        let mut header = String::new();
+
+        // Logo
+        if let Some(logo_url) = &self.branding.logo_url {
+            header.push_str(&format!("![{}]({})\n\n", self.branding.logo_alt, logo_url));
+        }
+
+        // Company name
+        if let Some(company) = &self.branding.company_name {
+            header.push_str(&format!("**{}**\n\n", company));
+        }
+
+        // Header text
+        if let Some(header_text) = &self.branding.header {
+            header.push_str(header_text);
+            header.push_str("\n\n");
+        }
+
+        // Separator
+        if !header.is_empty() {
+            header.push_str("---\n\n");
+        }
+
+        header
+    }
+
+    /// Generate branded footer section
+    fn generate_footer(&self) -> String {
+        use chrono::Utc;
+
+        let mut footer = String::new();
+        footer.push_str("\n---\n\n");
+
+        // Footer text
+        if let Some(footer_text) = &self.branding.footer {
+            footer.push_str(footer_text);
+            footer.push_str("\n\n");
+        }
+
+        // Copyright
+        if let Some(copyright) = &self.branding.copyright {
+            footer.push_str(&format!("*{}*\n\n", copyright));
+        }
+
+        // Timestamp
+        if self.branding.show_timestamp {
+            footer.push_str(&format!(
+                "*Generated: {}*\n",
+                Utc::now().format("%Y-%m-%d %H:%M UTC")
+            ));
+        }
+
+        footer
+    }
+
+    /// Generate table of contents for a decision
+    fn generate_decision_toc(&self, decision: &Decision) -> String {
+        let mut toc = String::new();
+        toc.push_str("## Table of Contents\n\n");
+        toc.push_str("- [Context](#context)\n");
+
+        if !decision.drivers.is_empty() {
+            toc.push_str("- [Decision Drivers](#decision-drivers)\n");
+        }
+        if !decision.options.is_empty() {
+            toc.push_str("- [Considered Options](#considered-options)\n");
+        }
+        toc.push_str("- [Decision](#decision)\n");
+        if decision.consequences.is_some() {
+            toc.push_str("- [Consequences](#consequences)\n");
+        }
+        if !decision.linked_assets.is_empty() {
+            toc.push_str("- [Linked Assets](#linked-assets)\n");
+        }
+        if decision.compliance.is_some() {
+            toc.push_str("- [Compliance Assessment](#compliance-assessment)\n");
+        }
+        toc.push('\n');
+        toc
+    }
+
+    /// Generate table of contents for a knowledge article
+    fn generate_knowledge_toc(&self, article: &KnowledgeArticle) -> String {
+        let mut toc = String::new();
+        toc.push_str("## Table of Contents\n\n");
+        toc.push_str("- [Summary](#summary)\n");
+        toc.push_str("- [Content](#content)\n");
+        if !article.audience.is_empty() {
+            toc.push_str("- [Target Audience](#target-audience)\n");
+        }
+        if !article.related_articles.is_empty() {
+            toc.push_str("- [Related Articles](#related-articles)\n");
+        }
+        toc.push('\n');
+        toc
+    }
+
+    /// Export a decision to branded Markdown format
+    pub fn export_decision(&self, decision: &Decision) -> Result<String, ExportError> {
+        let mut md = String::new();
+
+        // Header with branding
+        md.push_str(&self.generate_header());
+
+        // Table of contents
+        if self.branding.include_toc {
+            md.push_str(&self.generate_decision_toc(decision));
+        }
+
+        // Get base content (without the standard header)
+        let base_content = self.base_exporter.export_decision(decision)?;
+        md.push_str(&base_content);
+
+        // Footer with branding
+        md.push_str(&self.generate_footer());
+
+        Ok(md)
+    }
+
+    /// Export a knowledge article to branded Markdown format
+    pub fn export_knowledge(&self, article: &KnowledgeArticle) -> Result<String, ExportError> {
+        let mut md = String::new();
+
+        // Header with branding
+        md.push_str(&self.generate_header());
+
+        // Table of contents
+        if self.branding.include_toc {
+            md.push_str(&self.generate_knowledge_toc(article));
+        }
+
+        // Get base content
+        let base_content = self.base_exporter.export_knowledge(article)?;
+        md.push_str(&base_content);
+
+        // Footer with branding
+        md.push_str(&self.generate_footer());
+
+        Ok(md)
+    }
+
+    /// Export raw markdown content with branding
+    pub fn export_with_branding(&self, title: &str, content: &str) -> String {
+        let mut md = String::new();
+
+        // Header with branding
+        md.push_str(&self.generate_header());
+
+        // Title and content
+        md.push_str(&format!("# {}\n\n", title));
+        md.push_str(content);
+
+        // Footer with branding
+        md.push_str(&self.generate_footer());
+
+        md
+    }
+
+    /// Generate a branded decisions index
+    pub fn generate_decisions_index(&self, decisions: &[Decision]) -> String {
+        let mut md = String::new();
+
+        // Header with branding
+        md.push_str(&self.generate_header());
+
+        // Get base index
+        let base_index = self.base_exporter.generate_decisions_index(decisions);
+        md.push_str(&base_index);
+
+        // Footer with branding
+        md.push_str(&self.generate_footer());
+
+        md
+    }
+
+    /// Generate a branded knowledge index
+    pub fn generate_knowledge_index(&self, articles: &[KnowledgeArticle]) -> String {
+        let mut md = String::new();
+
+        // Header with branding
+        md.push_str(&self.generate_header());
+
+        // Get base index
+        let base_index = self.base_exporter.generate_knowledge_index(articles);
+        md.push_str(&base_index);
+
+        // Footer with branding
+        md.push_str(&self.generate_footer());
+
+        md
     }
 }
 

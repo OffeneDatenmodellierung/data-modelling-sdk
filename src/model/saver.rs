@@ -464,12 +464,12 @@ impl<B: StorageBackend> ModelSaver<B> {
         article: &KnowledgeArticle,
     ) -> Result<String, StorageError> {
         let sanitized_workspace = sanitize_filename(workspace_name);
-        // Extract the numeric part from "KB-0001" format
-        let number_str = article
-            .number
-            .strip_prefix("KB-")
-            .unwrap_or(&article.number)
-            .to_lowercase();
+        // Format number based on whether it's timestamp or sequential
+        let number_str = if article.is_timestamp_number() {
+            format!("{}", article.number)
+        } else {
+            format!("{:04}", article.number)
+        };
 
         let file_name = if let Some(ref domain) = article.domain {
             let sanitized_domain = sanitize_filename(domain);

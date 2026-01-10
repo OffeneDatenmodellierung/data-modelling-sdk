@@ -2524,4 +2524,210 @@ mod wasm {
 
         serde_json::to_string(&matches).map_err(serialization_error)
     }
+
+    // ==================== PDF Export Bindings ====================
+
+    /// Export a decision to PDF format with optional branding.
+    ///
+    /// # Arguments
+    ///
+    /// * `decision_json` - JSON string containing Decision
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_decision_to_pdf(
+        decision_json: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+        use crate::models::decision::Decision;
+
+        let decision: Decision =
+            serde_json::from_str(decision_json).map_err(deserialization_error)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter
+            .export_decision(&decision)
+            .map_err(export_error_to_js)?;
+
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    /// Export a knowledge article to PDF format with optional branding.
+    ///
+    /// # Arguments
+    ///
+    /// * `article_json` - JSON string containing KnowledgeArticle
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_knowledge_to_pdf(
+        article_json: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+        use crate::models::knowledge::KnowledgeArticle;
+
+        let article: KnowledgeArticle =
+            serde_json::from_str(article_json).map_err(deserialization_error)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter
+            .export_knowledge(&article)
+            .map_err(export_error_to_js)?;
+
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    /// Export raw markdown content to PDF format with optional branding.
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - Document title
+    /// * `content` - Markdown content
+    /// * `filename` - Output filename suggestion
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_markdown_to_pdf(
+        title: &str,
+        content: &str,
+        filename: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter
+            .export_markdown(title, content, filename)
+            .map_err(export_error_to_js)?;
+
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    // ==================== Branded Markdown Export Bindings ====================
+
+    /// Export a decision to branded Markdown format.
+    ///
+    /// # Arguments
+    ///
+    /// * `decision_json` - JSON string containing Decision
+    /// * `branding_json` - Optional JSON string containing MarkdownBrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// Branded Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_decision_to_branded_markdown(
+        decision_json: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::markdown::{BrandedMarkdownExporter, MarkdownBrandingConfig};
+        use crate::models::decision::Decision;
+
+        let decision: Decision =
+            serde_json::from_str(decision_json).map_err(deserialization_error)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: MarkdownBrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            BrandedMarkdownExporter::with_branding(branding)
+        } else {
+            BrandedMarkdownExporter::new()
+        };
+
+        exporter
+            .export_decision(&decision)
+            .map_err(export_error_to_js)
+    }
+
+    /// Export a knowledge article to branded Markdown format.
+    ///
+    /// # Arguments
+    ///
+    /// * `article_json` - JSON string containing KnowledgeArticle
+    /// * `branding_json` - Optional JSON string containing MarkdownBrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// Branded Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_knowledge_to_branded_markdown(
+        article_json: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::markdown::{BrandedMarkdownExporter, MarkdownBrandingConfig};
+        use crate::models::knowledge::KnowledgeArticle;
+
+        let article: KnowledgeArticle =
+            serde_json::from_str(article_json).map_err(deserialization_error)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: MarkdownBrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            BrandedMarkdownExporter::with_branding(branding)
+        } else {
+            BrandedMarkdownExporter::new()
+        };
+
+        exporter
+            .export_knowledge(&article)
+            .map_err(export_error_to_js)
+    }
+
+    /// Get default PDF branding configuration.
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing default BrandingConfig
+    #[wasm_bindgen]
+    pub fn get_default_pdf_branding() -> Result<String, JsValue> {
+        use crate::export::pdf::BrandingConfig;
+
+        let config = BrandingConfig::default();
+        serde_json::to_string(&config).map_err(serialization_error)
+    }
+
+    /// Get default Markdown branding configuration.
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing default MarkdownBrandingConfig
+    #[wasm_bindgen]
+    pub fn get_default_markdown_branding() -> Result<String, JsValue> {
+        use crate::export::markdown::MarkdownBrandingConfig;
+
+        let config = MarkdownBrandingConfig::default();
+        serde_json::to_string(&config).map_err(serialization_error)
+    }
 }

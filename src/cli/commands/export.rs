@@ -1,7 +1,11 @@
 //! Export command handlers
 
 use crate::cli::error::CliError;
-use crate::export::{AvroExporter, JSONSchemaExporter, ODCSExporter, ProtobufExporter};
+use crate::export::pdf::BrandingConfig;
+use crate::export::{
+    AvroExporter, BrandedMarkdownExporter, JSONSchemaExporter, MarkdownBrandingConfig,
+    MarkdownExporter, ODCSExporter, PdfExporter, ProtobufExporter,
+};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -14,6 +18,10 @@ pub enum ExportFormat {
     Protobuf,
     ProtobufDescriptor,
     Odps,
+    /// PDF export for decisions and knowledge articles
+    Pdf,
+    /// Branded Markdown export
+    BrandedMarkdown,
 }
 
 /// Arguments for export operations
@@ -25,6 +33,13 @@ pub struct ExportArgs {
     pub force: bool,
     pub protoc_path: Option<PathBuf>,
     pub protobuf_version: Option<String>, // "proto2" or "proto3" (default: proto3)
+    // Branding options for PDF and branded Markdown exports
+    pub logo_url: Option<String>,
+    pub header: Option<String>,
+    pub footer: Option<String>,
+    pub brand_color: Option<String>,
+    pub company_name: Option<String>,
+    pub include_toc: bool,
 }
 
 /// Load tables from ODCS YAML file(s)
@@ -363,4 +378,215 @@ pub fn handle_export_odps(_args: &ExportArgs) -> Result<(), CliError> {
 
         Ok(())
     }
+}
+
+/// Detect document type from file content
+fn detect_document_type(content: &str) -> Option<&'static str> {
+    if content.contains("status:") && content.contains("category:") && content.contains("context:")
+    {
+        Some("decision")
+    } else if content.contains("article_type:") && content.contains("summary:") {
+        Some("knowledge")
+    } else {
+        None
+    }
+}
+
+/// Handle PDF export command
+///
+/// Exports decision records (.madr.yaml) and knowledge articles (.kb.yaml) to PDF format
+/// with optional branding support.
+pub fn handle_export_pdf(args: &ExportArgs) -> Result<(), CliError> {
+    use crate::import::decision::DecisionImporter;
+    use crate::import::knowledge::KnowledgeImporter;
+
+    check_file_overwrite(&args.output, args.force)?;
+
+    // Read input file
+    let content = std::fs::read_to_string(&args.input)
+        .map_err(|e| CliError::FileReadError(args.input.clone(), e.to_string()))?;
+
+    // Build branding config from args
+    let branding = BrandingConfig {
+        logo_url: args.logo_url.clone(),
+        header: args.header.clone(),
+        footer: args.footer.clone(),
+        brand_color: args
+            .brand_color
+            .clone()
+            .unwrap_or_else(|| "#0066CC".to_string()),
+        company_name: args.company_name.clone(),
+        show_page_numbers: true,
+        show_timestamp: true,
+        ..Default::default()
+    };
+
+    let exporter = PdfExporter::with_branding(branding);
+
+    // Detect document type and export
+    let doc_type = detect_document_type(&content);
+
+    let pdf_result = match doc_type {
+        Some("decision") => {
+            let importer = DecisionImporter::new();
+            let decision = importer.import_without_validation(&content).map_err(|e| {
+                CliError::InvalidArgument(format!("Failed to parse decision: {}", e))
+            })?;
+            exporter.export_decision(&decision).map_err(|e| {
+                CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
+            })?
+        }
+        Some("knowledge") => {
+            let importer = KnowledgeImporter::new();
+            let article = importer.import_without_validation(&content).map_err(|e| {
+                CliError::InvalidArgument(format!("Failed to parse knowledge article: {}", e))
+            })?;
+            exporter.export_knowledge(&article).map_err(|e| {
+                CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
+            })?
+        }
+        _ => {
+            return Err(CliError::InvalidArgument(
+                "Input file must be a decision record (.madr.yaml) or knowledge article (.kb.yaml)"
+                    .to_string(),
+            ));
+        }
+    };
+
+    // Decode base64 and write PDF
+    let pdf_bytes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &pdf_result.pdf_base64,
+    )
+    .map_err(|e| CliError::InvalidArgument(format!("Failed to decode PDF: {}", e)))?;
+
+    std::fs::write(&args.output, pdf_bytes)
+        .map_err(|e| CliError::FileWriteError(args.output.clone(), e.to_string()))?;
+
+    println!(
+        "✅ Exported PDF ({} pages): {}",
+        pdf_result.page_count,
+        args.output.display()
+    );
+
+    Ok(())
+}
+
+/// Handle branded Markdown export command
+///
+/// Exports decision records and knowledge articles to Markdown with branding.
+pub fn handle_export_branded_markdown(args: &ExportArgs) -> Result<(), CliError> {
+    use crate::import::decision::DecisionImporter;
+    use crate::import::knowledge::KnowledgeImporter;
+
+    check_file_overwrite(&args.output, args.force)?;
+
+    // Read input file
+    let content = std::fs::read_to_string(&args.input)
+        .map_err(|e| CliError::FileReadError(args.input.clone(), e.to_string()))?;
+
+    // Build branding config from args
+    let branding = MarkdownBrandingConfig {
+        logo_url: args.logo_url.clone(),
+        header: args.header.clone(),
+        footer: args.footer.clone(),
+        brand_color: args
+            .brand_color
+            .clone()
+            .unwrap_or_else(|| "#0066CC".to_string()),
+        company_name: args.company_name.clone(),
+        include_toc: args.include_toc,
+        show_timestamp: true,
+        ..Default::default()
+    };
+
+    let exporter = BrandedMarkdownExporter::with_branding(branding);
+
+    // Detect document type and export
+    let doc_type = detect_document_type(&content);
+
+    let markdown = match doc_type {
+        Some("decision") => {
+            let importer = DecisionImporter::new();
+            let decision = importer.import_without_validation(&content).map_err(|e| {
+                CliError::InvalidArgument(format!("Failed to parse decision: {}", e))
+            })?;
+            exporter.export_decision(&decision).map_err(|e| {
+                CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
+            })?
+        }
+        Some("knowledge") => {
+            let importer = KnowledgeImporter::new();
+            let article = importer.import_without_validation(&content).map_err(|e| {
+                CliError::InvalidArgument(format!("Failed to parse knowledge article: {}", e))
+            })?;
+            exporter.export_knowledge(&article).map_err(|e| {
+                CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
+            })?
+        }
+        _ => {
+            return Err(CliError::InvalidArgument(
+                "Input file must be a decision record (.madr.yaml) or knowledge article (.kb.yaml)"
+                    .to_string(),
+            ));
+        }
+    };
+
+    write_export_output(&args.output, &markdown)?;
+
+    println!("✅ Exported branded Markdown: {}", args.output.display());
+
+    Ok(())
+}
+
+/// Handle Markdown export command (non-branded)
+///
+/// Exports decision records and knowledge articles to standard Markdown.
+pub fn handle_export_markdown(args: &ExportArgs) -> Result<(), CliError> {
+    use crate::import::decision::DecisionImporter;
+    use crate::import::knowledge::KnowledgeImporter;
+
+    check_file_overwrite(&args.output, args.force)?;
+
+    // Read input file
+    let content = std::fs::read_to_string(&args.input)
+        .map_err(|e| CliError::FileReadError(args.input.clone(), e.to_string()))?;
+
+    let exporter = MarkdownExporter::new();
+
+    // Detect document type and export
+    let doc_type = detect_document_type(&content);
+
+    let markdown = match doc_type {
+        Some("decision") => {
+            let importer = DecisionImporter::new();
+            let decision = importer.import_without_validation(&content).map_err(|e| {
+                CliError::InvalidArgument(format!("Failed to parse decision: {}", e))
+            })?;
+            exporter.export_decision(&decision).map_err(|e| {
+                CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
+            })?
+        }
+        Some("knowledge") => {
+            let importer = KnowledgeImporter::new();
+            let article = importer.import_without_validation(&content).map_err(|e| {
+                CliError::InvalidArgument(format!("Failed to parse knowledge article: {}", e))
+            })?;
+            exporter.export_knowledge(&article).map_err(|e| {
+                CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
+            })?
+        }
+        _ => {
+            return Err(CliError::InvalidArgument(
+                "Input file must be a decision record (.madr.yaml) or knowledge article (.kb.yaml)"
+                    .to_string(),
+            ));
+        }
+    };
+
+    write_export_output(&args.output, &markdown)?;
+
+    println!("✅ Exported Markdown: {}", args.output.display());
+
+    Ok(())
 }

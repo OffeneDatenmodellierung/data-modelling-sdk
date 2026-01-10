@@ -140,8 +140,13 @@ pub fn handle_knowledge_new(args: &KnowledgeNewArgs) -> Result<(), CliError> {
         .export(&article)
         .map_err(|e| CliError::IoError(format!("Failed to export article: {}", e)))?;
 
-    // Generate filename
-    let filename = format!("kb-{:04}.kb.yaml", number);
+    // Generate filename - use formatted number (handles both sequential and timestamp)
+    let number_str = if number >= 1000000000 {
+        format!("{}", number) // Timestamp format
+    } else {
+        format!("{:04}", number) // Sequential format
+    };
+    let filename = format!("kb-{}.kb.yaml", number_str);
     let file_path = if let Some(ref domain) = args.domain {
         args.workspace.join(format!(
             "{}_{}",
@@ -188,11 +193,19 @@ pub fn handle_knowledge_new(args: &KnowledgeNewArgs) -> Result<(), CliError> {
         fs::write(&md_path, &markdown)
             .map_err(|e| CliError::IoError(format!("Failed to write Markdown file: {}", e)))?;
 
-        println!("Created article KB-{:04}: {}", number, args.title);
+        println!(
+            "Created article {}: {}",
+            article.formatted_number(),
+            args.title
+        );
         println!("  YAML: {}", file_path.display());
         println!("  Markdown: {}", md_path.display());
     } else {
-        println!("Created article KB-{:04}: {}", number, args.title);
+        println!(
+            "Created article {}: {}",
+            article.formatted_number(),
+            args.title
+        );
         println!("  File: {}", file_path.display());
     }
 
@@ -224,7 +237,8 @@ pub fn handle_knowledge_list(args: &KnowledgeListArgs) -> Result<(), CliError> {
                 }
             }
             if let Some(ref author) = args.author {
-                if !a.author.to_lowercase().contains(&author.to_lowercase()) {
+                let authors_str = a.authors.join(", ").to_lowercase();
+                if !authors_str.contains(&author.to_lowercase()) {
                     return false;
                 }
             }
@@ -241,16 +255,16 @@ pub fn handle_knowledge_list(args: &KnowledgeListArgs) -> Result<(), CliError> {
             println!("{}", json);
         }
         "csv" => {
-            println!("number,title,type,status,domain,author");
+            println!("number,title,type,status,domain,authors");
             for a in &filtered {
                 println!(
                     "{},{},{},{},{},{}",
-                    a.number,
+                    a.formatted_number(),
                     escape_csv(&a.title),
                     a.article_type,
                     a.status,
                     a.domain.as_deref().unwrap_or(""),
-                    escape_csv(&a.author)
+                    escape_csv(&a.authors.join(", "))
                 );
             }
         }
@@ -271,8 +285,8 @@ pub fn handle_knowledge_list(args: &KnowledgeListArgs) -> Result<(), CliError> {
                         a.title.clone()
                     };
                     println!(
-                        "{:<10} {:<35} {:<15} {:<12} {:<15}",
-                        a.number,
+                        "{:<14} {:<35} {:<15} {:<12} {:<15}",
+                        a.formatted_number(),
                         title,
                         a.article_type,
                         a.status,
@@ -481,10 +495,12 @@ pub fn handle_knowledge_search(args: &KnowledgeSearchArgs) -> Result<(), CliErro
                     args.query
                 );
                 for a in &matches {
-                    println!("{}: {}", a.number, a.title);
+                    println!("{}: {}", a.formatted_number(), a.title);
                     println!(
-                        "  Type: {} | Status: {} | Author: {}",
-                        a.article_type, a.status, a.author
+                        "  Type: {} | Status: {} | Authors: {}",
+                        a.article_type,
+                        a.status,
+                        a.authors.join(", ")
                     );
                     // Show snippet of summary
                     let summary = if a.summary.len() > 80 {
@@ -509,13 +525,14 @@ fn parse_article_type(s: &str) -> Result<KnowledgeType, CliError> {
         "guide" => Ok(KnowledgeType::Guide),
         "standard" => Ok(KnowledgeType::Standard),
         "reference" => Ok(KnowledgeType::Reference),
-        "glossary" => Ok(KnowledgeType::Glossary),
         "howto" | "how-to" | "how_to" => Ok(KnowledgeType::HowTo),
         "troubleshooting" => Ok(KnowledgeType::Troubleshooting),
         "policy" => Ok(KnowledgeType::Policy),
         "template" => Ok(KnowledgeType::Template),
+        "concept" => Ok(KnowledgeType::Concept),
+        "runbook" => Ok(KnowledgeType::Runbook),
         _ => Err(CliError::InvalidArgument(format!(
-            "Unknown article type: {}. Valid types: guide, standard, reference, glossary, howto, troubleshooting, policy, template",
+            "Unknown article type: {}. Valid types: guide, standard, reference, howto, troubleshooting, policy, template, concept, runbook",
             s
         ))),
     }
@@ -524,18 +541,19 @@ fn parse_article_type(s: &str) -> Result<KnowledgeType, CliError> {
 fn parse_status(s: &str) -> Result<KnowledgeStatus, CliError> {
     match s.to_lowercase().as_str() {
         "draft" => Ok(KnowledgeStatus::Draft),
+        "review" => Ok(KnowledgeStatus::Review),
         "published" => Ok(KnowledgeStatus::Published),
         "archived" => Ok(KnowledgeStatus::Archived),
         "deprecated" => Ok(KnowledgeStatus::Deprecated),
         _ => Err(CliError::InvalidArgument(format!(
-            "Unknown status: {}. Valid statuses: draft, published, archived, deprecated",
+            "Unknown status: {}. Valid statuses: draft, review, published, archived, deprecated",
             s
         ))),
     }
 }
 
-fn parse_article_number(s: &str) -> Result<u32, CliError> {
-    // Handle "KB-0001", "KB-1", "0001", or "1"
+fn parse_article_number(s: &str) -> Result<u64, CliError> {
+    // Handle "KB-0001", "KB-1", "0001", "1", or timestamp format "2601101234"
     let num_str = s
         .to_uppercase()
         .strip_prefix("KB-")
@@ -543,7 +561,7 @@ fn parse_article_number(s: &str) -> Result<u32, CliError> {
         .unwrap_or_else(|| s.to_string());
 
     num_str
-        .parse::<u32>()
+        .parse::<u64>()
         .map_err(|_| CliError::InvalidArgument(format!("Invalid article number: {}", s)))
 }
 
@@ -580,21 +598,19 @@ fn load_all_articles(workspace: &Path) -> Result<Vec<KnowledgeArticle>, CliError
     Ok(articles)
 }
 
-fn find_article_by_number(workspace: &Path, number: u32) -> Result<KnowledgeArticle, CliError> {
+fn find_article_by_number(workspace: &Path, number: u64) -> Result<KnowledgeArticle, CliError> {
     let articles = load_all_articles(workspace)?;
-    let number_str = format!("KB-{:04}", number);
     articles
         .into_iter()
-        .find(|a| a.number == number_str)
-        .ok_or_else(|| CliError::NotFound(format!("Article KB-{:04} not found", number)))
+        .find(|a| a.number == number)
+        .ok_or_else(|| CliError::NotFound(format!("Article KB-{} not found", number)))
 }
 
 fn find_article_file_and_load(
     workspace: &Path,
-    number: u32,
+    number: u64,
 ) -> Result<(PathBuf, KnowledgeArticle), CliError> {
     let importer = KnowledgeImporter;
-    let number_str = format!("KB-{:04}", number);
 
     for entry in fs::read_dir(workspace)
         .map_err(|e| CliError::IoError(format!("Failed to read workspace: {}", e)))?
@@ -610,7 +626,7 @@ fn find_article_file_and_load(
                     })?;
 
                     if let Ok(article) = importer.import(&content) {
-                        if article.number == number_str {
+                        if article.number == number {
                             return Ok((path, article));
                         }
                     }
@@ -620,7 +636,7 @@ fn find_article_file_and_load(
     }
 
     Err(CliError::NotFound(format!(
-        "Article KB-{:04} not found",
+        "Article KB-{} not found",
         number
     )))
 }
