@@ -537,10 +537,11 @@ jobs:
           echo "package.json:"
           cat pkg/package.json
 
-      # Publish with provenance for supply chain security
-      # This creates a verifiable link between the npm package and this GitHub repo
-      # See: https://docs.npmjs.com/generating-provenance-statements
-      - name: Publish to npm (with provenance)
+      # Publish to npm registry
+      # Note: --provenance requires id-token:write permission and creates
+      # a verifiable link between the npm package and this GitHub repo.
+      # If provenance fails, remove the --provenance flag.
+      - name: Publish to npm
         run: |
           cd pkg
           npm publish --access public --provenance
