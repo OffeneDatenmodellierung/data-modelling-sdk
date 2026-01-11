@@ -387,6 +387,24 @@ fn detect_document_type(content: &str) -> Option<&'static str> {
         Some("decision")
     } else if content.contains("article_type:") && content.contains("summary:") {
         Some("knowledge")
+    } else if content.contains("kind: DataProduct") && content.contains("apiVersion:") {
+        Some("odps")
+    } else if content.contains("kind:")
+        && content.contains("apiVersion:")
+        && (content.contains("kind: AIModel")
+            || content.contains("kind: MLPipeline")
+            || content.contains("kind: Application")
+            || content.contains("kind: ETLPipeline")
+            || content.contains("kind: SourceSystem")
+            || content.contains("kind: DestinationSystem")
+            || content.contains("kind: DataPipeline")
+            || content.contains("kind: ETLProcess"))
+    {
+        Some("cads")
+    } else if content.contains("datasetName:")
+        || (content.contains("schema:") && content.contains("columns:"))
+    {
+        Some("odcs")
     } else {
         None
     }
@@ -445,9 +463,40 @@ pub fn handle_export_pdf(args: &ExportArgs) -> Result<(), CliError> {
                 CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
             })?
         }
+        Some("odcs") => {
+            let tables = load_tables_from_odcs(&args.input)?;
+            if tables.is_empty() {
+                return Err(CliError::InvalidArgument(
+                    "ODCS file contains no tables".to_string(),
+                ));
+            }
+            exporter.export_table(&tables[0]).map_err(|e| {
+                CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
+            })?
+        }
+        Some("odps") => {
+            use crate::import::ODPSImporter;
+            let importer = ODPSImporter::new();
+            let product = importer.import(&content).map_err(|e| {
+                CliError::InvalidArgument(format!("Failed to parse ODPS file: {}", e))
+            })?;
+            exporter.export_data_product(&product).map_err(|e| {
+                CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
+            })?
+        }
+        Some("cads") => {
+            use crate::import::CADSImporter;
+            let importer = CADSImporter::new();
+            let asset = importer.import(&content).map_err(|e| {
+                CliError::InvalidArgument(format!("Failed to parse CADS file: {}", e))
+            })?;
+            exporter.export_cads_asset(&asset).map_err(|e| {
+                CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
+            })?
+        }
         _ => {
             return Err(CliError::InvalidArgument(
-                "Input file must be a decision record (.madr.yaml) or knowledge article (.kb.yaml)"
+                "Input file must be a decision (.madr.yaml), knowledge article (.kb.yaml), ODCS (.odcs.yaml), ODPS (.odps.yaml), or CADS (.cads.yaml)"
                     .to_string(),
             ));
         }
@@ -541,7 +590,7 @@ pub fn handle_export_branded_markdown(args: &ExportArgs) -> Result<(), CliError>
 
 /// Handle Markdown export command (non-branded)
 ///
-/// Exports decision records and knowledge articles to standard Markdown.
+/// Exports decision records, knowledge articles, ODCS, ODPS, and CADS to standard Markdown.
 pub fn handle_export_markdown(args: &ExportArgs) -> Result<(), CliError> {
     use crate::import::decision::DecisionImporter;
     use crate::import::knowledge::KnowledgeImporter;
@@ -552,7 +601,8 @@ pub fn handle_export_markdown(args: &ExportArgs) -> Result<(), CliError> {
     let content = std::fs::read_to_string(&args.input)
         .map_err(|e| CliError::FileReadError(args.input.clone(), e.to_string()))?;
 
-    let exporter = MarkdownExporter::new();
+    let md_exporter = MarkdownExporter::new();
+    let pdf_exporter = PdfExporter::new();
 
     // Detect document type and export
     let doc_type = detect_document_type(&content);
@@ -563,7 +613,7 @@ pub fn handle_export_markdown(args: &ExportArgs) -> Result<(), CliError> {
             let decision = importer.import_without_validation(&content).map_err(|e| {
                 CliError::InvalidArgument(format!("Failed to parse decision: {}", e))
             })?;
-            exporter.export_decision(&decision).map_err(|e| {
+            md_exporter.export_decision(&decision).map_err(|e| {
                 CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
             })?
         }
@@ -572,13 +622,38 @@ pub fn handle_export_markdown(args: &ExportArgs) -> Result<(), CliError> {
             let article = importer.import_without_validation(&content).map_err(|e| {
                 CliError::InvalidArgument(format!("Failed to parse knowledge article: {}", e))
             })?;
-            exporter.export_knowledge(&article).map_err(|e| {
+            md_exporter.export_knowledge(&article).map_err(|e| {
                 CliError::ExportError(crate::export::ExportError::ExportError(e.to_string()))
             })?
         }
+        Some("odcs") => {
+            let tables = load_tables_from_odcs(&args.input)?;
+            if tables.is_empty() {
+                return Err(CliError::InvalidArgument(
+                    "ODCS file contains no tables".to_string(),
+                ));
+            }
+            pdf_exporter.table_to_markdown_public(&tables[0])
+        }
+        Some("odps") => {
+            use crate::import::ODPSImporter;
+            let importer = ODPSImporter::new();
+            let product = importer.import(&content).map_err(|e| {
+                CliError::InvalidArgument(format!("Failed to parse ODPS file: {}", e))
+            })?;
+            pdf_exporter.data_product_to_markdown_public(&product)
+        }
+        Some("cads") => {
+            use crate::import::CADSImporter;
+            let importer = CADSImporter::new();
+            let asset = importer.import(&content).map_err(|e| {
+                CliError::InvalidArgument(format!("Failed to parse CADS file: {}", e))
+            })?;
+            pdf_exporter.cads_asset_to_markdown_public(&asset)
+        }
         _ => {
             return Err(CliError::InvalidArgument(
-                "Input file must be a decision record (.madr.yaml) or knowledge article (.kb.yaml)"
+                "Input file must be a decision (.madr.yaml), knowledge article (.kb.yaml), ODCS (.odcs.yaml), ODPS (.odps.yaml), or CADS (.cads.yaml)"
                     .to_string(),
             ));
         }
