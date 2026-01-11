@@ -209,7 +209,7 @@ data-modelling-cli export protobuf-descriptor input.odcs.yaml output.pb --protoc
 
 ### Export to PDF
 
-Export decision records and knowledge articles to PDF format with optional branding.
+Export decision records, knowledge articles, ODCS data contracts, ODPS data products, and CADS compute assets to PDF format with optional branding.
 
 ```bash
 # Export decision to PDF
@@ -217,6 +217,15 @@ data-modelling-cli export pdf decisions/ADR-0001.madr.yaml output.pdf
 
 # Export knowledge article to PDF
 data-modelling-cli export pdf knowledge/KB-0001.kb.yaml output.pdf
+
+# Export ODCS data contract to PDF
+data-modelling-cli export pdf contracts/customer.odcs.yaml customer-contract.pdf
+
+# Export ODPS data product to PDF
+data-modelling-cli export pdf products/customer-360.odps.yaml customer-product.pdf
+
+# Export CADS compute asset to PDF
+data-modelling-cli export pdf assets/ml-pipeline.cads.yaml ml-pipeline.pdf
 
 # Export with branding options
 data-modelling-cli export pdf decisions/ADR-0001.madr.yaml output.pdf \
@@ -229,7 +238,7 @@ data-modelling-cli export pdf decisions/ADR-0001.madr.yaml output.pdf \
 
 ### Export to Markdown
 
-Export decision records and knowledge articles to Markdown format.
+Export decision records, knowledge articles, ODCS data contracts, ODPS data products, and CADS compute assets to Markdown format.
 
 ```bash
 # Export decision to Markdown
@@ -237,6 +246,15 @@ data-modelling-cli export markdown decisions/ADR-0001.madr.yaml output.md
 
 # Export knowledge article to Markdown
 data-modelling-cli export markdown knowledge/KB-0001.kb.yaml output.md
+
+# Export ODCS data contract to Markdown
+data-modelling-cli export markdown contracts/customer.odcs.yaml customer-contract.md
+
+# Export ODPS data product to Markdown
+data-modelling-cli export markdown products/customer-360.odps.yaml customer-product.md
+
+# Export CADS compute asset to Markdown
+data-modelling-cli export markdown assets/ml-pipeline.cads.yaml ml-pipeline.md
 ```
 
 ### Export to Branded Markdown
@@ -297,13 +315,14 @@ Formats:
   json-schema           - JSON Schema
   protobuf              - Protocol Buffer .proto
   protobuf-descriptor   - Binary Protobuf descriptor (.pb)
-  pdf                   - PDF document (for .madr.yaml and .kb.yaml files)
-  markdown              - Markdown document (for .madr.yaml and .kb.yaml files)
+  pdf                   - PDF document (supports all YAML file types)
+  markdown              - Markdown document (supports all YAML file types)
   branded-markdown      - Branded Markdown with logo, header, footer
 
 Input:
   <input>               ODCS YAML file (.odcs.yaml), ODPS file (.odps.yaml),
-                        decision record (.madr.yaml), or knowledge article (.kb.yaml)
+                        CADS file (.cads.yaml), decision record (.madr.yaml),
+                        or knowledge article (.kb.yaml)
 
 Options:
   --force                      Overwrite existing files without prompting

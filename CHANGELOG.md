@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-01-11
+
+### Added
+
+- **feat(wasm)**: ODCS/ODPS/CADS PDF and Markdown export bindings
+  - `export_table_to_pdf` - Export ODCS Data Contract to PDF with optional branding
+  - `export_odps_to_pdf` - Export ODPS Data Product to PDF with optional branding
+  - `export_cads_to_pdf` - Export CADS Asset to PDF with optional branding
+  - `export_table_to_markdown` - Export ODCS Data Contract to Markdown
+  - `export_odps_to_markdown` - Export ODPS Data Product to Markdown
+  - `export_cads_to_markdown` - Export CADS Asset to Markdown
+
+- **feat(cli)**: Extended PDF and Markdown export to support all contract types
+  - `data-modelling-cli export pdf` now supports .odcs.yaml, .odps.yaml, .cads.yaml files
+  - `data-modelling-cli export markdown` now supports .odcs.yaml, .odps.yaml, .cads.yaml files
+  - Auto-detection of document type based on content
+
+### Fixed
+
+- **fix(npm)**: Corrected npm organization name to `@offenedatenmodellierung`
+  - Fixed package name in release-cli.yml and release-wasm.yml workflows
+
 ## [1.14.0] - 2026-01-11
 
 ### Added

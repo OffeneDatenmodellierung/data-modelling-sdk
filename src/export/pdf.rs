@@ -266,6 +266,34 @@ impl PdfExporter {
         self.generate_pdf(&title, &markdown, &filename, "Compute Asset")
     }
 
+    // ============================================================================
+    // Public Markdown Generation Methods (for WASM bindings)
+    // ============================================================================
+
+    /// Convert an ODCS Table (Data Contract) to Markdown format.
+    ///
+    /// This is a public wrapper for use by WASM bindings.
+    pub fn table_to_markdown_public(&self, table: &crate::models::Table) -> String {
+        self.table_to_markdown(table)
+    }
+
+    /// Convert an ODPS Data Product to Markdown format.
+    ///
+    /// This is a public wrapper for use by WASM bindings.
+    pub fn data_product_to_markdown_public(
+        &self,
+        product: &crate::models::odps::ODPSDataProduct,
+    ) -> String {
+        self.data_product_to_markdown(product)
+    }
+
+    /// Convert a CADS Asset to Markdown format.
+    ///
+    /// This is a public wrapper for use by WASM bindings.
+    pub fn cads_asset_to_markdown_public(&self, asset: &crate::models::cads::CADSAsset) -> String {
+        self.cads_asset_to_markdown(asset)
+    }
+
     /// Convert Decision to properly formatted GFM markdown for PDF rendering
     /// Note: Logo and copyright footer are rendered as part of the PDF template,
     /// not in the markdown content.

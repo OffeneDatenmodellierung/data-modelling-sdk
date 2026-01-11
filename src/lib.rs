@@ -2730,4 +2730,174 @@ mod wasm {
         let config = MarkdownBrandingConfig::default();
         serde_json::to_string(&config).map_err(serialization_error)
     }
+
+    // ============================================================================
+    // ODCS/ODPS/CADS PDF Export Bindings
+    // ============================================================================
+
+    /// Export an ODCS Table (Data Contract) to PDF format with optional branding.
+    ///
+    /// # Arguments
+    ///
+    /// * `table_json` - JSON string containing Table
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_table_to_pdf(
+        table_json: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+        use crate::models::Table;
+
+        let table: Table = serde_json::from_str(table_json).map_err(deserialization_error)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter.export_table(&table).map_err(export_error_to_js)?;
+
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    /// Export an ODPS Data Product to PDF format with optional branding.
+    ///
+    /// # Arguments
+    ///
+    /// * `product_json` - JSON string containing ODPSDataProduct
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_odps_to_pdf(
+        product_json: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+        use crate::models::odps::ODPSDataProduct;
+
+        let product: ODPSDataProduct =
+            serde_json::from_str(product_json).map_err(deserialization_error)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter
+            .export_data_product(&product)
+            .map_err(export_error_to_js)?;
+
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    /// Export a CADS Asset to PDF format with optional branding.
+    ///
+    /// # Arguments
+    ///
+    /// * `asset_json` - JSON string containing CADSAsset
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_cads_to_pdf(
+        asset_json: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+        use crate::models::cads::CADSAsset;
+
+        let asset: CADSAsset = serde_json::from_str(asset_json).map_err(deserialization_error)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter
+            .export_cads_asset(&asset)
+            .map_err(export_error_to_js)?;
+
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    /// Export an ODCS Table (Data Contract) to Markdown format.
+    ///
+    /// # Arguments
+    ///
+    /// * `table_json` - JSON string containing Table
+    ///
+    /// # Returns
+    ///
+    /// Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_table_to_markdown(table_json: &str) -> Result<String, JsValue> {
+        use crate::export::pdf::PdfExporter;
+        use crate::models::Table;
+
+        let table: Table = serde_json::from_str(table_json).map_err(deserialization_error)?;
+
+        // Use PdfExporter's internal markdown generation
+        let exporter = PdfExporter::new();
+        Ok(exporter.table_to_markdown_public(&table))
+    }
+
+    /// Export an ODPS Data Product to Markdown format.
+    ///
+    /// # Arguments
+    ///
+    /// * `product_json` - JSON string containing ODPSDataProduct
+    ///
+    /// # Returns
+    ///
+    /// Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_odps_to_markdown(product_json: &str) -> Result<String, JsValue> {
+        use crate::export::pdf::PdfExporter;
+        use crate::models::odps::ODPSDataProduct;
+
+        let product: ODPSDataProduct =
+            serde_json::from_str(product_json).map_err(deserialization_error)?;
+
+        let exporter = PdfExporter::new();
+        Ok(exporter.data_product_to_markdown_public(&product))
+    }
+
+    /// Export a CADS Asset to Markdown format.
+    ///
+    /// # Arguments
+    ///
+    /// * `asset_json` - JSON string containing CADSAsset
+    ///
+    /// # Returns
+    ///
+    /// Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_cads_to_markdown(asset_json: &str) -> Result<String, JsValue> {
+        use crate::export::pdf::PdfExporter;
+        use crate::models::cads::CADSAsset;
+
+        let asset: CADSAsset = serde_json::from_str(asset_json).map_err(deserialization_error)?;
+
+        let exporter = PdfExporter::new();
+        Ok(exporter.cads_asset_to_markdown_public(&asset))
+    }
 }
