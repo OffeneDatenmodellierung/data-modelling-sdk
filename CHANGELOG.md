@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.0.0] - 2026-01-11
 
+### Fixed
+
+- **fix(pdf)**: Long URLs and field names now wrap correctly in PDF tables (#50)
+  - Text that exceeds column width is now broken with hyphen continuation markers
+  - Prevents text from overlapping into adjacent columns
+  - Works for URLs, long field names, and any text without natural break points
+
 ### Added
 
 - **feat(staging)**: Real-time progress reporting for ingestion operations

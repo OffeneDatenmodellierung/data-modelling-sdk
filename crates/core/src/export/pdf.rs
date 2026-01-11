@@ -2122,6 +2122,7 @@ impl PdfExporter {
                 '•' => result.push_str("\\267"), // Bullet
                 '–' => result.push_str("\\226"), // En dash
                 '—' => result.push_str("\\227"), // Em dash
+                '…' => result.push_str("\\205"), // Ellipsis
                 _ if c.is_ascii() => result.push(c),
                 // For non-ASCII characters, try to use closest ASCII equivalent
                 _ => result.push('?'),
@@ -2130,15 +2131,37 @@ impl PdfExporter {
         result
     }
 
-    /// Word wrap text to fit within max characters per line
+    /// Word wrap text to fit within max characters per line.
+    /// Long words (URLs, field names) that exceed max_chars are broken with a
+    /// continuation marker (→) to indicate the text continues on the next line.
     fn word_wrap(&self, text: &str, max_chars: usize) -> Vec<String> {
         let mut lines = Vec::new();
         let mut current_line = String::new();
+        // Ensure we have at least some space for the continuation marker
+        let effective_max = max_chars.max(5);
 
         for word in text.split_whitespace() {
-            if current_line.is_empty() {
+            // If the word itself is too long, break it with continuation markers
+            if word.len() > effective_max {
+                // First, flush any current content
+                if !current_line.is_empty() {
+                    lines.push(current_line);
+                    current_line = String::new();
+                }
+                // Break the long word into chunks
+                let broken = self.break_long_word(word, effective_max);
+                for (i, chunk) in broken.iter().enumerate() {
+                    if i < broken.len() - 1 {
+                        // Not the last chunk, push it as its own line
+                        lines.push(chunk.clone());
+                    } else {
+                        // Last chunk becomes start of current line
+                        current_line = chunk.clone();
+                    }
+                }
+            } else if current_line.is_empty() {
                 current_line = word.to_string();
-            } else if current_line.len() + 1 + word.len() <= max_chars {
+            } else if current_line.len() + 1 + word.len() <= effective_max {
                 current_line.push(' ');
                 current_line.push_str(word);
             } else {
@@ -2156,6 +2179,40 @@ impl PdfExporter {
         }
 
         lines
+    }
+
+    /// Break a long word into chunks that fit within max_chars.
+    /// Each chunk except the last ends with a hyphen (-) to indicate continuation.
+    fn break_long_word(&self, word: &str, max_chars: usize) -> Vec<String> {
+        let mut chunks = Vec::new();
+        let chars: Vec<char> = word.chars().collect();
+        // Use hyphen as continuation marker (ASCII-safe for PDF)
+        let continuation_marker = "-";
+        // Reserve 1 char for the continuation marker on non-final chunks
+        let chunk_size = (max_chars - 1).max(1);
+
+        let mut start = 0;
+        while start < chars.len() {
+            let remaining = chars.len() - start;
+            if remaining <= max_chars {
+                // Final chunk - no continuation marker needed
+                chunks.push(chars[start..].iter().collect());
+                break;
+            } else {
+                // Not final - add continuation marker
+                let end = start + chunk_size;
+                let mut chunk: String = chars[start..end].iter().collect();
+                chunk.push_str(continuation_marker);
+                chunks.push(chunk);
+                start = end;
+            }
+        }
+
+        if chunks.is_empty() {
+            chunks.push(word.to_string());
+        }
+
+        chunks
     }
 }
 
@@ -2411,6 +2468,88 @@ mod tests {
         let wrapped = exporter.word_wrap("Short", 100);
         assert_eq!(wrapped.len(), 1);
         assert_eq!(wrapped[0], "Short");
+    }
+
+    #[test]
+    fn test_word_wrap_long_url() {
+        let exporter = PdfExporter::new();
+
+        // Test that a long URL without spaces gets broken with continuation markers
+        let long_url = "https://example.com/very/long/path/to/some/resource/file.json";
+        let wrapped = exporter.word_wrap(long_url, 20);
+
+        // Should be broken into multiple lines
+        assert!(
+            wrapped.len() > 1,
+            "Long URL should be wrapped into multiple lines"
+        );
+
+        // All lines except the last should end with hyphen
+        for (i, line) in wrapped.iter().enumerate() {
+            if i < wrapped.len() - 1 {
+                assert!(
+                    line.ends_with('-'),
+                    "Non-final line should end with hyphen: {}",
+                    line
+                );
+            }
+        }
+
+        // When joined (removing hyphens), should reconstruct the original
+        let reconstructed: String = wrapped
+            .iter()
+            .map(|s| s.trim_end_matches('-'))
+            .collect::<Vec<_>>()
+            .join("");
+        assert_eq!(reconstructed, long_url);
+    }
+
+    #[test]
+    fn test_word_wrap_mixed_content() {
+        let exporter = PdfExporter::new();
+
+        // Test mixed content with short words and a long URL
+        let text = "See https://example.com/very/long/path/to/resource for details";
+        let wrapped = exporter.word_wrap(text, 25);
+
+        // Should have multiple lines
+        assert!(wrapped.len() > 1);
+
+        // The URL should be broken across lines
+        let all_text = wrapped.join(" ");
+        assert!(all_text.contains("https://"));
+    }
+
+    #[test]
+    fn test_break_long_word() {
+        let exporter = PdfExporter::new();
+
+        // Test breaking a long word
+        let long_word = "abcdefghijklmnopqrstuvwxyz";
+        let broken = exporter.break_long_word(long_word, 10);
+
+        // Should be broken into multiple chunks
+        assert!(broken.len() > 1);
+
+        // All chunks except the last should end with hyphen
+        for (i, chunk) in broken.iter().enumerate() {
+            if i < broken.len() - 1 {
+                assert!(
+                    chunk.ends_with('-'),
+                    "Chunk should end with hyphen: {}",
+                    chunk
+                );
+                assert!(chunk.len() <= 10, "Chunk should fit within max_chars");
+            }
+        }
+
+        // Reconstruct and verify
+        let reconstructed: String = broken
+            .iter()
+            .map(|s| s.trim_end_matches('-'))
+            .collect::<Vec<_>>()
+            .join("");
+        assert_eq!(reconstructed, long_word);
     }
 
     #[test]
