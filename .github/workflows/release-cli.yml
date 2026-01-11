@@ -509,8 +509,8 @@ jobs:
     name: Publish to npm
     needs: [build-wasm, create-release]
     runs-on: ubuntu-latest
-    # Only publish to npm on tag releases (not dev builds)
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Publish to npm on tag releases OR when called from publish.yml with a version
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
     permissions:
       contents: read
       id-token: write # Required for OIDC authentication with npm (provenance)
