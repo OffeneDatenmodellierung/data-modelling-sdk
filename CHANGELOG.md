@@ -128,6 +128,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated structs: `Relationship`, `ForeignKeyDetails`, `ETLJobMetadata`, `VisualMetadata`, `Column`, `ForeignKey`, `PropertyRelationship`, `LogicalTypeOptions`, `AuthoritativeDefinition`, `Workspace`, `AssetReference`, `DomainReference`, `SystemReference`, `Table`, `SlaProperty`, `ContactDetails`, `CADSAsset`, `CADSDescription`, `CADSPricing`, `CADSRisk`, `CADSValidationProfile`, `CADSValidationProfileAppliesTo`, `KnowledgeArticle`, `KnowledgeIndex`, `KnowledgeIndexEntry`, `RelatedArticle`, `Decision`, `DecisionIndex`, `AssetLink`, `ComplianceAssessment`
   - Enables UI flexibility when passing JSON with either naming convention
 
+## [1.14.3] - 2026-01-11
+
+### Added
+
+- **feat(serde)**: Dual-case JSON field name support for WASM deserialization
+  - All struct fields with `#[serde(rename_all = "camelCase")]` now accept both camelCase and snake_case during deserialization
+  - Added `#[serde(alias = "snake_case")]` attributes to all multi-word field names
+  - Serialization output remains camelCase for consistency
+  - Updated structs: `Relationship`, `ForeignKeyDetails`, `ETLJobMetadata`, `VisualMetadata`, `Column`, `ForeignKey`, `PropertyRelationship`, `LogicalTypeOptions`, `AuthoritativeDefinition`, `Workspace`, `AssetReference`, `DomainReference`, `SystemReference`, `Table`, `SlaProperty`, `ContactDetails`, `CADSAsset`, `CADSDescription`, `CADSPricing`, `CADSRisk`, `CADSValidationProfile`, `CADSValidationProfileAppliesTo`, `KnowledgeArticle`, `KnowledgeIndex`, `KnowledgeIndexEntry`, `RelatedArticle`, `Decision`, `DecisionIndex`, `AssetLink`, `ComplianceAssessment`
+  - Enables UI flexibility when passing JSON with either naming convention
+
 ## [1.14.2] - 2026-01-11
 
 ### Added
