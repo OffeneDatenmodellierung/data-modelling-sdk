@@ -56,7 +56,7 @@ To manually trigger a CLI release:
 
 ### Download Pre-built Binaries
 
-Visit the [Releases page](https://github.com/pixie79/data-modelling-sdk/releases) to download pre-built binaries for your platform.
+Visit the [Releases page](https://github.com/OffeneDatenmodellierung/data-modelling-sdk/releases) to download pre-built binaries for your platform.
 
 ## CI Integration
 

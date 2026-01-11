@@ -4,7 +4,7 @@
 
 The Data Modelling SDK is a Rust library that provides unified interfaces for data modeling operations across multiple platforms (native apps, WASM/web apps, and API backends). It enables importing from various formats (SQL, ODCS, JSON Schema, AVRO, Protobuf, CADS, ODPS, BPMN, DMN, OpenAPI), exporting to multiple formats, model validation, and storage abstraction for different environments.
 
-**Repository**: https://github.com/pixie79/data-modelling-sdk
+**Repository**: https://github.com/OffeneDatenmodellierung/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
 **Version**: 1.14.0

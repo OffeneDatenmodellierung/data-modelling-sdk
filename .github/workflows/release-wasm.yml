@@ -60,7 +60,8 @@ jobs:
 
       - name: Build WASM
         run: |
-          wasm-pack build --target web --out-dir pkg --features wasm,openapi,odps-validation
+          cd crates/wasm
+          wasm-pack build --target web --out-dir ../../pkg --features openapi,odps-validation
 
       - name: Set version
         id: version

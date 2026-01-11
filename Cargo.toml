@@ -1,160 +1,51 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/odm", "crates/wasm"]
+
+# Root package for backward compatibility - re-exports data-modelling-core
 [package]
 name = "data-modelling-sdk"
-version = "1.14.2"
+version = "1.14.3"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"
 description = "Shared SDK for model operations across platforms (API, WASM, Native)"
-repository = "https://github.com/pixie79/data-modelling-sdk"
+repository = "https://github.com/OffeneDatenmodellierung/data-modelling-sdk"
 
 [lib]
 name = "data_modelling_sdk"
-crate-type = ["rlib", "cdylib"]
+crate-type = ["rlib"]
 
 [dependencies]
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml = "0.9"
-
-# Error handling
-anyhow = "1.0"
-thiserror = "2.0"
-
-# Async support
-async-trait = "0.1"
-tokio = { version = "1", features = ["fs", "rt-multi-thread"], optional = true }
-
-# UUID - v4 (random) and v5 (deterministic) support
-uuid = { version = "1.0", features = ["v4", "v5", "serde"] }
-
-# Time
-chrono = { version = "0.4", features = ["serde"] }
-
-# HTTP client (for API backend)
-reqwest = { version = "0.12", features = ["json", "native-tls", "cookies", "blocking"], default-features = false, optional = true }
-urlencoding = { version = "2.1", optional = true }
-
-# SQL parsing
-sqlparser = "0.60"
-regex = "1"
-once_cell = "1.19"
-datafusion = { version = "45", default-features = false, features = [], optional = true }
-
-# Graph operations (for validation)
-petgraph = "0.6"
-
-# YAML processing
-yaml-rust = "0.4"
-
-# XML processing (for BPMN/DMN)
-quick-xml = { version = "0.36", features = ["serialize"], optional = true }
-# Note: XSD validation will be implemented using quick-xml with manual schema validation
-# or external validation tools. No dedicated XSD crate available at this time.
-
-# Logging
-tracing = "0.1"
-
-# Base64 encoding (for PNG export)
-base64 = "0.22"
-
-# Image processing (for PNG export)
-image = { version = "0.24", optional = true }
-imageproc = { version = "0.23", optional = true }
-
-# Git operations (optional, feature-gated)
-git2 = { version = "0.19", optional = true }
-
-# CLI support (optional, feature-gated)
-clap = { version = "4.5", features = ["derive"], optional = true }
-zip = { version = "0.6", optional = true }
-
-# Database backends (optional, feature-gated)
-duckdb = { version = "1.4", optional = true, features = ["bundled"] }
-tokio-postgres = { version = "0.7", optional = true }
-deadpool-postgres = { version = "0.14", optional = true }
-
-# Configuration file parsing
-toml = { version = "0.8", optional = true }
-
-# Hashing for change detection
-sha2 = { version = "0.10", optional = true }
-
-# WASM support (optional, feature-gated)
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = { version = "0.2", optional = true }
-wasm-bindgen-futures = { version = "0.4", optional = true }
-web-sys = { version = "0.3", optional = true, features = ["IdbDatabase", "IdbFactory", "IdbObjectStore", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbOpenDbRequest", "IdbVersionChangeEvent", "Window", "Storage", "console"] }
-js-sys = { version = "0.3", optional = true }
-# Enable wasm_js feature for getrandom 0.3.4 (required for WASM targets)
-# The getrandom_backend="wasm_js" cfg flag is set in .cargo/config.toml
-getrandom = { version = "0.3", features = ["wasm_js"] }
-# Override reqwest for WASM targets (used by jsonschema)
-# Note: jsonschema uses reqwest::blocking which doesn't work in WASM
-# We need to ensure jsonschema doesn't try to use HTTP resolution in WASM
-reqwest = { version = "0.12", features = ["json"], default-features = false, optional = true }
-# UUID with js feature for WASM (must override main dependency for WASM target)
-uuid = { version = "1.0", features = ["v4", "v5", "serde", "js"] }
-# petgraph is available for WASM (tracing is already in main dependencies)
-petgraph = "0.6"
-
-# Models are now defined in the SDK itself - no dependency on API
-# The API will convert between SDK models and API models as needed
+# Re-export core library
+data-modelling-core = { path = "crates/core" }
 
 [features]
 default = ["api-backend"]
-api-backend = ["reqwest", "urlencoding"]
-native-fs = ["tokio"]  # Enable tokio for native file system operations (required for FileSystemStorageBackend)
-wasm = ["wasm-bindgen", "wasm-bindgen-futures", "web-sys", "js-sys"]
-png-export = ["image", "imageproc"]
-databricks-dialect = ["datafusion"]  # Enable datafusion for Databricks SQL dialect support
-git = ["git2"]  # Enable Git operations (for both API and native app)
-schema-validation = ["jsonschema"]  # Enable JSON Schema validation for ODCS/ODCL schemas
-odps-validation = ["schema-validation"]  # Enable ODPS schema validation (depends on schema-validation)
-bpmn = ["quick-xml"]  # Enable BPMN 2.0 import/export support
-dmn = ["quick-xml"]  # Enable DMN 1.3 import/export support
-openapi = []  # Enable OpenAPI 3.1.1 import/export support (uses existing jsonschema)
-cli = ["clap", "zip", "api-backend", "toml", "sha2"]  # Enable CLI binary support (requires api-backend for HTTP reference resolution)
-
-# Database backend features
-database = ["toml", "sha2"]  # Base database support (config + sync)
-duckdb-backend = ["database", "duckdb", "native-fs"]  # DuckDB embedded database
-postgres-backend = ["database", "tokio-postgres", "deadpool-postgres", "native-fs"]  # PostgreSQL database
-
-# Full CLI with database support (recommended for releases)
-cli-full = ["cli", "duckdb-backend"]
-
-# jsonschema for all targets - disable default features to avoid reqwest dependency
-[dependencies.jsonschema]
-version = "0.38.1"
-optional = true
-default-features = false
-
-# jsonschema for WASM targets (same configuration - no HTTP resolution)
-[target.'cfg(target_arch = "wasm32")'.dependencies.jsonschema]
-version = "0.38.1"
-optional = true
-default-features = false
-# Explicitly disable resolve-http and resolve-file features for WASM
-# This prevents reqwest from being pulled in
-
-[[example]]
-name = "test_sql"
-path = "examples/test_sql.rs"
-
-[[bin]]
-name = "data-modelling-cli"
-path = "src/cli/main.rs"
-required-features = ["cli"]
-
-[[bin]]
-name = "test-odps"
-path = "src/bin/test-odps.rs"
-required-features = ["odps-validation", "cli"]
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("odps-validation", "cli", "schema-validation", "database", "duckdb-backend", "postgres-backend", "cli-full"))'] }
+api-backend = ["data-modelling-core/api-backend"]
+native-fs = ["data-modelling-core/native-fs"]
+png-export = ["data-modelling-core/png-export"]
+databricks-dialect = ["data-modelling-core/databricks-dialect"]
+git = ["data-modelling-core/git"]
+schema-validation = ["data-modelling-core/schema-validation"]
+odps-validation = ["data-modelling-core/odps-validation"]
+bpmn = ["data-modelling-core/bpmn"]
+dmn = ["data-modelling-core/dmn"]
+openapi = ["data-modelling-core/openapi"]
+database = ["data-modelling-core/database"]
+duckdb-backend = ["data-modelling-core/duckdb-backend"]
+postgres-backend = ["data-modelling-core/postgres-backend"]
+staging = ["data-modelling-core/staging"]
+staging-postgres = ["data-modelling-core/staging-postgres"]
+inference = ["data-modelling-core/inference"]
 
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("odps-validation", "cli", "schema-validation", "database", "duckdb-backend", "postgres-backend", "cli-full", "staging", "staging-postgres", "s3", "databricks", "inference", "wasm"))'] }
+
+[[example]]
+name = "test_sql"
+path = "examples/test_sql.rs"

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **refactor(workspace)**: Restructured monolithic crate into Cargo workspace with three sub-crates
+  - `data-modelling-core` - Core SDK library with all business logic
+  - `odm` - CLI binary (renamed from `data-modelling-cli`)
+  - `data-modelling-wasm` - WASM bindings for browser applications
+  - Root `data-modelling-sdk` crate remains for backward compatibility via re-exports
+  - Uses Cargo workspace with `resolver = "2"` for proper feature unification
+  - Added `wasm` feature to core crate for browser storage backend dependencies
+  - Updated all CI/CD workflows for workspace structure
+
+## [1.14.3] - 2026-01-11
+
+### Added
+
+- **feat(serde)**: Dual-case JSON field name support for WASM deserialization
+  - All struct fields with `#[serde(rename_all = "camelCase")]` now accept both camelCase and snake_case during deserialization
+  - Added `#[serde(alias = "snake_case")]` attributes to all multi-word field names
+  - Serialization output remains camelCase for consistency
+  - Updated structs: `Relationship`, `ForeignKeyDetails`, `ETLJobMetadata`, `VisualMetadata`, `Column`, `ForeignKey`, `PropertyRelationship`, `LogicalTypeOptions`, `AuthoritativeDefinition`, `Workspace`, `AssetReference`, `DomainReference`, `SystemReference`, `Table`, `SlaProperty`, `ContactDetails`, `CADSAsset`, `CADSDescription`, `CADSPricing`, `CADSRisk`, `CADSValidationProfile`, `CADSValidationProfileAppliesTo`, `KnowledgeArticle`, `KnowledgeIndex`, `KnowledgeIndexEntry`, `RelatedArticle`, `Decision`, `DecisionIndex`, `AssetLink`, `ComplianceAssessment`
+  - Enables UI flexibility when passing JSON with either naming convention
+
 ## [1.14.2] - 2026-01-11
 
 ### Added
