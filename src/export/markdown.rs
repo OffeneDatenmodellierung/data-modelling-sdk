@@ -30,6 +30,7 @@ impl MarkdownExporter {
 
         // Title with status badge
         let status_badge = match decision.status {
+            DecisionStatus::Draft => "⚪ Draft",
             DecisionStatus::Proposed => "🟡 Proposed",
             DecisionStatus::Accepted => "🟢 Accepted",
             DecisionStatus::Deprecated => "🔴 Deprecated",
@@ -69,35 +70,27 @@ impl MarkdownExporter {
         }
         md.push('\n');
 
-        // RACI Matrix section (if present)
-        if let Some(raci) = &decision.raci
-            && !raci.is_empty()
-        {
-            md.push_str("## RACI Matrix\n\n");
+        // Consulted/Informed section (if present)
+        if !decision.consulted.is_empty() || !decision.informed.is_empty() {
+            md.push_str("## Stakeholders\n\n");
             md.push_str("| Role | Participants |\n");
             md.push_str("|------|-------------|\n");
-            if !raci.responsible.is_empty() {
+            if !decision.deciders.is_empty() {
                 md.push_str(&format!(
-                    "| **Responsible** | {} |\n",
-                    raci.responsible.join(", ")
+                    "| **Deciders** | {} |\n",
+                    decision.deciders.join(", ")
                 ));
             }
-            if !raci.accountable.is_empty() {
-                md.push_str(&format!(
-                    "| **Accountable** | {} |\n",
-                    raci.accountable.join(", ")
-                ));
-            }
-            if !raci.consulted.is_empty() {
+            if !decision.consulted.is_empty() {
                 md.push_str(&format!(
                     "| **Consulted** | {} |\n",
-                    raci.consulted.join(", ")
+                    decision.consulted.join(", ")
                 ));
             }
-            if !raci.informed.is_empty() {
+            if !decision.informed.is_empty() {
                 md.push_str(&format!(
                     "| **Informed** | {} |\n",
-                    raci.informed.join(", ")
+                    decision.informed.join(", ")
                 ));
             }
             md.push('\n');
@@ -269,6 +262,8 @@ impl MarkdownExporter {
             KnowledgeType::Template => "📄 Template",
             KnowledgeType::Concept => "💡 Concept",
             KnowledgeType::Runbook => "📓 Runbook",
+            KnowledgeType::Tutorial => "🎓 Tutorial",
+            KnowledgeType::Glossary => "📝 Glossary",
         };
 
         let status_badge = match article.status {
@@ -556,6 +551,7 @@ impl MarkdownExporter {
 
         for decision in decisions {
             let status_icon = match decision.status {
+                DecisionStatus::Draft => "⚪",
                 DecisionStatus::Proposed => "🟡",
                 DecisionStatus::Accepted => "🟢",
                 DecisionStatus::Deprecated => "🔴",
@@ -619,6 +615,8 @@ impl MarkdownExporter {
                     KnowledgeType::Template => "📄",
                     KnowledgeType::Concept => "💡",
                     KnowledgeType::Runbook => "📓",
+                    KnowledgeType::Tutorial => "🎓",
+                    KnowledgeType::Glossary => "📝",
                 };
                 let status_icon = match article.status {
                     KnowledgeStatus::Draft => "🟡",

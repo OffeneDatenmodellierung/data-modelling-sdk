@@ -4,7 +4,7 @@
   "title": "Workspace Schema",
   "description": "Schema for a Workspace entity in the data modelling application. Workspaces are top-level containers that organize domains, systems, their associated assets, and relationships. All files use a flat naming convention: {workspace}_{domain}_{system}_{resource}.xxx.yaml",
   "type": "object",
-  "required": ["id", "name", "owner_id", "created_at", "last_modified_at"],
+  "required": ["id", "name", "ownerId", "createdAt", "lastModifiedAt"],
   "properties": {
     "id": {
       "type": "string",
@@ -17,17 +17,17 @@
       "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
       "description": "Workspace name (used in file naming, must be valid for filenames)"
     },
-    "owner_id": {
+    "ownerId": {
       "type": "string",
       "format": "uuid",
       "description": "Owner/creator user identifier"
     },
-    "created_at": {
+    "createdAt": {
       "type": "string",
       "format": "date-time",
       "description": "ISO 8601 timestamp of creation"
     },
-    "last_modified_at": {
+    "lastModifiedAt": {
       "type": "string",
       "format": "date-time",
       "description": "ISO 8601 timestamp of last modification"
@@ -82,7 +82,7 @@
             "$ref": "#/definitions/SystemReference"
           }
         },
-        "view_positions": {
+        "viewPositions": {
           "type": "object",
           "description": "Per-view node positions for canvas rendering. Keys are view types (operational, analytical, process, systems), values are objects mapping entity IDs to x/y coordinates.",
           "additionalProperties": {
@@ -114,7 +114,7 @@
           "type": "string",
           "description": "Optional description of the system"
         },
-        "table_ids": {
+        "tableIds": {
           "type": "array",
           "description": "Optional array of table UUIDs that belong to this system. When present, provides explicit table-to-system mapping without requiring parsing of individual ODCS files.",
           "items": {
@@ -122,7 +122,7 @@
             "format": "uuid"
           }
         },
-        "asset_ids": {
+        "assetIds": {
           "type": "array",
           "description": "Optional array of compute asset (CADS) UUIDs that belong to this system. When present, provides explicit asset-to-system mapping.",
           "items": {
@@ -135,7 +135,7 @@
     },
     "AssetReference": {
       "type": "object",
-      "required": ["id", "name", "domain", "asset_type"],
+      "required": ["id", "name", "domain", "assetType"],
       "properties": {
         "id": {
           "type": "string",
@@ -155,12 +155,12 @@
           "type": "string",
           "description": "Optional system name (if asset is within a system)"
         },
-        "asset_type": {
+        "assetType": {
           "type": "string",
           "enum": ["odcs", "odps", "cads", "bpmn", "dmn", "openapi"],
           "description": "Type of asset"
         },
-        "file_path": {
+        "filePath": {
           "type": "string",
           "description": "File path relative to workspace (generated from naming convention)"
         }
@@ -169,40 +169,67 @@
     },
     "Relationship": {
       "type": "object",
-      "required": ["id", "source_table_id", "target_table_id"],
+      "required": [
+        "id",
+        "sourceTableId",
+        "targetTableId",
+        "createdAt",
+        "updatedAt"
+      ],
       "properties": {
         "id": {
           "type": "string",
           "format": "uuid",
           "description": "Unique identifier for the relationship"
         },
-        "source_table_id": {
+        "sourceTableId": {
           "type": "string",
           "format": "uuid",
           "description": "ID of the source table/asset"
         },
-        "target_table_id": {
+        "targetTableId": {
           "type": "string",
           "format": "uuid",
           "description": "ID of the target table/asset"
         },
         "cardinality": {
           "type": "string",
-          "enum": ["one_to_one", "one_to_many", "many_to_many"],
-          "description": "Relationship cardinality"
+          "enum": ["oneToOne", "oneToMany", "manyToMany"],
+          "description": "Legacy relationship cardinality (use sourceCardinality/targetCardinality for crow's feet notation)"
         },
-        "source_optional": {
+        "sourceOptional": {
           "type": "boolean",
-          "description": "Whether the source side is optional"
+          "description": "Whether the source side is optional (legacy field)"
         },
-        "target_optional": {
+        "targetOptional": {
           "type": "boolean",
-          "description": "Whether the target side is optional"
+          "description": "Whether the target side is optional (legacy field)"
         },
-        "relationship_type": {
+        "sourceCardinality": {
           "type": "string",
-          "enum": ["foreign_key", "data_flow", "dependency", "etl"],
+          "enum": ["zeroOrOne", "exactlyOne", "zeroOrMany", "oneOrMany"],
+          "description": "Crow's feet cardinality at the source end"
+        },
+        "targetCardinality": {
+          "type": "string",
+          "enum": ["zeroOrOne", "exactlyOne", "zeroOrMany", "oneOrMany"],
+          "description": "Crow's feet cardinality at the target end"
+        },
+        "flowDirection": {
+          "type": "string",
+          "enum": ["sourceToTarget", "targetToSource", "bidirectional"],
+          "description": "Direction of data flow in the relationship"
+        },
+        "relationshipType": {
+          "type": "string",
+          "enum": ["foreignKey", "dataFlow", "dependency", "etl"],
           "description": "Type of relationship"
+        },
+        "foreignKeyDetails": {
+          "$ref": "#/definitions/ForeignKeyDetails"
+        },
+        "etlJobMetadata": {
+          "$ref": "#/definitions/ETLJobMetadata"
         },
         "notes": {
           "type": "string",
@@ -212,12 +239,43 @@
           "type": "string",
           "description": "Owner information for the relationship"
         },
+        "sla": {
+          "type": "array",
+          "description": "SLA (Service Level Agreement) information",
+          "items": {
+            "$ref": "#/definitions/SlaProperty"
+          }
+        },
+        "contactDetails": {
+          "$ref": "#/definitions/ContactDetails"
+        },
+        "infrastructureType": {
+          "type": "string",
+          "enum": [
+            "kafka",
+            "airflow",
+            "spark",
+            "databricks",
+            "snowflake",
+            "fivetran",
+            "dbt",
+            "custom"
+          ],
+          "description": "Infrastructure type for data flow relationships"
+        },
+        "visualMetadata": {
+          "$ref": "#/definitions/VisualMetadata"
+        },
+        "drawioEdgeId": {
+          "type": "string",
+          "description": "Draw.io edge ID for diagram integration"
+        },
         "color": {
           "type": "string",
           "description": "Color for the relationship line in the UI (hex color code or named color)",
           "pattern": "^(#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3}|[a-zA-Z]+)$"
         },
-        "source_handle": {
+        "sourceHandle": {
           "type": "string",
           "description": "Edge attachment point on the source node",
           "enum": [
@@ -235,7 +293,7 @@
             "left-top"
           ]
         },
-        "target_handle": {
+        "targetHandle": {
           "type": "string",
           "description": "Edge attachment point on the target node",
           "enum": [
@@ -252,6 +310,16 @@
             "left-center",
             "left-top"
           ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of last update"
         }
       },
       "additionalProperties": true
@@ -271,15 +339,159 @@
         }
       },
       "additionalProperties": false
+    },
+    "ForeignKeyDetails": {
+      "type": "object",
+      "description": "Foreign key column mapping details",
+      "required": ["sourceColumn", "targetColumn"],
+      "properties": {
+        "sourceColumn": {
+          "type": "string",
+          "description": "Column name in the source table"
+        },
+        "targetColumn": {
+          "type": "string",
+          "description": "Column name in the target table"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ETLJobMetadata": {
+      "type": "object",
+      "description": "ETL job metadata for data flow relationships",
+      "required": ["jobName"],
+      "properties": {
+        "jobName": {
+          "type": "string",
+          "description": "Name of the ETL job that creates this relationship"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional notes about the ETL job"
+        },
+        "frequency": {
+          "type": "string",
+          "description": "Job execution frequency (e.g., 'daily', 'hourly')"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SlaProperty": {
+      "type": "object",
+      "description": "SLA (Service Level Agreement) property",
+      "required": ["property", "value", "unit"],
+      "properties": {
+        "property": {
+          "type": "string",
+          "description": "Name of the SLA property (e.g., 'latency', 'availability')"
+        },
+        "value": {
+          "description": "Value of the SLA property"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement (e.g., 'hours', 'percent')"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the SLA property"
+        },
+        "element": {
+          "type": "string",
+          "description": "Element this SLA applies to"
+        },
+        "driver": {
+          "type": "string",
+          "description": "Driver or reason for the SLA"
+        },
+        "scheduler": {
+          "type": "string",
+          "description": "Scheduler for SLA enforcement"
+        },
+        "schedule": {
+          "type": "string",
+          "description": "Schedule for SLA checks"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ContactDetails": {
+      "type": "object",
+      "description": "Contact information for responsible parties",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Contact email address"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number"
+        },
+        "name": {
+          "type": "string",
+          "description": "Contact name"
+        },
+        "role": {
+          "type": "string",
+          "description": "Contact role"
+        },
+        "other": {
+          "type": "string",
+          "description": "Other contact information"
+        }
+      },
+      "additionalProperties": false
+    },
+    "VisualMetadata": {
+      "type": "object",
+      "description": "Visual metadata for relationship rendering on canvas",
+      "properties": {
+        "sourceConnectionPoint": {
+          "type": "string",
+          "description": "Connection point identifier on source table"
+        },
+        "targetConnectionPoint": {
+          "type": "string",
+          "description": "Connection point identifier on target table"
+        },
+        "routingWaypoints": {
+          "type": "array",
+          "description": "Waypoints for routing the relationship line",
+          "items": {
+            "$ref": "#/definitions/ConnectionPoint"
+          }
+        },
+        "labelPosition": {
+          "$ref": "#/definitions/ConnectionPoint"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectionPoint": {
+      "type": "object",
+      "description": "X/Y coordinates for connection point or waypoint",
+      "required": ["x", "y"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X coordinate"
+        },
+        "y": {
+          "type": "number",
+          "description": "Y coordinate"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "examples": [
     {
       "id": "123e4567-e89b-12d3-a456-426614174000",
       "name": "enterprise",
-      "owner_id": "987fcdeb-51a2-43e1-b123-456789abcdef",
-      "created_at": "2025-01-01T09:00:00Z",
-      "last_modified_at": "2025-01-05T16:30:00Z",
+      "ownerId": "987fcdeb-51a2-43e1-b123-456789abcdef",
+      "createdAt": "2025-01-01T09:00:00Z",
+      "lastModifiedAt": "2025-01-05T16:30:00Z",
       "domains": [
         {
           "id": "550e8400-e29b-41d4-a716-446655440000",
@@ -310,40 +522,44 @@
           "name": "orders",
           "domain": "sales",
           "system": "kafka",
-          "asset_type": "odcs",
-          "file_path": "enterprise_sales_kafka_orders.odcs.yaml"
+          "assetType": "odcs",
+          "filePath": "enterprise_sales_kafka_orders.odcs.yaml"
         },
         {
           "id": "aa0e8400-e29b-41d4-a716-446655440005",
           "name": "customers",
           "domain": "sales",
           "system": "postgres",
-          "asset_type": "odcs",
-          "file_path": "enterprise_sales_postgres_customers.odcs.yaml"
+          "assetType": "odcs",
+          "filePath": "enterprise_sales_postgres_customers.odcs.yaml"
         },
         {
           "id": "bb0e8400-e29b-41d4-a716-446655440006",
           "name": "accounts",
           "domain": "finance",
-          "asset_type": "odcs",
-          "file_path": "enterprise_finance_accounts.odcs.yaml"
+          "assetType": "odcs",
+          "filePath": "enterprise_finance_accounts.odcs.yaml"
         },
         {
           "id": "cc0e8400-e29b-41d4-a716-446655440007",
           "name": "sales-analytics",
           "domain": "sales",
-          "asset_type": "odps",
-          "file_path": "enterprise_sales_sales-analytics.odps.yaml"
+          "assetType": "odps",
+          "filePath": "enterprise_sales_sales-analytics.odps.yaml"
         }
       ],
       "relationships": [
         {
           "id": "dd0e8400-e29b-41d4-a716-446655440008",
-          "source_table_id": "990e8400-e29b-41d4-a716-446655440004",
-          "target_table_id": "aa0e8400-e29b-41d4-a716-446655440005",
-          "cardinality": "one_to_many",
-          "relationship_type": "foreign_key",
-          "notes": "Orders reference customers"
+          "sourceTableId": "990e8400-e29b-41d4-a716-446655440004",
+          "targetTableId": "aa0e8400-e29b-41d4-a716-446655440005",
+          "sourceCardinality": "exactlyOne",
+          "targetCardinality": "zeroOrMany",
+          "flowDirection": "sourceToTarget",
+          "relationshipType": "foreignKey",
+          "notes": "Orders reference customers",
+          "createdAt": "2025-01-01T09:00:00Z",
+          "updatedAt": "2025-01-01T09:00:00Z"
         }
       ]
     }

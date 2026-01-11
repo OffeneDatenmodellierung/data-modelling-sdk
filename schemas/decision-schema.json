@@ -1,10 +1,21 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/pixie79/data-modelling-sdk/schemas/decision-schema.json",
+  "$id": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk/schemas/decision-schema.json",
   "title": "MADR Decision Record",
   "description": "Schema for MADR-compliant decision records (.madr.yaml)",
   "type": "object",
-  "required": ["id", "number", "title", "status", "category", "date", "context", "decision", "created_at", "updated_at"],
+  "required": [
+    "id",
+    "number",
+    "title",
+    "status",
+    "category",
+    "date",
+    "context",
+    "decision",
+    "createdAt",
+    "updatedAt"
+  ],
   "properties": {
     "id": {
       "type": "string",
@@ -14,7 +25,7 @@
     "number": {
       "type": "integer",
       "minimum": 1,
-      "description": "Sequential decision number (ADR-0001, ADR-0002, etc.)"
+      "description": "Timestamp-based decision number in YYMMDDHHmm format (e.g., 2601101806). Prevents merge conflicts in distributed Git workflows."
     },
     "title": {
       "type": "string",
@@ -24,29 +35,87 @@
     },
     "status": {
       "type": "string",
-      "enum": ["proposed", "accepted", "deprecated", "superseded"],
+      "enum": [
+        "draft",
+        "proposed",
+        "accepted",
+        "rejected",
+        "superseded",
+        "deprecated"
+      ],
       "description": "Current status of the decision"
     },
     "category": {
       "type": "string",
-      "enum": ["architecture", "datadesign", "workflow", "model", "governance", "security", "performance", "compliance", "infrastructure", "tooling"],
+      "enum": [
+        "architecture",
+        "technology",
+        "process",
+        "security",
+        "data",
+        "integration",
+        "datadesign",
+        "workflow",
+        "model",
+        "governance",
+        "performance",
+        "compliance",
+        "infrastructure",
+        "tooling"
+      ],
       "description": "Category of the decision"
     },
     "domain": {
       "type": ["string", "null"],
       "description": "Domain this decision belongs to"
     },
+    "domainId": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "UUID of the domain this decision is associated with"
+    },
+    "workspaceId": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "UUID of the workspace this decision belongs to"
+    },
     "date": {
       "type": "string",
       "format": "date-time",
       "description": "Date the decision was made"
+    },
+    "decidedAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When the decision was accepted/finalized"
+    },
+    "authors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of authors who contributed to the decision"
     },
     "deciders": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "People or teams who made the decision"
+      "description": "People or teams who made the decision (RACI - Responsible)"
+    },
+    "consulted": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "People or teams consulted during decision making (RACI - Consulted)"
+    },
+    "informed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "People or teams to be informed about the decision (RACI - Informed)"
     },
     "context": {
       "type": "string",
@@ -75,35 +144,9 @@
     "options": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": ["name", "selected"],
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": {
-            "type": "string"
-          },
-          "pros": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "cons": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "selected": {
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
+        "$ref": "#/definitions/DecisionOption"
       },
-      "description": "Options considered"
+      "description": "Options considered for this decision"
     },
     "decision": {
       "type": "string",
@@ -114,21 +157,21 @@
       "type": ["string", "null"],
       "description": "Positive and negative consequences of the decision"
     },
-    "linked_assets": {
+    "linkedAssets": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["asset_type", "asset_id", "asset_name"],
+        "required": ["assetType", "assetId", "assetName"],
         "properties": {
-          "asset_type": {
+          "assetType": {
             "type": "string",
             "enum": ["odcs", "odps", "cads", "relationship"]
           },
-          "asset_id": {
+          "assetId": {
             "type": "string",
             "format": "uuid"
           },
-          "asset_name": {
+          "assetName": {
             "type": "string"
           },
           "relationship": {
@@ -145,21 +188,37 @@
       "format": "uuid",
       "description": "ID of the decision this supersedes"
     },
-    "superseded_by": {
+    "supersededBy": {
       "type": ["string", "null"],
       "format": "uuid",
       "description": "ID of the decision that superseded this"
     },
+    "relatedDecisions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "IDs of related decisions"
+    },
+    "relatedKnowledge": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "IDs of related knowledge articles"
+    },
     "compliance": {
       "type": ["object", "null"],
       "properties": {
-        "regulatory_impact": {
+        "regulatoryImpact": {
           "type": "string"
         },
-        "privacy_assessment": {
+        "privacyAssessment": {
           "type": "string"
         },
-        "security_assessment": {
+        "securityAssessment": {
           "type": "string"
         },
         "frameworks": {
@@ -172,12 +231,12 @@
       "additionalProperties": false,
       "description": "Compliance assessment for the decision"
     },
-    "confirmation_date": {
+    "confirmationDate": {
       "type": ["string", "null"],
       "format": "date-time",
       "description": "Date the decision was confirmed/reviewed"
     },
-    "confirmation_notes": {
+    "confirmationNotes": {
       "type": ["string", "null"],
       "description": "Notes from confirmation review"
     },
@@ -192,15 +251,51 @@
       "type": ["string", "null"],
       "description": "Additional notes"
     },
-    "created_at": {
+    "createdAt": {
       "type": "string",
       "format": "date-time",
       "description": "Creation timestamp"
     },
-    "updated_at": {
+    "updatedAt": {
       "type": "string",
       "format": "date-time",
       "description": "Last modification timestamp"
+    }
+  },
+  "definitions": {
+    "DecisionOption": {
+      "type": "object",
+      "required": ["name", "selected"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Option title/name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the option"
+        },
+        "pros": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Advantages of this option"
+        },
+        "cons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Disadvantages of this option"
+        },
+        "selected": {
+          "type": "boolean",
+          "description": "Whether this option was selected"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

@@ -181,6 +181,42 @@ Files follow the pattern: `{workspace}_{domain}_{system}_{resource}.{type}.yaml`
 - **Pair**: `"Environment:Dev"` - Key-value pairs
 - **List**: `"SecondaryDomains: [XXXXX, PPPP]"` - Key with multiple values
 
+### 9. Consistent camelCase Serialization
+
+**Decision**: Use camelCase for all JSON/YAML serialization
+
+**Rationale**:
+- **ODCS Alignment**: Matches ODCS format conventions
+- **Consistency**: Same format across all models and schemas
+- **Frontend Friendly**: Common convention for JavaScript/TypeScript APIs
+- **Standard Practice**: Widely adopted in JSON APIs
+
+**Implementation**:
+- All structs use `#[serde(rename_all = "camelCase")]`
+- Enum variants serialize as camelCase (e.g., `oneToMany`, `sourceToTarget`)
+- Field names: `sourceTableId`, `targetCardinality`, `flowDirection`, etc.
+
+### 10. Crow's Feet Notation for Cardinality
+
+**Decision**: Support standard crow's feet notation for endpoint cardinality
+
+**Rationale**:
+- **Industry Standard**: Widely recognized ERD notation
+- **Precision**: More precise than simple OneToMany/ManyToMany
+- **Data Modeling**: Essential for proper data flow diagrams
+- **Bi-directional**: Supports asymmetric cardinality at each endpoint
+
+**Cardinality Values**:
+- `zeroOrOne` (0..1): Optional single
+- `exactlyOne` (1..1): Required single
+- `zeroOrMany` (0..*): Optional multiple
+- `oneOrMany` (1..*): Required multiple
+
+**Flow Directions**:
+- `sourceToTarget`: Unidirectional from source
+- `targetToSource`: Unidirectional from target
+- `bidirectional`: Data flows both ways
+
 ---
 
 ## When to Use the SDK

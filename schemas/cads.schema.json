@@ -18,6 +18,8 @@
         "AIModel",
         "MLPipeline",
         "Application",
+        "DataPipeline",
+        "ETLProcess",
         "ETLPipeline",
         "SourceSystem",
         "DestinationSystem"

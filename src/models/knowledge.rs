@@ -55,6 +55,10 @@ pub enum KnowledgeType {
     Concept,
     /// Runbook for operations
     Runbook,
+    /// Tutorial (step-by-step learning)
+    Tutorial,
+    /// Glossary of terms
+    Glossary,
 }
 
 impl std::fmt::Display for KnowledgeType {
@@ -69,6 +73,8 @@ impl std::fmt::Display for KnowledgeType {
             KnowledgeType::Template => write!(f, "Template"),
             KnowledgeType::Concept => write!(f, "Concept"),
             KnowledgeType::Runbook => write!(f, "Runbook"),
+            KnowledgeType::Tutorial => write!(f, "Tutorial"),
+            KnowledgeType::Glossary => write!(f, "Glossary"),
         }
     }
 }
@@ -259,6 +265,7 @@ where
 /// Represents a knowledge article that can be categorized by domain,
 /// type, and audience.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct KnowledgeArticle {
     /// Unique identifier for the article
     pub id: Uuid,
@@ -295,9 +302,18 @@ pub struct KnowledgeArticle {
     /// List of reviewers
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reviewers: Vec<String>,
-    /// Date of last review
+    /// Date of last review (legacy field name)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_reviewed: Option<DateTime<Utc>>,
+    /// Last review timestamp (camelCase alias)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewed_at: Option<DateTime<Utc>>,
+    /// When the article was published
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub published_at: Option<DateTime<Utc>>,
+    /// When the article was archived
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
     /// How often the article should be reviewed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub review_frequency: Option<ReviewFrequency>,
@@ -314,12 +330,21 @@ pub struct KnowledgeArticle {
     /// Assets referenced by this article
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub linked_assets: Vec<AssetLink>,
-    /// UUIDs of related decisions
+    /// UUIDs of related decisions (legacy field)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub linked_decisions: Vec<Uuid>,
-    /// Related articles
+    /// IDs of related decision records
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related_decisions: Vec<Uuid>,
+    /// Related articles (detailed info)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub related_articles: Vec<RelatedArticle>,
+    /// IDs of prerequisite articles (must read first)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prerequisites: Vec<Uuid>,
+    /// IDs of 'See Also' articles for further reading
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub see_also: Vec<Uuid>,
 
     // Standard metadata
     /// Tags for categorization
@@ -359,12 +384,18 @@ impl KnowledgeArticle {
             authors: vec![author.into()],
             reviewers: Vec::new(),
             last_reviewed: None,
+            reviewed_at: None,
+            published_at: None,
+            archived_at: None,
             review_frequency: None,
             audience: Vec::new(),
             skill_level: None,
             linked_assets: Vec::new(),
             linked_decisions: Vec::new(),
+            related_decisions: Vec::new(),
             related_articles: Vec::new(),
+            prerequisites: Vec::new(),
+            see_also: Vec::new(),
             tags: Vec::new(),
             notes: None,
             created_at: now,
@@ -507,6 +538,47 @@ impl KnowledgeArticle {
         self
     }
 
+    /// Add a related decision
+    pub fn add_related_decision(mut self, decision_id: Uuid) -> Self {
+        if !self.related_decisions.contains(&decision_id) {
+            self.related_decisions.push(decision_id);
+            self.updated_at = Utc::now();
+        }
+        self
+    }
+
+    /// Add a prerequisite article
+    pub fn add_prerequisite(mut self, article_id: Uuid) -> Self {
+        if !self.prerequisites.contains(&article_id) {
+            self.prerequisites.push(article_id);
+            self.updated_at = Utc::now();
+        }
+        self
+    }
+
+    /// Add a "see also" article reference
+    pub fn add_see_also(mut self, article_id: Uuid) -> Self {
+        if !self.see_also.contains(&article_id) {
+            self.see_also.push(article_id);
+            self.updated_at = Utc::now();
+        }
+        self
+    }
+
+    /// Set the published timestamp
+    pub fn with_published_at(mut self, published_at: DateTime<Utc>) -> Self {
+        self.published_at = Some(published_at);
+        self.updated_at = Utc::now();
+        self
+    }
+
+    /// Set the archived timestamp
+    pub fn with_archived_at(mut self, archived_at: DateTime<Utc>) -> Self {
+        self.archived_at = Some(archived_at);
+        self.updated_at = Utc::now();
+        self
+    }
+
     /// Add a tag
     pub fn add_tag(mut self, tag: Tag) -> Self {
         self.tags.push(tag);
@@ -516,8 +588,10 @@ impl KnowledgeArticle {
 
     /// Mark the article as reviewed
     pub fn mark_reviewed(&mut self) {
-        self.last_reviewed = Some(Utc::now());
-        self.updated_at = Utc::now();
+        let now = Utc::now();
+        self.last_reviewed = Some(now);
+        self.reviewed_at = Some(now);
+        self.updated_at = now;
     }
 
     /// Generate the YAML filename for this article
@@ -562,6 +636,7 @@ impl KnowledgeArticle {
 
 /// Knowledge article index entry for the knowledge.yaml file
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct KnowledgeIndexEntry {
     /// Article number (can be sequential or timestamp-based)
     pub number: u64,
@@ -596,6 +671,7 @@ impl From<&KnowledgeArticle> for KnowledgeIndexEntry {
 
 /// Knowledge base index (knowledge.yaml)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct KnowledgeIndex {
     /// Schema version
     pub schema_version: String,

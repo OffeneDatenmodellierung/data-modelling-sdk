@@ -207,6 +207,57 @@ data-modelling-cli export protobuf-descriptor input.odcs.yaml output.pb --protoc
 - **Linux (RHEL/CentOS)**: `sudo yum install protobuf-compiler`
 - **Windows**: Download from https://protobuf.dev/downloads/ or `choco install protoc`
 
+### Export to PDF
+
+Export decision records and knowledge articles to PDF format with optional branding.
+
+```bash
+# Export decision to PDF
+data-modelling-cli export pdf decisions/ADR-0001.madr.yaml output.pdf
+
+# Export knowledge article to PDF
+data-modelling-cli export pdf knowledge/KB-0001.kb.yaml output.pdf
+
+# Export with branding options
+data-modelling-cli export pdf decisions/ADR-0001.madr.yaml output.pdf \
+  --logo-url "https://example.com/logo.png" \
+  --header-text "ACME Corp Architecture Decisions" \
+  --footer-text "Confidential" \
+  --brand-color "#0066CC" \
+  --company-name "ACME Corporation"
+```
+
+### Export to Markdown
+
+Export decision records and knowledge articles to Markdown format.
+
+```bash
+# Export decision to Markdown
+data-modelling-cli export markdown decisions/ADR-0001.madr.yaml output.md
+
+# Export knowledge article to Markdown
+data-modelling-cli export markdown knowledge/KB-0001.kb.yaml output.md
+```
+
+### Export to Branded Markdown
+
+Export decision records and knowledge articles to Markdown with branding (logo, header, footer, table of contents).
+
+```bash
+# Export with branding
+data-modelling-cli export branded-markdown decisions/ADR-0001.madr.yaml output.md \
+  --logo-url "https://example.com/logo.png" \
+  --header-text "Architecture Decision Records" \
+  --footer-text "© 2025 ACME Corp" \
+  --company-name "ACME Corporation" \
+  --include-toc
+
+# Export knowledge article with branding
+data-modelling-cli export branded-markdown knowledge/KB-0001.kb.yaml output.md \
+  --header-text "Knowledge Base" \
+  --brand-color "#336699"
+```
+
 ## Command Reference
 
 ### Import Command
@@ -241,18 +292,31 @@ data-modelling-cli export <format> <input> <output> [options]
 
 Formats:
   odcs                  - ODCS v3.1.0 YAML
+  odps                  - ODPS (Open Data Product Standard) YAML
   avro                  - AVRO schema
   json-schema           - JSON Schema
   protobuf              - Protocol Buffer .proto
   protobuf-descriptor   - Binary Protobuf descriptor (.pb)
+  pdf                   - PDF document (for .madr.yaml and .kb.yaml files)
+  markdown              - Markdown document (for .madr.yaml and .kb.yaml files)
+  branded-markdown      - Branded Markdown with logo, header, footer
 
 Input:
-  <input>               ODCS YAML file (.odcs.yaml)
+  <input>               ODCS YAML file (.odcs.yaml), ODPS file (.odps.yaml),
+                        decision record (.madr.yaml), or knowledge article (.kb.yaml)
 
 Options:
   --force                      Overwrite existing files without prompting
   --protoc-path <path>         Custom path to protoc binary (for protobuf-descriptor)
   --protobuf-version <version> Protobuf syntax version: proto2 or proto3 (default: proto3)
+
+Branding Options (for pdf and branded-markdown formats):
+  --logo-url <url>             Logo URL for branding
+  --header-text <text>         Header text for branding
+  --footer-text <text>         Footer text for branding
+  --brand-color <hex>          Brand color in hex format (e.g., "#0066CC")
+  --company-name <name>        Company or organization name
+  --include-toc                Include table of contents (branded-markdown only)
 ```
 
 ## Getting Help

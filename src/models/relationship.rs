@@ -1,6 +1,8 @@
 //! Relationship model for the SDK
 
-use super::enums::{Cardinality, InfrastructureType, RelationshipType};
+use super::enums::{
+    Cardinality, EndpointCardinality, FlowDirection, InfrastructureType, RelationshipType,
+};
 use super::table::{ContactDetails, SlaProperty};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -8,6 +10,7 @@ use uuid::Uuid;
 
 /// Foreign key column mapping details
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ForeignKeyDetails {
     /// Column name in the source table
     pub source_column: String,
@@ -17,6 +20,7 @@ pub struct ForeignKeyDetails {
 
 /// ETL job metadata for data flow relationships
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ETLJobMetadata {
     /// Name of the ETL job that creates this relationship
     pub job_name: String,
@@ -39,6 +43,7 @@ pub struct ConnectionPoint {
 
 /// Visual metadata for relationship rendering on canvas
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct VisualMetadata {
     /// Connection point identifier on source table
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -135,6 +140,7 @@ pub enum ConnectionHandle {
 /// relationship.notes = Some("ETL pipeline from source to target".to_string());
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Relationship {
     /// Unique identifier for the relationship (UUIDv4)
     pub id: Uuid,
@@ -142,15 +148,24 @@ pub struct Relationship {
     pub source_table_id: Uuid,
     /// ID of the target table
     pub target_table_id: Uuid,
-    /// Cardinality (OneToOne, OneToMany, ManyToMany)
+    /// Legacy cardinality (OneToOne, OneToMany, ManyToMany) - for backward compatibility
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cardinality: Option<Cardinality>,
-    /// Whether the source side is optional (nullable foreign key)
+    /// Whether the source side is optional (nullable foreign key) - legacy field
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_optional: Option<bool>,
-    /// Whether the target side is optional
+    /// Whether the target side is optional - legacy field
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_optional: Option<bool>,
+    /// Crow's feet cardinality at the source end (zeroOrOne, exactlyOne, zeroOrMany, oneOrMany)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_cardinality: Option<EndpointCardinality>,
+    /// Crow's feet cardinality at the target end (zeroOrOne, exactlyOne, zeroOrMany, oneOrMany)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_cardinality: Option<EndpointCardinality>,
+    /// Direction of data flow (sourceToTarget, targetToSource, bidirectional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow_direction: Option<FlowDirection>,
     /// Foreign key column mapping details
     #[serde(skip_serializing_if = "Option::is_none")]
     pub foreign_key_details: Option<ForeignKeyDetails>,
@@ -227,6 +242,9 @@ impl Relationship {
             cardinality: None,
             source_optional: None,
             target_optional: None,
+            source_cardinality: None,
+            target_cardinality: None,
+            flow_direction: None,
             foreign_key_details: None,
             etl_job_metadata: None,
             relationship_type: None,

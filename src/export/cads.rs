@@ -93,6 +93,8 @@ impl CADSExporter {
             CADSKind::ETLPipeline => "ETLPipeline",
             CADSKind::SourceSystem => "SourceSystem",
             CADSKind::DestinationSystem => "DestinationSystem",
+            CADSKind::DataPipeline => "DataPipeline",
+            CADSKind::ETLProcess => "ETLProcess",
         };
         yaml.insert(
             serde_yaml::Value::String("kind".to_string()),
@@ -655,6 +657,7 @@ impl CADSExporter {
                     );
                     let format_str = match model.format {
                         CADSDMNFormat::Dmn13Xml => "dmn13-xml",
+                        CADSDMNFormat::Json => "json",
                     };
                     model_map.insert(
                         serde_yaml::Value::String("format".to_string()),
@@ -689,8 +692,9 @@ impl CADSExporter {
                         serde_yaml::Value::String(spec.reference.clone()),
                     );
                     let format_str = match spec.format {
-                        CADSOpenAPIFormat::Openapi311Yaml => "openapi-311-yaml",
-                        CADSOpenAPIFormat::Openapi311Json => "openapi-311-json",
+                        CADSOpenAPIFormat::Openapi30 => "openapi-3.0",
+                        CADSOpenAPIFormat::Openapi31 => "openapi-3.1",
+                        CADSOpenAPIFormat::Swagger20 => "swagger-2.0",
                     };
                     spec_map.insert(
                         serde_yaml::Value::String("format".to_string()),

@@ -43,6 +43,7 @@ cargo run --bin test-odps --features odps-validation,cli -- product.odps.yaml --
 - **Universal Converter**: Convert any format to ODCS v3.1.0 format
 - **OpenAPI to ODCS Converter**: Convert OpenAPI schema components to ODCS table definitions
 - **Validation**: Table and relationship validation (naming conflicts, circular dependencies)
+- **Relationship Modeling**: Crow's feet notation cardinality (zeroOrOne, exactlyOne, zeroOrMany, oneOrMany) and data flow directions
 - **Schema Reference**: JSON Schema definitions for all supported formats in `schemas/` directory
 - **Database Sync**: Bidirectional sync between YAML files and database with change detection
 - **Git Hooks**: Automatic pre-commit and post-checkout hooks for database synchronization

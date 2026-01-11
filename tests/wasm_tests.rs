@@ -40,7 +40,7 @@ description:
 
     assert_eq!(parsed["name"], "test-model");
     assert_eq!(parsed["kind"], "AIModel");
-    assert_eq!(parsed["api_version"], "v1.0");
+    assert_eq!(parsed["apiVersion"], "v1.0");
 }
 
 #[test]

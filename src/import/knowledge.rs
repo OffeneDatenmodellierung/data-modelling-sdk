@@ -38,15 +38,16 @@ impl KnowledgeImporter {
     /// let importer = KnowledgeImporter::new();
     /// let yaml = r#"
     /// id: 660e8400-e29b-41d4-a716-446655440000
-    /// number: "KB-0001"
+    /// number: 1
     /// title: "Data Classification Guide"
-    /// article_type: guide
+    /// articleType: guide
     /// status: published
     /// summary: "This guide explains data classification."
     /// content: "Data classification is essential for governance."
-    /// author: "data-governance@example.com"
-    /// created_at: "2024-01-15T10:00:00Z"
-    /// updated_at: "2024-01-15T10:00:00Z"
+    /// authors:
+    ///   - "data-governance@example.com"
+    /// createdAt: "2024-01-15T10:00:00Z"
+    /// updatedAt: "2024-01-15T10:00:00Z"
     /// "#;
     /// let article = importer.import(yaml).unwrap();
     /// assert_eq!(article.title, "Data Classification Guide");
@@ -102,9 +103,9 @@ impl KnowledgeImporter {
     ///
     /// let importer = KnowledgeImporter::new();
     /// let yaml = r#"
-    /// schema_version: "1.0"
+    /// schemaVersion: "1.0"
     /// articles: []
-    /// next_number: 1
+    /// nextNumber: 1
     /// "#;
     /// let index = importer.import_index(yaml).unwrap();
     /// assert_eq!(index.next_number, 1);
@@ -224,30 +225,31 @@ mod tests {
         let importer = KnowledgeImporter::new();
         let yaml = r#"
 id: 660e8400-e29b-41d4-a716-446655440000
-number: "KB-0001"
+number: 1
 title: "Data Classification Guide"
-article_type: guide
+articleType: guide
 status: published
 summary: "This guide explains data classification."
 content: "Data classification is essential for governance."
-author: "data-governance@example.com"
-created_at: "2024-01-15T10:00:00Z"
-updated_at: "2024-01-15T10:00:00Z"
+authors:
+  - "data-governance@example.com"
+createdAt: "2024-01-15T10:00:00Z"
+updatedAt: "2024-01-15T10:00:00Z"
 "#;
         let result = importer.import_without_validation(yaml);
         assert!(result.is_ok());
         let article = result.unwrap();
         assert_eq!(article.title, "Data Classification Guide");
-        assert_eq!(article.number, 1); // "KB-0001" is parsed to 1
+        assert_eq!(article.number, 1);
     }
 
     #[test]
     fn test_import_knowledge_index() {
         let importer = KnowledgeImporter::new();
         let yaml = r#"
-schema_version: "1.0"
+schemaVersion: "1.0"
 articles: []
-next_number: 1
+nextNumber: 1
 "#;
         let result = importer.import_index(yaml);
         assert!(result.is_ok());

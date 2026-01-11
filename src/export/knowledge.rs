@@ -186,7 +186,7 @@ mod tests {
         let result = exporter.export_index(&index);
         assert!(result.is_ok());
         let yaml = result.unwrap();
-        assert!(yaml.contains("schema_version"));
-        assert!(yaml.contains("next_number: 1"));
+        assert!(yaml.contains("schemaVersion"));
+        assert!(yaml.contains("nextNumber: 1"));
     }
 }

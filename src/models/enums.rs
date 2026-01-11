@@ -61,8 +61,10 @@ pub enum ModelingLevel {
     Physical,
 }
 
+/// Legacy cardinality enum (for backward compatibility)
+/// Consider using EndpointCardinality for more precise crow's feet notation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub enum Cardinality {
     OneToOne,
     OneToMany,
@@ -70,12 +72,49 @@ pub enum Cardinality {
     ManyToMany,
 }
 
+/// Crow's feet notation endpoint cardinality
+///
+/// Defines the cardinality at one end of a relationship using standard
+/// crow's feet notation symbols:
+/// - ZeroOrOne: Optional single (0..1) - circle with single line
+/// - ExactlyOne: Required single (1..1) - single line with perpendicular bar
+/// - ZeroOrMany: Optional multiple (0..*) - circle with crow's foot
+/// - OneOrMany: Required multiple (1..*) - perpendicular bar with crow's foot
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
+pub enum EndpointCardinality {
+    /// Zero or one (optional single) - 0..1
+    ZeroOrOne,
+    /// Exactly one (required single) - 1..1
+    ExactlyOne,
+    /// Zero or many (optional multiple) - 0..*
+    ZeroOrMany,
+    /// One or many (required multiple) - 1..*
+    OneOrMany,
+}
+
+/// Flow direction for data flow relationships
+///
+/// Defines the direction of data movement between nodes
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FlowDirection {
+    /// Data flows from source to target only
+    SourceToTarget,
+    /// Data flows from target to source only
+    TargetToSource,
+    /// Data flows in both directions
+    Bidirectional,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum RelationshipType {
     DataFlow,
     Dependency,
     ForeignKey,
+    /// ETL transformation (maps to "etl" in JSON)
+    #[serde(rename = "etl")]
     EtlTransformation,
 }
 

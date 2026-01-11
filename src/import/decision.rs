@@ -45,8 +45,8 @@ impl DecisionImporter {
     /// date: "2024-01-15T10:00:00Z"
     /// context: "We need a standard format for data contracts."
     /// decision: "Use ODCS v3.1.0 format."
-    /// created_at: "2024-01-15T10:00:00Z"
-    /// updated_at: "2024-01-15T10:00:00Z"
+    /// createdAt: "2024-01-15T10:00:00Z"
+    /// updatedAt: "2024-01-15T10:00:00Z"
     /// "#;
     /// let decision = importer.import(yaml).unwrap();
     /// assert_eq!(decision.title, "Use ODCS Format for Data Contracts");
@@ -201,8 +201,8 @@ category: datadesign
 date: "2024-01-15T10:00:00Z"
 context: "We need a standard format for data contracts."
 decision: "Use ODCS v3.1.0 format."
-created_at: "2024-01-15T10:00:00Z"
-updated_at: "2024-01-15T10:00:00Z"
+createdAt: "2024-01-15T10:00:00Z"
+updatedAt: "2024-01-15T10:00:00Z"
 "#;
         let result = importer.import_without_validation(yaml);
         assert!(result.is_ok());

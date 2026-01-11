@@ -1,10 +1,21 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/pixie79/data-modelling-sdk/schemas/knowledge-schema.json",
+  "$id": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk/schemas/knowledge-schema.json",
   "title": "Knowledge Base Article",
   "description": "Schema for Knowledge Base articles (.kb.yaml)",
   "type": "object",
-  "required": ["id", "number", "title", "article_type", "status", "summary", "content", "author", "created_at", "updated_at"],
+  "required": [
+    "id",
+    "number",
+    "title",
+    "articleType",
+    "status",
+    "summary",
+    "content",
+    "authors",
+    "createdAt",
+    "updatedAt"
+  ],
   "properties": {
     "id": {
       "type": "string",
@@ -12,9 +23,9 @@
       "description": "Unique identifier for the article"
     },
     "number": {
-      "type": "string",
-      "pattern": "^KB-[0-9]{4}$",
-      "description": "Article number (KB-0001, KB-0002, etc.)"
+      "type": "integer",
+      "minimum": 1,
+      "description": "Timestamp-based article number in YYMMDDHHmm format (e.g., 2601101806). Prevents merge conflicts in distributed Git workflows."
     },
     "title": {
       "type": "string",
@@ -22,35 +33,60 @@
       "maxLength": 200,
       "description": "Article title"
     },
-    "article_type": {
+    "articleType": {
       "type": "string",
-      "enum": ["guide", "standard", "reference", "glossary", "howto", "troubleshooting", "policy", "template"],
+      "enum": [
+        "guide",
+        "reference",
+        "concept",
+        "tutorial",
+        "troubleshooting",
+        "runbook",
+        "standard",
+        "glossary",
+        "howto",
+        "policy",
+        "template"
+      ],
       "description": "Type of knowledge article"
     },
     "status": {
       "type": "string",
-      "enum": ["draft", "published", "archived", "deprecated"],
+      "enum": ["draft", "review", "published", "archived", "deprecated"],
       "description": "Publication status"
     },
     "domain": {
       "type": ["string", "null"],
       "description": "Domain this article belongs to"
     },
+    "domainId": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "UUID of the domain this article is associated with"
+    },
+    "workspaceId": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "UUID of the workspace this article belongs to"
+    },
     "summary": {
       "type": "string",
       "minLength": 1,
       "maxLength": 500,
-      "description": "Brief summary of the article"
+      "description": "Brief summary/abstract of the article"
     },
     "content": {
       "type": "string",
       "minLength": 1,
       "description": "Full article content in Markdown"
     },
-    "author": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Article author (email or name)"
+    "authors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "description": "List of article authors (email or name)"
     },
     "reviewers": {
       "type": "array",
@@ -59,12 +95,27 @@
       },
       "description": "List of reviewers"
     },
-    "last_reviewed": {
+    "lastReviewed": {
       "type": ["string", "null"],
       "format": "date-time",
       "description": "Date of last review"
     },
-    "review_frequency": {
+    "reviewedAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Last review timestamp"
+    },
+    "publishedAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When the article was published"
+    },
+    "archivedAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When the article was archived"
+    },
+    "reviewFrequency": {
       "type": ["string", "null"],
       "enum": ["monthly", "quarterly", "yearly", null],
       "description": "How often the article should be reviewed"
@@ -76,26 +127,26 @@
       },
       "description": "Target audience for the article"
     },
-    "skill_level": {
+    "skillLevel": {
       "type": ["string", "null"],
       "enum": ["beginner", "intermediate", "advanced", null],
       "description": "Required skill level"
     },
-    "linked_assets": {
+    "linkedAssets": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["asset_type", "asset_id", "asset_name"],
+        "required": ["assetType", "assetId", "assetName"],
         "properties": {
-          "asset_type": {
+          "assetType": {
             "type": "string",
             "enum": ["odcs", "odps", "cads", "relationship"]
           },
-          "asset_id": {
+          "assetId": {
             "type": "string",
             "format": "uuid"
           },
-          "asset_name": {
+          "assetName": {
             "type": "string"
           },
           "relationship": {
@@ -107,7 +158,7 @@
       },
       "description": "Assets referenced by this article"
     },
-    "linked_decisions": {
+    "linkedDecisions": {
       "type": "array",
       "items": {
         "type": "string",
@@ -115,31 +166,37 @@
       },
       "description": "UUIDs of related decisions"
     },
-    "related_articles": {
+    "relatedDecisions": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": ["article_id", "article_number", "title", "relationship"],
-        "properties": {
-          "article_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "article_number": {
-            "type": "string",
-            "pattern": "^KB-[0-9]{4}$"
-          },
-          "title": {
-            "type": "string"
-          },
-          "relationship": {
-            "type": "string",
-            "enum": ["related", "prerequisite", "supersedes"]
-          }
-        },
-        "additionalProperties": false
+        "type": "string",
+        "format": "uuid"
       },
-      "description": "Related articles"
+      "description": "IDs of related decision records"
+    },
+    "relatedArticles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "IDs of related knowledge articles"
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "IDs of prerequisite articles (must read first)"
+    },
+    "seeAlso": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "IDs of 'See Also' articles for further reading"
     },
     "tags": {
       "type": "array",
@@ -152,12 +209,12 @@
       "type": ["string", "null"],
       "description": "Additional notes"
     },
-    "created_at": {
+    "createdAt": {
       "type": "string",
       "format": "date-time",
       "description": "Creation timestamp"
     },
-    "updated_at": {
+    "updatedAt": {
       "type": "string",
       "format": "date-time",
       "description": "Last modification timestamp"

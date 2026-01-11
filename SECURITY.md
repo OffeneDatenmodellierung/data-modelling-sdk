@@ -137,6 +137,10 @@ backend.read_file(user_path).await?; // Safe - validates against base path
 
 ## Changelog
 
+### v1.14.0
+- Consistent camelCase serialization across all models for secure API responses
+- All enums serialize with camelCase values to prevent injection via field manipulation
+
 ### v0.3.0
 - Added path traversal protection to `FileSystemStorageBackend`
 - Added domain validation to `ApiStorageBackend`

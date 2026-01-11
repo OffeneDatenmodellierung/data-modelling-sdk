@@ -199,14 +199,37 @@ The Business Domain schema is a top-level organizational structure that groups s
 - **Systems**: Physical infrastructure entities (Kafka, Cassandra, EKS, EC2, etc.)
 - **CADS Nodes**: References to CADS assets (AI/ML models, applications, pipelines)
 - **ODCS Nodes**: References to ODCS Tables (data contracts)
-- **Connections**: ERD-style connections between systems, Crowsfeet notation for ODCS nodes
+- **Connections**: ERD-style connections between systems, Crow's feet notation for ODCS nodes
+
+### Crow's Feet Notation Cardinality
+
+The SDK supports standard crow's feet notation for ERD-style data modeling:
+
+| Cardinality | Symbol | JSON Value | Description |
+|-------------|--------|------------|-------------|
+| Zero or One | ○─ | `zeroOrOne` | Optional single (0..1) |
+| Exactly One | ├─ | `exactlyOne` | Required single (1..1) |
+| Zero or Many | ○─< | `zeroOrMany` | Optional multiple (0..*) |
+| One or Many | ├─< | `oneOrMany` | Required multiple (1..*) |
+
+### Data Flow Direction
+
+Relationships can specify data flow direction:
+
+| Direction | JSON Value | Description |
+|-----------|------------|-------------|
+| Source to Target | `sourceToTarget` | Data flows from source to target only |
+| Target to Source | `targetToSource` | Data flows from target to source only |
+| Bidirectional | `bidirectional` | Data flows in both directions |
 
 ### Key Features
 
 - **System Metadata**: Systems inherit DataFlow metadata (owner, SLA, contact_details, infrastructure_type, notes)
 - **Shared References**: Systems, CADS nodes, and ODCS nodes can be shared across domains
-- **Relationship Types**: ERD-style for systems, Crowsfeet notation for ODCS nodes
+- **Relationship Types**: ERD-style for systems, Crow's feet notation for ODCS nodes
 - **Versioning**: Systems have version fields for cross-domain sharing
+- **Endpoint Cardinality**: Source and target cardinality using crow's feet notation
+- **Flow Direction**: Directional data flow modeling
 
 ### Usage
 
@@ -544,6 +567,31 @@ let domain = migrate_dataflow_to_domain(dataflow_yaml, Some("domain-name"))?;
 4. **Use Domain Schema for Organization**: Domain schema organizes systems and nodes within business domains
 5. **Preserve Metadata**: Always use import/export functions to preserve metadata during conversions
 6. **Validate References**: When using ODPS, validate `contractId` references against known ODCS Tables
+
+---
+
+## Serialization Format
+
+All SDK models use **camelCase** serialization for JSON and YAML output, aligning with ODCS format conventions:
+
+```yaml
+# Example relationship in YAML
+id: "dd0e8400-e29b-41d4-a716-446655440008"
+sourceTableId: "990e8400-e29b-41d4-a716-446655440004"
+targetTableId: "aa0e8400-e29b-41d4-a716-446655440005"
+sourceCardinality: "exactlyOne"
+targetCardinality: "zeroOrMany"
+flowDirection: "sourceToTarget"
+relationshipType: "foreignKey"
+createdAt: "2025-01-01T09:00:00Z"
+updatedAt: "2025-01-01T09:00:00Z"
+```
+
+Key enum values:
+- **Cardinality**: `oneToOne`, `oneToMany`, `manyToOne`, `manyToMany`
+- **RelationshipType**: `dataFlow`, `dependency`, `foreignKey`, `etl`
+- **EndpointCardinality**: `zeroOrOne`, `exactlyOne`, `zeroOrMany`, `oneOrMany`
+- **FlowDirection**: `sourceToTarget`, `targetToSource`, `bidirectional`
 
 ---
 

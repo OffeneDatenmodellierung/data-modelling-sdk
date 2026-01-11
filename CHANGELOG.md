@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-01-11
+
+### Added
+
+- **feat(relationship)**: Crow's feet notation cardinality support for ERD-style relationships
+  - New `EndpointCardinality` enum with values: `zeroOrOne` (0..1), `exactlyOne` (1..1), `zeroOrMany` (0..*), `oneOrMany` (1..*)
+  - New `sourceCardinality` and `targetCardinality` fields on `Relationship` struct
+  - Enables precise endpoint cardinality modeling for data flow diagrams
+
+- **feat(relationship)**: Data flow direction support
+  - New `FlowDirection` enum with values: `sourceToTarget`, `targetToSource`, `bidirectional`
+  - New `flowDirection` field on `Relationship` struct
+  - Enables directional data flow modeling in relationship diagrams
+
+- **feat(workspace)**: Extended workspace schema with full relationship metadata
+  - Added `ForeignKeyDetails`, `ETLJobMetadata`, `SlaProperty`, `ContactDetails`, `VisualMetadata`, `ConnectionPoint` definitions
+  - All relationship fields now available in workspace-schema.json
+
+### Changed
+
+- **refactor(serialization)**: Consistent camelCase serialization across all models
+  - All structs now use `#[serde(rename_all = "camelCase")]` for JSON/YAML serialization
+  - Updated: `Workspace`, `DomainReference`, `SystemReference`, `AssetReference`, `Relationship`, `ForeignKeyDetails`, `ETLJobMetadata`, `VisualMetadata`
+  - Updated: `Cardinality`, `RelationshipType` enums now serialize as camelCase
+  - Updated: `Decision`, `DecisionIndex`, `KnowledgeArticle`, `KnowledgeIndex` structs
+  - Updated: `CADSAsset` and all nested CADS structs
+  - Aligns with ODCS format conventions for consistent API responses
+
+- **refactor(enums)**: Updated enum serialization to camelCase
+  - `Cardinality`: `oneToOne`, `oneToMany`, `manyToOne`, `manyToMany`
+  - `RelationshipType`: `dataFlow`, `dependency`, `foreignKey`, `etl`
+  - `EndpointCardinality`: `zeroOrOne`, `exactlyOne`, `zeroOrMany`, `oneOrMany`
+  - `FlowDirection`: `sourceToTarget`, `targetToSource`, `bidirectional`
+
+- **refactor(schema)**: Updated workspace-schema.json to camelCase field names
+  - All property names now use camelCase (e.g., `sourceTableId`, `targetTableId`, `createdAt`)
+  - Relationship definition includes new cardinality and flow direction fields
+  - Example updated to demonstrate crow's feet notation usage
+
+### Fixed
+
+- **fix(export)**: Added missing `CADSKind::DataPipeline` and `CADSKind::ETLProcess` match arms in CADS exporter
+- **fix(export)**: Added missing `CADSDMNFormat::Json` match arm in CADS exporter
+
 ## [1.13.6] - 2026-01-08
 
 ### Added

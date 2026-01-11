@@ -1,17 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/pixie79/data-modelling-sdk/schemas/decisions-index-schema.json",
+  "$id": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk/schemas/decisions-index-schema.json",
   "title": "Decision Index",
   "description": "Schema for the decisions.yaml index file",
   "type": "object",
-  "required": ["schema_version", "decisions", "next_number"],
+  "required": ["schemaVersion", "decisions", "nextNumber"],
   "properties": {
-    "schema_version": {
+    "schemaVersion": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+$",
       "description": "Schema version (e.g., '1.0')"
     },
-    "last_updated": {
+    "lastUpdated": {
       "type": ["string", "null"],
       "format": "date-time",
       "description": "Last update timestamp"
@@ -39,12 +39,34 @@
           },
           "status": {
             "type": "string",
-            "enum": ["proposed", "accepted", "deprecated", "superseded"],
+            "enum": [
+              "draft",
+              "proposed",
+              "accepted",
+              "rejected",
+              "superseded",
+              "deprecated"
+            ],
             "description": "Decision status"
           },
           "category": {
             "type": "string",
-            "enum": ["architecture", "datadesign", "workflow", "model", "governance", "security", "performance", "compliance", "infrastructure", "tooling"],
+            "enum": [
+              "architecture",
+              "technology",
+              "process",
+              "security",
+              "data",
+              "integration",
+              "datadesign",
+              "workflow",
+              "model",
+              "governance",
+              "performance",
+              "compliance",
+              "infrastructure",
+              "tooling"
+            ],
             "description": "Decision category"
           },
           "domain": {
@@ -61,7 +83,7 @@
       },
       "description": "List of decision entries"
     },
-    "next_number": {
+    "nextNumber": {
       "type": "integer",
       "minimum": 1,
       "description": "Next available decision number"

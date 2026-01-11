@@ -712,8 +712,9 @@ impl CADSImporter {
                     )
                 {
                     let format = match format_str {
-                        "openapi-311-yaml" => CADSOpenAPIFormat::Openapi311Yaml,
-                        "openapi-311-json" => CADSOpenAPIFormat::Openapi311Json,
+                        "openapi-3.0" => CADSOpenAPIFormat::Openapi30,
+                        "openapi-3.1" => CADSOpenAPIFormat::Openapi31,
+                        "swagger-2.0" => CADSOpenAPIFormat::Swagger20,
                         _ => continue,
                     };
 

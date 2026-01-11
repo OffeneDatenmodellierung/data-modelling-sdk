@@ -7,7 +7,7 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/pixie79/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 1.13.0
+**Version**: 1.14.0
 
 ## Architecture
 
@@ -184,7 +184,7 @@ Core data structures:
 - **`ColumnData`**: Import-format mirror of Column struct, preserving all ODCS v3.1.0 fields through WASM layer
 - **`LogicalTypeOptions`**: Type constraint options (minLength, maxLength, pattern, format, minimum, maximum, precision, scale)
 - **`AuthoritativeDefinition`**: Authoritative definition reference (type, url)
-- **`Relationship`**: Relationship between tables (source/target, type, metadata, color for UI display, drawio_edge_id for diagram integration)
+- **`Relationship`**: Relationship between tables with crow's feet notation support. Fields: sourceTableId, targetTableId, sourceCardinality, targetCardinality, flowDirection, relationshipType, color, sourceHandle, targetHandle, drawioEdgeId, foreignKeyDetails, etlJobMetadata, sla, contactDetails, infrastructureType, visualMetadata, notes, owner
 - **`DataModel`**: Container for tables, relationships, and domains. Includes filter methods and domain operations (`add_domain`, `add_system_to_domain`, etc.)
 - **`Domain`**: Business domain container with systems, CADS nodes, ODCS nodes, and connections
 - **`System`**: Physical infrastructure entity (Kafka, Cassandra, EKS, etc.) with DataFlow metadata (owner, SLA, contact_details, infrastructure_type, notes, version)
@@ -212,7 +212,7 @@ Core data structures:
 - **`ForeignKey`**: Foreign key relationship details
 - **`SlaProperty`**: SLA property structure (property, value, unit, element, driver, description, scheduler, schedule)
 - **`ContactDetails`**: Contact details structure (email, phone, name, role, other)
-- **Enums**: `DatabaseType`, `MedallionLayer`, `SCDPattern`, `DataVaultClassification`, `ModelingLevel`, `Cardinality`, `RelationshipType`, `InfrastructureType` (70+ infrastructure types), `CrowsfeetCardinality` (OneToOne, OneToMany, ZeroOrOne, ZeroOrMany), `CADSKind`, `CADSStatus`, `ODPSStatus`
+- **Enums**: `DatabaseType`, `MedallionLayer`, `SCDPattern`, `DataVaultClassification`, `ModelingLevel`, `Cardinality` (oneToOne, oneToMany, manyToOne, manyToMany), `RelationshipType` (dataFlow, dependency, foreignKey, etl), `EndpointCardinality` (zeroOrOne, exactlyOne, zeroOrMany, oneOrMany), `FlowDirection` (sourceToTarget, targetToSource, bidirectional), `InfrastructureType` (70+ infrastructure types), `CADSKind`, `CADSStatus`, `ODPSStatus`
 
 ### Import (`src/import/`)
 
@@ -630,6 +630,8 @@ Domain directories may also contain:
 6. **ODCS Primary Format**: ODCS v3.1.0 is the primary format, with legacy ODCL support for backward compatibility
 7. **Domain-Based Organization**: Files are organized by business domain, with each domain containing its definition and associated ODCS/ODPS/CADS files
 8. **Schema Reference**: JSON Schema definitions for all supported formats are maintained in `schemas/` directory for validation and reference
+9. **camelCase Serialization**: All models use `#[serde(rename_all = "camelCase")]` for consistent JSON/YAML serialization matching ODCS conventions
+10. **Crow's Feet Notation**: Relationships support standard crow's feet notation with EndpointCardinality (zeroOrOne, exactlyOne, zeroOrMany, oneOrMany) and FlowDirection (sourceToTarget, targetToSource, bidirectional)
 
 ## Common Patterns
 

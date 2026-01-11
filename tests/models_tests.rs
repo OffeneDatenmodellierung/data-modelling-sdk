@@ -564,7 +564,7 @@ mod enums_tests {
     fn test_cardinality_serialization() {
         let card = Cardinality::OneToMany;
         let json = serde_json::to_string(&card).unwrap();
-        assert_eq!(json, "\"OneToMany\"");
+        assert_eq!(json, "\"oneToMany\"");
         let parsed: Cardinality = serde_json::from_str(&json).unwrap();
         assert_eq!(card, parsed);
     }
@@ -573,7 +573,7 @@ mod enums_tests {
     fn test_relationship_type_serialization() {
         let rel_type = RelationshipType::DataFlow;
         let json = serde_json::to_string(&rel_type).unwrap();
-        assert_eq!(json, "\"DataFlow\"");
+        assert_eq!(json, "\"dataFlow\"");
         let parsed: RelationshipType = serde_json::from_str(&json).unwrap();
         assert_eq!(rel_type, parsed);
     }

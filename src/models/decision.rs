@@ -37,31 +37,34 @@ use super::Tag;
 
 /// Decision status in lifecycle
 ///
-/// Decisions follow a lifecycle: Proposed → Accepted → [Deprecated | Superseded | Rejected]
+/// Decisions follow a lifecycle: Draft → Proposed → Accepted → [Deprecated | Superseded | Rejected]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DecisionStatus {
+    /// Decision is in draft state, not yet proposed
+    Draft,
     /// Decision has been proposed but not yet accepted
     #[default]
     Proposed,
     /// Decision has been accepted and is in effect
     Accepted,
-    /// Decision is no longer valid but not replaced
-    Deprecated,
-    /// Decision has been replaced by another decision
-    Superseded,
     /// Decision was rejected
     Rejected,
+    /// Decision has been replaced by another decision
+    Superseded,
+    /// Decision is no longer valid but not replaced
+    Deprecated,
 }
 
 impl std::fmt::Display for DecisionStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            DecisionStatus::Draft => write!(f, "Draft"),
             DecisionStatus::Proposed => write!(f, "Proposed"),
             DecisionStatus::Accepted => write!(f, "Accepted"),
-            DecisionStatus::Deprecated => write!(f, "Deprecated"),
-            DecisionStatus::Superseded => write!(f, "Superseded"),
             DecisionStatus::Rejected => write!(f, "Rejected"),
+            DecisionStatus::Superseded => write!(f, "Superseded"),
+            DecisionStatus::Deprecated => write!(f, "Deprecated"),
         }
     }
 }
@@ -75,6 +78,16 @@ pub enum DecisionCategory {
     /// System architecture decisions
     #[default]
     Architecture,
+    /// Technology choices
+    Technology,
+    /// Process-related decisions
+    Process,
+    /// Security-related decisions
+    Security,
+    /// Data-related decisions
+    Data,
+    /// Integration decisions
+    Integration,
     /// Data design and modeling decisions
     DataDesign,
     /// Workflow and process decisions
@@ -83,37 +96,33 @@ pub enum DecisionCategory {
     Model,
     /// Data governance decisions
     Governance,
-    /// Security-related decisions
-    Security,
     /// Performance optimization decisions
     Performance,
     /// Compliance and regulatory decisions
     Compliance,
     /// Infrastructure decisions
     Infrastructure,
-    /// Tooling and technology choices
+    /// Tooling choices
     Tooling,
-    /// Data-related decisions
-    Data,
-    /// Integration decisions
-    Integration,
 }
 
 impl std::fmt::Display for DecisionCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DecisionCategory::Architecture => write!(f, "Architecture"),
+            DecisionCategory::Technology => write!(f, "Technology"),
+            DecisionCategory::Process => write!(f, "Process"),
+            DecisionCategory::Security => write!(f, "Security"),
+            DecisionCategory::Data => write!(f, "Data"),
+            DecisionCategory::Integration => write!(f, "Integration"),
             DecisionCategory::DataDesign => write!(f, "Data Design"),
             DecisionCategory::Workflow => write!(f, "Workflow"),
             DecisionCategory::Model => write!(f, "Model"),
             DecisionCategory::Governance => write!(f, "Governance"),
-            DecisionCategory::Security => write!(f, "Security"),
             DecisionCategory::Performance => write!(f, "Performance"),
             DecisionCategory::Compliance => write!(f, "Compliance"),
             DecisionCategory::Infrastructure => write!(f, "Infrastructure"),
             DecisionCategory::Tooling => write!(f, "Tooling"),
-            DecisionCategory::Data => write!(f, "Data"),
-            DecisionCategory::Integration => write!(f, "Integration"),
         }
     }
 }
@@ -218,6 +227,7 @@ pub enum AssetRelationship {
 
 /// Link to an asset (table, relationship, product, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct AssetLink {
     /// Type of asset (odcs, odps, cads, relationship)
     pub asset_type: String,
@@ -263,6 +273,7 @@ impl AssetLink {
 
 /// Compliance assessment for the decision
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ComplianceAssessment {
     /// Impact on regulatory requirements
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -333,6 +344,7 @@ impl RaciMatrix {
 ///
 /// Represents an architectural or data decision following the MADR template.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Decision {
     /// Unique identifier for the decision
     pub id: Uuid,
@@ -358,15 +370,21 @@ pub struct Decision {
     // MADR template fields
     /// Date the decision was made
     pub date: DateTime<Utc>,
+    /// When the decision was accepted/finalized
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decided_at: Option<DateTime<Utc>>,
     /// Authors of the decision record
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub authors: Vec<String>,
     /// People or teams who made the decision (deciders)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deciders: Vec<String>,
-    /// RACI matrix for responsibility assignment
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub raci: Option<RaciMatrix>,
+    /// People or teams consulted during decision making (RACI - Consulted)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub consulted: Vec<String>,
+    /// People or teams to be informed about the decision (RACI - Informed)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub informed: Vec<String>,
     /// Problem statement and context for the decision
     pub context: String,
     /// Reasons driving this decision
@@ -391,6 +409,12 @@ pub struct Decision {
     /// ID of the decision that superseded this
     #[serde(skip_serializing_if = "Option::is_none")]
     pub superseded_by: Option<Uuid>,
+    /// IDs of related decisions
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related_decisions: Vec<Uuid>,
+    /// IDs of related knowledge articles
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related_knowledge: Vec<Uuid>,
 
     // Compliance (from feature request)
     /// Compliance assessment
@@ -438,9 +462,11 @@ impl Decision {
             domain_id: None,
             workspace_id: None,
             date: now,
+            decided_at: None,
             authors: Vec::new(),
             deciders: Vec::new(),
-            raci: None,
+            consulted: Vec::new(),
+            informed: Vec::new(),
             context: context.into(),
             drivers: Vec::new(),
             options: Vec::new(),
@@ -449,6 +475,8 @@ impl Decision {
             linked_assets: Vec::new(),
             supersedes: None,
             superseded_by: None,
+            related_decisions: Vec::new(),
+            related_knowledge: Vec::new(),
             compliance: None,
             confirmation_date: None,
             confirmation_notes: None,
@@ -492,9 +520,37 @@ impl Decision {
         self
     }
 
-    /// Set the RACI matrix
-    pub fn with_raci(mut self, raci: RaciMatrix) -> Self {
-        self.raci = Some(raci);
+    /// Set consulted parties (RACI - Consulted)
+    pub fn add_consulted(mut self, consulted: impl Into<String>) -> Self {
+        self.consulted.push(consulted.into());
+        self.updated_at = Utc::now();
+        self
+    }
+
+    /// Set informed parties (RACI - Informed)
+    pub fn add_informed(mut self, informed: impl Into<String>) -> Self {
+        self.informed.push(informed.into());
+        self.updated_at = Utc::now();
+        self
+    }
+
+    /// Add a related decision
+    pub fn add_related_decision(mut self, decision_id: Uuid) -> Self {
+        self.related_decisions.push(decision_id);
+        self.updated_at = Utc::now();
+        self
+    }
+
+    /// Add a related knowledge article
+    pub fn add_related_knowledge(mut self, article_id: Uuid) -> Self {
+        self.related_knowledge.push(article_id);
+        self.updated_at = Utc::now();
+        self
+    }
+
+    /// Set decided_at timestamp
+    pub fn with_decided_at(mut self, decided_at: DateTime<Utc>) -> Self {
+        self.decided_at = Some(decided_at);
         self.updated_at = Utc::now();
         self
     }
@@ -700,17 +756,19 @@ impl From<&Decision> for DecisionIndexEntry {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DecisionIndex {
     /// Schema version
+    #[serde(alias = "schema_version")]
     pub schema_version: String,
     /// Last update timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "last_updated")]
     pub last_updated: Option<DateTime<Utc>>,
     /// List of decisions
     #[serde(default)]
     pub decisions: Vec<DecisionIndexEntry>,
     /// Next available decision number (for sequential numbering)
+    #[serde(alias = "next_number")]
     pub next_number: u64,
     /// Whether to use timestamp-based numbering (YYMMDDHHmm format)
-    #[serde(default)]
+    #[serde(default, alias = "use_timestamp_numbering")]
     pub use_timestamp_numbering: bool,
 }
 
@@ -995,20 +1053,15 @@ mod tests {
     }
 
     #[test]
-    fn test_decision_with_raci() {
-        let raci = RaciMatrix {
-            responsible: vec!["dev-team@example.com".to_string()],
-            accountable: vec!["architect@example.com".to_string()],
-            consulted: vec!["security@example.com".to_string()],
-            informed: vec!["stakeholders@example.com".to_string()],
-        };
+    fn test_decision_with_consulted_informed() {
+        let decision = Decision::new(1, "Test", "Context", "Decision")
+            .add_consulted("security@example.com")
+            .add_informed("stakeholders@example.com");
 
-        let decision = Decision::new(1, "Test", "Context", "Decision").with_raci(raci.clone());
-
-        assert!(decision.raci.is_some());
-        let decision_raci = decision.raci.unwrap();
-        assert_eq!(decision_raci.responsible.len(), 1);
-        assert_eq!(decision_raci.accountable.len(), 1);
+        assert_eq!(decision.consulted.len(), 1);
+        assert_eq!(decision.informed.len(), 1);
+        assert_eq!(decision.consulted[0], "security@example.com");
+        assert_eq!(decision.informed[0], "stakeholders@example.com");
     }
 
     #[test]
@@ -1037,14 +1090,25 @@ mod tests {
     }
 
     #[test]
-    fn test_raci_is_empty() {
-        let empty_raci = RaciMatrix::default();
-        assert!(empty_raci.is_empty());
+    fn test_decision_with_related() {
+        let related_decision_id = Uuid::new_v4();
+        let related_knowledge_id = Uuid::new_v4();
 
-        let non_empty_raci = RaciMatrix {
-            responsible: vec!["someone".to_string()],
-            ..Default::default()
-        };
-        assert!(!non_empty_raci.is_empty());
+        let decision = Decision::new(1, "Test", "Context", "Decision")
+            .add_related_decision(related_decision_id)
+            .add_related_knowledge(related_knowledge_id);
+
+        assert_eq!(decision.related_decisions.len(), 1);
+        assert_eq!(decision.related_knowledge.len(), 1);
+        assert_eq!(decision.related_decisions[0], related_decision_id);
+        assert_eq!(decision.related_knowledge[0], related_knowledge_id);
+    }
+
+    #[test]
+    fn test_decision_status_draft() {
+        let decision =
+            Decision::new(1, "Test", "Context", "Decision").with_status(DecisionStatus::Draft);
+        assert_eq!(decision.status, DecisionStatus::Draft);
+        assert_eq!(format!("{}", DecisionStatus::Draft), "Draft");
     }
 }

@@ -25,6 +25,7 @@ use super::domain_config::ViewPosition;
 ///
 /// Contains information about an asset file and its location in the domain/system hierarchy.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct AssetReference {
     /// Asset identifier (UUID)
     pub id: Uuid,
@@ -173,6 +174,7 @@ impl AssetType {
 ///
 /// Contains information about a domain and its systems.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct DomainReference {
     /// Domain identifier
     pub id: Uuid,
@@ -192,6 +194,7 @@ pub struct DomainReference {
 
 /// System reference within a domain
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct SystemReference {
     /// System identifier
     pub id: Uuid,
@@ -215,6 +218,7 @@ pub struct SystemReference {
 /// Workspaces organize domains, systems, and their associated assets.
 /// All files use a flat naming convention: `{workspace}_{domain}_{system}_{resource}.xxx.yaml`
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Workspace {
     /// Unique identifier for the workspace
     pub id: Uuid,

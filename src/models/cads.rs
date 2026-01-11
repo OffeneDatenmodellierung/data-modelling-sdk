@@ -16,6 +16,8 @@ pub enum CADSKind {
     AIModel,
     MLPipeline,
     Application,
+    DataPipeline,
+    ETLProcess,
     ETLPipeline,
     SourceSystem,
     DestinationSystem,
@@ -36,6 +38,7 @@ pub enum CADSStatus {
 
 /// CADS description object
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct CADSDescription {
     /// Purpose of the asset
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,6 +127,7 @@ pub struct CADSSLAProperty {
 
 /// CADS pricing model
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct CADSPricing {
     /// Pricing model type
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -225,6 +229,7 @@ pub enum CADSMitigationStatus {
 
 /// CADS risk management
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct CADSRisk {
     /// Risk classification
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -293,6 +298,7 @@ pub struct CADSCompliance {
 
 /// Validation profile applies to
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct CADSValidationProfileAppliesTo {
     /// Asset kind
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -304,6 +310,7 @@ pub struct CADSValidationProfileAppliesTo {
 
 /// Validation profile
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct CADSValidationProfile {
     /// Profile name
     pub name: String,
@@ -344,6 +351,8 @@ pub struct CADSBPMNModel {
 pub enum CADSDMNFormat {
     #[serde(rename = "dmn13-xml")]
     Dmn13Xml,
+    #[serde(rename = "json")]
+    Json,
 }
 
 /// DMN model reference
@@ -364,10 +373,12 @@ pub struct CADSDMNModel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CADSOpenAPIFormat {
-    #[serde(rename = "openapi-311-yaml")]
-    Openapi311Yaml,
-    #[serde(rename = "openapi-311-json")]
-    Openapi311Json,
+    #[serde(rename = "openapi-3.0")]
+    Openapi30,
+    #[serde(rename = "openapi-3.1")]
+    Openapi31,
+    #[serde(rename = "swagger-2.0")]
+    Swagger20,
 }
 
 /// OpenAPI spec reference
@@ -386,6 +397,7 @@ pub struct CADSOpenAPISpec {
 
 /// CADS Asset - main structure
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct CADSAsset {
     /// API version
     pub api_version: String,

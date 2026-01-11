@@ -1,17 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/pixie79/data-modelling-sdk/schemas/knowledge-index-schema.json",
+  "$id": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk/schemas/knowledge-index-schema.json",
   "title": "Knowledge Index",
   "description": "Schema for the knowledge.yaml index file",
   "type": "object",
-  "required": ["schema_version", "articles", "next_number"],
+  "required": ["schemaVersion", "articles", "nextNumber"],
   "properties": {
-    "schema_version": {
+    "schemaVersion": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+$",
       "description": "Schema version (e.g., '1.0')"
     },
-    "last_updated": {
+    "lastUpdated": {
       "type": ["string", "null"],
       "format": "date-time",
       "description": "Last update timestamp"
@@ -20,12 +20,12 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["number", "id", "title", "article_type", "status", "file"],
+        "required": ["number", "id", "title", "articleType", "status", "file"],
         "properties": {
           "number": {
-            "type": "string",
-            "pattern": "^KB-[0-9]{4}$",
-            "description": "Article number (KB-0001, etc.)"
+            "type": "integer",
+            "minimum": 1,
+            "description": "Timestamp-based article number in YYMMDDHHmm format"
           },
           "id": {
             "type": "string",
@@ -37,14 +37,26 @@
             "minLength": 1,
             "description": "Article title"
           },
-          "article_type": {
+          "articleType": {
             "type": "string",
-            "enum": ["guide", "standard", "reference", "glossary", "howto", "troubleshooting", "policy", "template"],
+            "enum": [
+              "guide",
+              "reference",
+              "concept",
+              "tutorial",
+              "troubleshooting",
+              "runbook",
+              "standard",
+              "glossary",
+              "howto",
+              "policy",
+              "template"
+            ],
             "description": "Type of knowledge article"
           },
           "status": {
             "type": "string",
-            "enum": ["draft", "published", "archived", "deprecated"],
+            "enum": ["draft", "review", "published", "archived", "deprecated"],
             "description": "Publication status"
           },
           "domain": {
@@ -61,7 +73,7 @@
       },
       "description": "List of article entries"
     },
-    "next_number": {
+    "nextNumber": {
       "type": "integer",
       "minimum": 1,
       "description": "Next available article number"
