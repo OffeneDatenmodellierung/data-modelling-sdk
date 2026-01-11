@@ -176,10 +176,13 @@ impl std::fmt::Display for ArticleRelationship {
 
 /// Reference to a related article
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct RelatedArticle {
     /// UUID of the related article
+    #[serde(alias = "article_id")]
     pub article_id: Uuid,
     /// Article number (e.g., "KB-0001")
+    #[serde(alias = "article_number")]
     pub article_number: String,
     /// Article title
     pub title: String,
@@ -276,6 +279,7 @@ pub struct KnowledgeArticle {
     /// Article title
     pub title: String,
     /// Type of article
+    #[serde(alias = "article_type")]
     pub article_type: KnowledgeType,
     /// Publication status
     pub status: KnowledgeStatus,
@@ -283,10 +287,10 @@ pub struct KnowledgeArticle {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
     /// Domain UUID reference (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "domain_id")]
     pub domain_id: Option<Uuid>,
     /// Workspace UUID reference (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "workspace_id")]
     pub workspace_id: Option<Uuid>,
 
     // Content
@@ -303,19 +307,19 @@ pub struct KnowledgeArticle {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reviewers: Vec<String>,
     /// Date of last review (legacy field name)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "last_reviewed")]
     pub last_reviewed: Option<DateTime<Utc>>,
     /// Last review timestamp (camelCase alias)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "reviewed_at")]
     pub reviewed_at: Option<DateTime<Utc>>,
     /// When the article was published
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "published_at")]
     pub published_at: Option<DateTime<Utc>>,
     /// When the article was archived
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "archived_at")]
     pub archived_at: Option<DateTime<Utc>>,
     /// How often the article should be reviewed
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "review_frequency")]
     pub review_frequency: Option<ReviewFrequency>,
 
     // Classification
@@ -323,27 +327,43 @@ pub struct KnowledgeArticle {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audience: Vec<String>,
     /// Required skill level
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "skill_level")]
     pub skill_level: Option<SkillLevel>,
 
     // Linking
     /// Assets referenced by this article
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "linked_assets"
+    )]
     pub linked_assets: Vec<AssetLink>,
     /// UUIDs of related decisions (legacy field)
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "linked_decisions"
+    )]
     pub linked_decisions: Vec<Uuid>,
     /// IDs of related decision records
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "related_decisions"
+    )]
     pub related_decisions: Vec<Uuid>,
     /// Related articles (detailed info)
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "related_articles"
+    )]
     pub related_articles: Vec<RelatedArticle>,
     /// IDs of prerequisite articles (must read first)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prerequisites: Vec<Uuid>,
     /// IDs of 'See Also' articles for further reading
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty", alias = "see_also")]
     pub see_also: Vec<Uuid>,
 
     // Standard metadata
@@ -355,8 +375,10 @@ pub struct KnowledgeArticle {
     pub notes: Option<String>,
 
     /// Creation timestamp
+    #[serde(alias = "created_at")]
     pub created_at: DateTime<Utc>,
     /// Last modification timestamp
+    #[serde(alias = "updated_at")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -645,6 +667,7 @@ pub struct KnowledgeIndexEntry {
     /// Article title
     pub title: String,
     /// Article type
+    #[serde(alias = "article_type")]
     pub article_type: KnowledgeType,
     /// Article status
     pub status: KnowledgeStatus,
@@ -674,17 +697,19 @@ impl From<&KnowledgeArticle> for KnowledgeIndexEntry {
 #[serde(rename_all = "camelCase")]
 pub struct KnowledgeIndex {
     /// Schema version
+    #[serde(alias = "schema_version")]
     pub schema_version: String,
     /// Last update timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "last_updated")]
     pub last_updated: Option<DateTime<Utc>>,
     /// List of articles
     #[serde(default)]
     pub articles: Vec<KnowledgeIndexEntry>,
     /// Next available article number (for sequential numbering)
+    #[serde(alias = "next_number")]
     pub next_number: u64,
     /// Whether to use timestamp-based numbering (YYMMDDHHmm format)
-    #[serde(default)]
+    #[serde(default, alias = "use_timestamp_numbering")]
     pub use_timestamp_numbering: bool,
 }
 

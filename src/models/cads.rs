@@ -50,7 +50,7 @@ pub struct CADSDescription {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limitations: Option<String>,
     /// External links and references
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "external_links")]
     pub external_links: Option<Vec<CADSExternalLink>>,
 }
 
@@ -136,10 +136,10 @@ pub struct CADSPricing {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub currency: Option<String>,
     /// Unit cost
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "unit_cost")]
     pub unit_cost: Option<f64>,
     /// Billing unit
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "billing_unit")]
     pub billing_unit: Option<String>,
     /// Additional notes
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -235,13 +235,13 @@ pub struct CADSRisk {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub classification: Option<CADSRiskClassification>,
     /// Impact areas
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "impact_areas")]
     pub impact_areas: Option<Vec<CADSImpactArea>>,
     /// Intended use
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "intended_use")]
     pub intended_use: Option<String>,
     /// Out of scope use
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "out_of_scope_use")]
     pub out_of_scope_use: Option<String>,
     /// Risk assessment
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -304,7 +304,7 @@ pub struct CADSValidationProfileAppliesTo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
     /// Risk classification
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "risk_classification")]
     pub risk_classification: Option<String>,
 }
 
@@ -315,9 +315,10 @@ pub struct CADSValidationProfile {
     /// Profile name
     pub name: String,
     /// Applies to criteria
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "applies_to")]
     pub applies_to: Option<CADSValidationProfileAppliesTo>,
     /// Required checks
+    #[serde(alias = "required_checks")]
     pub required_checks: Vec<String>,
 }
 
@@ -400,6 +401,7 @@ pub struct CADSOpenAPISpec {
 #[serde(rename_all = "camelCase")]
 pub struct CADSAsset {
     /// API version
+    #[serde(alias = "api_version")]
     pub api_version: String,
     /// Asset kind
     pub kind: CADSKind,
@@ -439,25 +441,25 @@ pub struct CADSAsset {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compliance: Option<CADSCompliance>,
     /// Validation profiles
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "validation_profiles")]
     pub validation_profiles: Option<Vec<CADSValidationProfile>>,
     /// BPMN models
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "bpmn_models")]
     pub bpmn_models: Option<Vec<CADSBPMNModel>>,
     /// DMN models
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "dmn_models")]
     pub dmn_models: Option<Vec<CADSDMNModel>>,
     /// OpenAPI specifications
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "openapi_specs")]
     pub openapi_specs: Option<Vec<CADSOpenAPISpec>>,
     /// Custom properties
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "custom_properties")]
     pub custom_properties: Option<HashMap<String, serde_json::Value>>,
     /// Creation timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "created_at")]
     pub created_at: Option<DateTime<Utc>>,
     /// Last update timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "updated_at")]
     pub updated_at: Option<DateTime<Utc>>,
 }
 

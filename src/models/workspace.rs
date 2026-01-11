@@ -37,9 +37,10 @@ pub struct AssetReference {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system: Option<String>,
     /// Asset type (odcs, odps, cads)
+    #[serde(alias = "asset_type")]
     pub asset_type: AssetType,
     /// File path relative to workspace (generated from naming convention)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "file_path")]
     pub file_path: Option<String>,
 }
 
@@ -188,7 +189,11 @@ pub struct DomainReference {
     pub systems: Vec<SystemReference>,
     /// View positions for different view modes (operational, analytical, process, systems)
     /// Key: view mode name, Value: Map of entity ID to position
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "HashMap::is_empty",
+        alias = "view_positions"
+    )]
     pub view_positions: HashMap<String, HashMap<String, ViewPosition>>,
 }
 
@@ -205,11 +210,11 @@ pub struct SystemReference {
     pub description: Option<String>,
     /// Optional array of table UUIDs that belong to this system.
     /// When present, provides explicit table-to-system mapping without requiring parsing of individual ODCS files.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty", alias = "table_ids")]
     pub table_ids: Vec<Uuid>,
     /// Optional array of compute asset (CADS) UUIDs that belong to this system.
     /// When present, provides explicit asset-to-system mapping.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty", alias = "asset_ids")]
     pub asset_ids: Vec<Uuid>,
 }
 
@@ -225,10 +230,13 @@ pub struct Workspace {
     /// Workspace name (used in file naming)
     pub name: String,
     /// Owner/creator user identifier
+    #[serde(alias = "owner_id")]
     pub owner_id: Uuid,
     /// Creation timestamp
+    #[serde(alias = "created_at")]
     pub created_at: DateTime<Utc>,
     /// Last modification timestamp
+    #[serde(alias = "last_modified_at")]
     pub last_modified_at: DateTime<Utc>,
     /// Domain references with their systems
     #[serde(default)]

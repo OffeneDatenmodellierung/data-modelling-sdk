@@ -230,10 +230,13 @@ pub enum AssetRelationship {
 #[serde(rename_all = "camelCase")]
 pub struct AssetLink {
     /// Type of asset (odcs, odps, cads, relationship)
+    #[serde(alias = "asset_type")]
     pub asset_type: String,
     /// UUID of the linked asset
+    #[serde(alias = "asset_id")]
     pub asset_id: Uuid,
     /// Name of the linked asset
+    #[serde(alias = "asset_name")]
     pub asset_name: String,
     /// Relationship between decision and asset
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -276,13 +279,13 @@ impl AssetLink {
 #[serde(rename_all = "camelCase")]
 pub struct ComplianceAssessment {
     /// Impact on regulatory requirements
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "regulatory_impact")]
     pub regulatory_impact: Option<String>,
     /// Privacy impact assessment
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "privacy_assessment")]
     pub privacy_assessment: Option<String>,
     /// Security impact assessment
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "security_assessment")]
     pub security_assessment: Option<String>,
     /// Applicable compliance frameworks (GDPR, SOC2, HIPAA, etc.)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -361,17 +364,17 @@ pub struct Decision {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
     /// Domain UUID reference (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "domain_id")]
     pub domain_id: Option<Uuid>,
     /// Workspace UUID reference (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "workspace_id")]
     pub workspace_id: Option<Uuid>,
 
     // MADR template fields
     /// Date the decision was made
     pub date: DateTime<Utc>,
     /// When the decision was accepted/finalized
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "decided_at")]
     pub decided_at: Option<DateTime<Utc>>,
     /// Authors of the decision record
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -401,19 +404,31 @@ pub struct Decision {
 
     // Linking
     /// Assets affected by this decision
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "linked_assets"
+    )]
     pub linked_assets: Vec<AssetLink>,
     /// ID of the decision this supersedes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supersedes: Option<Uuid>,
     /// ID of the decision that superseded this
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "superseded_by")]
     pub superseded_by: Option<Uuid>,
     /// IDs of related decisions
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "related_decisions"
+    )]
     pub related_decisions: Vec<Uuid>,
     /// IDs of related knowledge articles
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "related_knowledge"
+    )]
     pub related_knowledge: Vec<Uuid>,
 
     // Compliance (from feature request)
@@ -423,10 +438,10 @@ pub struct Decision {
 
     // Confirmation tracking (from feature request)
     /// Date the decision was confirmed/reviewed
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "confirmation_date")]
     pub confirmation_date: Option<DateTime<Utc>>,
     /// Notes from confirmation review
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "confirmation_notes")]
     pub confirmation_notes: Option<String>,
 
     // Standard metadata
@@ -438,8 +453,10 @@ pub struct Decision {
     pub notes: Option<String>,
 
     /// Creation timestamp
+    #[serde(alias = "created_at")]
     pub created_at: DateTime<Utc>,
     /// Last modification timestamp
+    #[serde(alias = "updated_at")]
     pub updated_at: DateTime<Utc>,
 }
 

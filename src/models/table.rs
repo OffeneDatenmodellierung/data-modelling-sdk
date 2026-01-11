@@ -72,6 +72,7 @@ pub struct Position {
 /// Represents a single SLA property for Data Flow nodes and relationships.
 /// Uses a lightweight format inspired by ODCS servicelevels but separate from ODCS.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct SlaProperty {
     /// SLA attribute name (e.g., "latency", "availability", "throughput")
     pub property: String,
@@ -100,6 +101,7 @@ pub struct SlaProperty {
 ///
 /// Structured contact information for operational and governance purposes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ContactDetails {
     /// Email address
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -170,6 +172,7 @@ pub struct ContactDetails {
 /// table.notes = Some("User interaction events from web application".to_string());
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Table {
     /// Unique identifier for the table (UUIDv4)
     pub id: Uuid,
@@ -178,31 +181,34 @@ pub struct Table {
     /// List of columns in the table
     pub columns: Vec<Column>,
     /// Database type (PostgreSQL, MySQL, etc.) if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "database_type")]
     pub database_type: Option<DatabaseType>,
     /// Catalog name (database name in some systems)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "catalog_name")]
     pub catalog_name: Option<String>,
     /// Schema name (namespace within catalog)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "schema_name")]
     pub schema_name: Option<String>,
     /// Medallion architecture layers (Bronze, Silver, Gold)
-    #[serde(default)]
+    #[serde(default, alias = "medallion_layers")]
     pub medallion_layers: Vec<MedallionLayer>,
     /// Slowly Changing Dimension pattern (Type 1, Type 2, etc.)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "scd_pattern")]
     pub scd_pattern: Option<SCDPattern>,
     /// Data Vault classification (Hub, Link, Satellite)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "data_vault_classification"
+    )]
     pub data_vault_classification: Option<DataVaultClassification>,
     /// Modeling level (Conceptual, Logical, Physical)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "modeling_level")]
     pub modeling_level: Option<ModelingLevel>,
     /// Tags for categorization and filtering (supports Simple, Pair, and List formats)
     #[serde(default, deserialize_with = "deserialize_tags")]
     pub tags: Vec<Tag>,
     /// ODCL/ODCS metadata (legacy format support)
-    #[serde(default)]
+    #[serde(default, alias = "odcl_metadata")]
     pub odcl_metadata: HashMap<String, serde_json::Value>,
     /// Owner information (person, team, or organization name) for Data Flow nodes
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -211,10 +217,10 @@ pub struct Table {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sla: Option<Vec<SlaProperty>>,
     /// Contact details for responsible parties
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "contact_details")]
     pub contact_details: Option<ContactDetails>,
     /// Infrastructure type (hosting platform, service, or tool) for Data Flow nodes
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "infrastructure_type")]
     pub infrastructure_type: Option<InfrastructureType>,
     /// Additional notes and context for Data Flow nodes
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -223,10 +229,10 @@ pub struct Table {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub position: Option<Position>,
     /// Path to YAML file if loaded from file system
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "yaml_file_path")]
     pub yaml_file_path: Option<String>,
     /// Draw.io cell ID for diagram integration
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "drawio_cell_id")]
     pub drawio_cell_id: Option<String>,
     /// Quality rules and checks
     #[serde(default)]
@@ -235,8 +241,10 @@ pub struct Table {
     #[serde(default)]
     pub errors: Vec<HashMap<String, serde_json::Value>>,
     /// Creation timestamp
+    #[serde(alias = "created_at")]
     pub created_at: DateTime<Utc>,
     /// Last update timestamp
+    #[serde(alias = "updated_at")]
     pub updated_at: DateTime<Utc>,
 }
 

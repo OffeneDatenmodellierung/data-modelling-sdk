@@ -5,18 +5,22 @@ use std::collections::HashMap;
 
 /// Foreign key reference to another table's column
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ForeignKey {
     /// Target table ID (UUID as string)
+    #[serde(alias = "table_id")]
     pub table_id: String,
     /// Column name in the target table
+    #[serde(alias = "column_name")]
     pub column_name: String,
 }
 
 /// ODCS v3.1.0 Relationship at property level
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct PropertyRelationship {
     /// Relationship type (e.g., "foreignKey", "parent", "child")
-    #[serde(rename = "type")]
+    #[serde(rename = "type", alias = "relationship_type")]
     pub relationship_type: String,
     /// Target reference (e.g., "definitions/order_id", "schema/id/properties/id")
     pub to: String,
@@ -27,10 +31,10 @@ pub struct PropertyRelationship {
 #[serde(rename_all = "camelCase")]
 pub struct LogicalTypeOptions {
     /// Minimum length for strings
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "min_length")]
     pub min_length: Option<i64>,
     /// Maximum length for strings
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "max_length")]
     pub max_length: Option<i64>,
     /// Regex pattern for strings
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -45,10 +49,10 @@ pub struct LogicalTypeOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maximum: Option<serde_json::Value>,
     /// Exclusive minimum for numbers
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "exclusive_minimum")]
     pub exclusive_minimum: Option<serde_json::Value>,
     /// Exclusive maximum for numbers
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "exclusive_maximum")]
     pub exclusive_maximum: Option<serde_json::Value>,
     /// Precision for decimals
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,9 +79,10 @@ impl LogicalTypeOptions {
 
 /// Authoritative definition reference (ODCS v3.1.0)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthoritativeDefinition {
     /// Type of the reference (e.g., "businessDefinition", "transformationImplementation")
-    #[serde(rename = "type")]
+    #[serde(rename = "type", alias = "definition_type")]
     pub definition_type: String,
     /// URL to the authoritative definition
     pub url: String,
@@ -105,7 +110,7 @@ pub struct Column {
     /// Column name (ODCS: name)
     pub name: String,
     /// Business name for the column (ODCS: businessName)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "business_name")]
     pub business_name: Option<String>,
     /// Column description/documentation (ODCS: description)
     #[serde(default)]
@@ -113,24 +118,30 @@ pub struct Column {
 
     // === Type Information ===
     /// Logical data type (ODCS: logicalType - e.g., "string", "integer", "number")
-    #[serde(rename = "dataType")]
+    #[serde(rename = "dataType", alias = "data_type")]
     pub data_type: String,
     /// Physical database type (ODCS: physicalType - e.g., "VARCHAR(100)", "BIGINT")
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "physical_type")]
     pub physical_type: Option<String>,
     /// Physical name in the data source (ODCS: physicalName)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "physical_name")]
     pub physical_name: Option<String>,
     /// Additional type options (ODCS: logicalTypeOptions)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "logical_type_options"
+    )]
     pub logical_type_options: Option<LogicalTypeOptions>,
 
     // === Key Constraints ===
     /// Whether this column is part of the primary key (ODCS: primaryKey)
-    #[serde(default)]
+    #[serde(default, alias = "primary_key")]
     pub primary_key: bool,
     /// Position in composite primary key, 1-based (ODCS: primaryKeyPosition)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "primary_key_position"
+    )]
     pub primary_key_position: Option<i32>,
     /// Whether the column contains unique values (ODCS: unique)
     #[serde(default)]
@@ -144,7 +155,10 @@ pub struct Column {
     #[serde(default)]
     pub partitioned: bool,
     /// Position in partition key, 1-based (ODCS: partitionKeyPosition)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "partition_key_position"
+    )]
     pub partition_key_position: Option<i32>,
     /// Whether the column is used for clustering
     #[serde(default)]
@@ -155,21 +169,28 @@ pub struct Column {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub classification: Option<String>,
     /// Whether this is a critical data element (ODCS: criticalDataElement)
-    #[serde(default)]
+    #[serde(default, alias = "critical_data_element")]
     pub critical_data_element: bool,
     /// Name of the encrypted version of this column (ODCS: encryptedName)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "encrypted_name")]
     pub encrypted_name: Option<String>,
 
     // === Transformation Metadata ===
     /// Source objects used in transformation (ODCS: transformSourceObjects)
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "transform_source_objects"
+    )]
     pub transform_source_objects: Vec<String>,
     /// Transformation logic/expression (ODCS: transformLogic)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "transform_logic")]
     pub transform_logic: Option<String>,
     /// Human-readable transformation description (ODCS: transformDescription)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "transform_description"
+    )]
     pub transform_description: Option<String>,
 
     // === Examples & Documentation ===
@@ -177,7 +198,7 @@ pub struct Column {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub examples: Vec<serde_json::Value>,
     /// Default value for the column
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "default_value")]
     pub default_value: Option<serde_json::Value>,
 
     // === Relationships & References ===
@@ -185,7 +206,11 @@ pub struct Column {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relationships: Vec<PropertyRelationship>,
     /// Authoritative definitions (ODCS: authoritativeDefinitions)
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "authoritative_definitions"
+    )]
     pub authoritative_definitions: Vec<AuthoritativeDefinition>,
 
     // === Quality & Validation ===
@@ -193,7 +218,7 @@ pub struct Column {
     #[serde(default)]
     pub quality: Vec<HashMap<String, serde_json::Value>>,
     /// Enum values if this column is an enumeration type
-    #[serde(default)]
+    #[serde(default, alias = "enum_values")]
     pub enum_values: Vec<String>,
 
     // === Tags & Custom Properties ===
@@ -201,18 +226,22 @@ pub struct Column {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
     /// Custom properties for format-specific metadata not covered by ODCS
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "HashMap::is_empty",
+        alias = "custom_properties"
+    )]
     pub custom_properties: HashMap<String, serde_json::Value>,
 
     // === Legacy/Internal Fields ===
     /// Whether this column is a secondary/business key
-    #[serde(default)]
+    #[serde(default, alias = "secondary_key")]
     pub secondary_key: bool,
     /// Composite key name if this column is part of a composite key
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "composite_key")]
     pub composite_key: Option<String>,
     /// Foreign key reference (legacy - prefer relationships)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "foreign_key")]
     pub foreign_key: Option<ForeignKey>,
     /// Additional constraints (e.g., "CHECK", "UNIQUE")
     #[serde(default)]
@@ -221,10 +250,10 @@ pub struct Column {
     #[serde(default)]
     pub errors: Vec<HashMap<String, serde_json::Value>>,
     /// Display order for UI rendering
-    #[serde(default)]
+    #[serde(default, alias = "column_order")]
     pub column_order: i32,
     /// Nested data type for ARRAY<STRUCT> or MAP types
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "nested_data")]
     pub nested_data: Option<String>,
 }
 

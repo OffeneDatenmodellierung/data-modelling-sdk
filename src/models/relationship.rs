@@ -13,8 +13,10 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct ForeignKeyDetails {
     /// Column name in the source table
+    #[serde(alias = "source_column")]
     pub source_column: String,
     /// Column name in the target table
+    #[serde(alias = "target_column")]
     pub target_column: String,
 }
 
@@ -23,6 +25,7 @@ pub struct ForeignKeyDetails {
 #[serde(rename_all = "camelCase")]
 pub struct ETLJobMetadata {
     /// Name of the ETL job that creates this relationship
+    #[serde(alias = "job_name")]
     pub job_name: String,
     /// Optional notes about the ETL job
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -46,16 +49,22 @@ pub struct ConnectionPoint {
 #[serde(rename_all = "camelCase")]
 pub struct VisualMetadata {
     /// Connection point identifier on source table
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "source_connection_point"
+    )]
     pub source_connection_point: Option<String>,
     /// Connection point identifier on target table
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "target_connection_point"
+    )]
     pub target_connection_point: Option<String>,
     /// Waypoints for routing the relationship line
-    #[serde(default)]
+    #[serde(default, alias = "routing_waypoints")]
     pub routing_waypoints: Vec<ConnectionPoint>,
     /// Position for the relationship label
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "label_position")]
     pub label_position: Option<ConnectionPoint>,
 }
 
@@ -145,35 +154,37 @@ pub struct Relationship {
     /// Unique identifier for the relationship (UUIDv4)
     pub id: Uuid,
     /// ID of the source table
+    #[serde(alias = "source_table_id")]
     pub source_table_id: Uuid,
     /// ID of the target table
+    #[serde(alias = "target_table_id")]
     pub target_table_id: Uuid,
     /// Legacy cardinality (OneToOne, OneToMany, ManyToMany) - for backward compatibility
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cardinality: Option<Cardinality>,
     /// Whether the source side is optional (nullable foreign key) - legacy field
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "source_optional")]
     pub source_optional: Option<bool>,
     /// Whether the target side is optional - legacy field
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "target_optional")]
     pub target_optional: Option<bool>,
     /// Crow's feet cardinality at the source end (zeroOrOne, exactlyOne, zeroOrMany, oneOrMany)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "source_cardinality")]
     pub source_cardinality: Option<EndpointCardinality>,
     /// Crow's feet cardinality at the target end (zeroOrOne, exactlyOne, zeroOrMany, oneOrMany)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "target_cardinality")]
     pub target_cardinality: Option<EndpointCardinality>,
     /// Direction of data flow (sourceToTarget, targetToSource, bidirectional)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "flow_direction")]
     pub flow_direction: Option<FlowDirection>,
     /// Foreign key column mapping details
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "foreign_key_details")]
     pub foreign_key_details: Option<ForeignKeyDetails>,
     /// ETL job metadata for data flow relationships
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "etl_job_metadata")]
     pub etl_job_metadata: Option<ETLJobMetadata>,
     /// Type of relationship (ForeignKey, DataFlow, Dependency, ETL)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "relationship_type")]
     pub relationship_type: Option<RelationshipType>,
     /// Optional notes about the relationship
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -185,29 +196,31 @@ pub struct Relationship {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sla: Option<Vec<SlaProperty>>,
     /// Contact details for responsible parties
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "contact_details")]
     pub contact_details: Option<ContactDetails>,
     /// Infrastructure type (hosting platform, service, or tool) for Data Flow relationships
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "infrastructure_type")]
     pub infrastructure_type: Option<InfrastructureType>,
     /// Visual metadata for canvas rendering
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "visual_metadata")]
     pub visual_metadata: Option<VisualMetadata>,
     /// Draw.io edge ID for diagram integration
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "drawio_edge_id")]
     pub drawio_edge_id: Option<String>,
     /// Color for the relationship line in the UI (hex color code or named color)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     /// Edge attachment point on the source node
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "source_handle")]
     pub source_handle: Option<ConnectionHandle>,
     /// Edge attachment point on the target node
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "target_handle")]
     pub target_handle: Option<ConnectionHandle>,
     /// Creation timestamp
+    #[serde(alias = "created_at")]
     pub created_at: DateTime<Utc>,
     /// Last update timestamp
+    #[serde(alias = "updated_at")]
     pub updated_at: DateTime<Utc>,
 }
 

@@ -1,11 +1,11 @@
 [package]
 name = "data-modelling-sdk"
-version = "1.14.2"
+version = "1.14.3"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"
 description = "Shared SDK for model operations across platforms (API, WASM, Native)"
-repository = "https://github.com/pixie79/data-modelling-sdk"
+repository = "https://github.com/OffeneDatenmodellierung/data-modelling-sdk"
 
 [lib]
 name = "data_modelling_sdk"
