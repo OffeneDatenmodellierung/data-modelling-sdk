@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-01-11
+
+### Added
+
+- **feat(wasm)**: Native YAML format PDF/Markdown export bindings for all document types
+  - `export_odcs_yaml_to_pdf` - Export ODCS YAML content directly to PDF
+  - `export_odcs_yaml_to_markdown` - Export ODCS YAML content directly to Markdown
+  - `export_odps_yaml_to_pdf` - Export ODPS YAML content directly to PDF
+  - `export_odps_yaml_to_markdown` - Export ODPS YAML content directly to Markdown
+  - `export_cads_yaml_to_pdf` - Export CADS YAML content directly to PDF
+  - `export_cads_yaml_to_markdown` - Export CADS YAML content directly to Markdown
+  - `export_decision_yaml_to_pdf` - Export Decision (ADR) YAML content directly to PDF
+  - `export_decision_yaml_to_markdown` - Export Decision (ADR) YAML content directly to Markdown
+  - `export_knowledge_yaml_to_pdf` - Export Knowledge Base YAML content directly to PDF
+  - `export_knowledge_yaml_to_markdown` - Export Knowledge Base YAML content directly to Markdown
+  - These functions accept raw YAML content (as stored in .odcs.yaml, .odps.yaml, .cads.yaml, .madr.yaml, .kb.yaml files)
+  - Enables direct export from UI without requiring conversion to internal SDK structs
+
+- **feat(models)**: Added `Table::from_table_data` for converting import data to Table model
+
 ## [1.14.1] - 2026-01-11
 
 ### Added
@@ -18,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `export_table_to_markdown` - Export ODCS Data Contract to Markdown
   - `export_odps_to_markdown` - Export ODPS Data Product to Markdown
   - `export_cads_to_markdown` - Export CADS Asset to Markdown
+
+- **feat(models)**: Added `Table::from_table_data` for converting import data to Table model
 
 - **feat(cli)**: Extended PDF and Markdown export to support all contract types
   - `data-modelling-cli export pdf` now supports .odcs.yaml, .odps.yaml, .cads.yaml files

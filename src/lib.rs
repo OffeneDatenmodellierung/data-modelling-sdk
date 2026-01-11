@@ -2900,4 +2900,347 @@ mod wasm {
         let exporter = PdfExporter::new();
         Ok(exporter.cads_asset_to_markdown_public(&asset))
     }
+
+    // ============================================================================
+    // Native Format PDF/Markdown Export (accepts YAML content directly)
+    // ============================================================================
+
+    /// Export ODCS YAML content to PDF format with optional branding.
+    ///
+    /// Accepts raw ODCS YAML content (as you would find in an .odcs.yaml file)
+    /// and exports it to PDF.
+    ///
+    /// # Arguments
+    ///
+    /// * `odcs_yaml` - ODCS YAML content as a string
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_odcs_yaml_to_pdf(
+        odcs_yaml: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+        use crate::import::ODCSImporter;
+
+        // Parse ODCS YAML to get tables
+        let mut importer = ODCSImporter::new();
+        let import_result = importer.import(odcs_yaml).map_err(import_error_to_js)?;
+
+        if import_result.tables.is_empty() {
+            return Err(
+                WasmError::new("ImportError", "ODCS content contains no tables")
+                    .with_code("NO_TABLES")
+                    .to_js_value(),
+            );
+        }
+
+        // Convert first table from import result to Table
+        let table_data = &import_result.tables[0];
+        let table = crate::models::Table::from_table_data(table_data);
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter.export_table(&table).map_err(export_error_to_js)?;
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    /// Export ODCS YAML content to Markdown format.
+    ///
+    /// Accepts raw ODCS YAML content and exports it to Markdown.
+    ///
+    /// # Arguments
+    ///
+    /// * `odcs_yaml` - ODCS YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_odcs_yaml_to_markdown(odcs_yaml: &str) -> Result<String, JsValue> {
+        use crate::export::pdf::PdfExporter;
+        use crate::import::ODCSImporter;
+
+        let mut importer = ODCSImporter::new();
+        let import_result = importer.import(odcs_yaml).map_err(import_error_to_js)?;
+
+        if import_result.tables.is_empty() {
+            return Err(
+                WasmError::new("ImportError", "ODCS content contains no tables")
+                    .with_code("NO_TABLES")
+                    .to_js_value(),
+            );
+        }
+
+        let table_data = &import_result.tables[0];
+        let table = crate::models::Table::from_table_data(table_data);
+
+        let exporter = PdfExporter::new();
+        Ok(exporter.table_to_markdown_public(&table))
+    }
+
+    /// Export ODPS YAML content to PDF format with optional branding.
+    ///
+    /// Accepts raw ODPS YAML content (as you would find in an .odps.yaml file)
+    /// and exports it to PDF.
+    ///
+    /// # Arguments
+    ///
+    /// * `odps_yaml` - ODPS YAML content as a string
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_odps_yaml_to_pdf(
+        odps_yaml: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+        use crate::import::ODPSImporter;
+
+        let importer = ODPSImporter::new();
+        let product = importer.import(odps_yaml).map_err(import_error_to_js)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter
+            .export_data_product(&product)
+            .map_err(export_error_to_js)?;
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    /// Export ODPS YAML content to Markdown format.
+    ///
+    /// Accepts raw ODPS YAML content and exports it to Markdown.
+    ///
+    /// # Arguments
+    ///
+    /// * `odps_yaml` - ODPS YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_odps_yaml_to_markdown(odps_yaml: &str) -> Result<String, JsValue> {
+        use crate::export::pdf::PdfExporter;
+        use crate::import::ODPSImporter;
+
+        let importer = ODPSImporter::new();
+        let product = importer.import(odps_yaml).map_err(import_error_to_js)?;
+
+        let exporter = PdfExporter::new();
+        Ok(exporter.data_product_to_markdown_public(&product))
+    }
+
+    /// Export CADS YAML content to PDF format with optional branding.
+    ///
+    /// Accepts raw CADS YAML content (as you would find in a .cads.yaml file)
+    /// and exports it to PDF.
+    ///
+    /// # Arguments
+    ///
+    /// * `cads_yaml` - CADS YAML content as a string
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_cads_yaml_to_pdf(
+        cads_yaml: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+        use crate::import::CADSImporter;
+
+        let importer = CADSImporter::new();
+        let asset = importer.import(cads_yaml).map_err(import_error_to_js)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter
+            .export_cads_asset(&asset)
+            .map_err(export_error_to_js)?;
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    /// Export CADS YAML content to Markdown format.
+    ///
+    /// Accepts raw CADS YAML content and exports it to Markdown.
+    ///
+    /// # Arguments
+    ///
+    /// * `cads_yaml` - CADS YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_cads_yaml_to_markdown(cads_yaml: &str) -> Result<String, JsValue> {
+        use crate::export::pdf::PdfExporter;
+        use crate::import::CADSImporter;
+
+        let importer = CADSImporter::new();
+        let asset = importer.import(cads_yaml).map_err(import_error_to_js)?;
+
+        let exporter = PdfExporter::new();
+        Ok(exporter.cads_asset_to_markdown_public(&asset))
+    }
+
+    /// Export Decision YAML content to PDF format with optional branding.
+    ///
+    /// Accepts raw Decision YAML content (as you would find in a .madr.yaml file)
+    /// and exports it to PDF.
+    ///
+    /// # Arguments
+    ///
+    /// * `decision_yaml` - Decision YAML content as a string
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_decision_yaml_to_pdf(
+        decision_yaml: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+        use crate::import::decision::DecisionImporter;
+
+        let importer = DecisionImporter::new();
+        let decision = importer
+            .import_without_validation(decision_yaml)
+            .map_err(import_error_to_js)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter
+            .export_decision(&decision)
+            .map_err(export_error_to_js)?;
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    /// Export Decision YAML content to Markdown format.
+    ///
+    /// Accepts raw Decision YAML content and exports it to Markdown.
+    ///
+    /// # Arguments
+    ///
+    /// * `decision_yaml` - Decision YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_decision_yaml_to_markdown(decision_yaml: &str) -> Result<String, JsValue> {
+        use crate::export::markdown::MarkdownExporter;
+        use crate::import::decision::DecisionImporter;
+
+        let importer = DecisionImporter::new();
+        let decision = importer
+            .import_without_validation(decision_yaml)
+            .map_err(import_error_to_js)?;
+
+        let exporter = MarkdownExporter::new();
+        exporter
+            .export_decision(&decision)
+            .map_err(export_error_to_js)
+    }
+
+    /// Export Knowledge Article YAML content to PDF format with optional branding.
+    ///
+    /// Accepts raw Knowledge Article YAML content (as you would find in a .kb.yaml file)
+    /// and exports it to PDF.
+    ///
+    /// # Arguments
+    ///
+    /// * `knowledge_yaml` - Knowledge Article YAML content as a string
+    /// * `branding_json` - Optional JSON string containing BrandingConfig
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing PdfExportResult (with base64-encoded PDF), or JsValue error
+    #[wasm_bindgen]
+    pub fn export_knowledge_yaml_to_pdf(
+        knowledge_yaml: &str,
+        branding_json: Option<String>,
+    ) -> Result<String, JsValue> {
+        use crate::export::pdf::{BrandingConfig, PdfExporter};
+        use crate::import::knowledge::KnowledgeImporter;
+
+        let importer = KnowledgeImporter::new();
+        let article = importer
+            .import_without_validation(knowledge_yaml)
+            .map_err(import_error_to_js)?;
+
+        let exporter = if let Some(branding_str) = branding_json {
+            let branding: BrandingConfig =
+                serde_json::from_str(&branding_str).map_err(deserialization_error)?;
+            PdfExporter::with_branding(branding)
+        } else {
+            PdfExporter::new()
+        };
+
+        let result = exporter
+            .export_knowledge(&article)
+            .map_err(export_error_to_js)?;
+        serde_json::to_string(&result).map_err(serialization_error)
+    }
+
+    /// Export Knowledge Article YAML content to Markdown format.
+    ///
+    /// Accepts raw Knowledge Article YAML content and exports it to Markdown.
+    ///
+    /// # Arguments
+    ///
+    /// * `knowledge_yaml` - Knowledge Article YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// Markdown string, or JsValue error
+    #[wasm_bindgen]
+    pub fn export_knowledge_yaml_to_markdown(knowledge_yaml: &str) -> Result<String, JsValue> {
+        use crate::export::markdown::MarkdownExporter;
+        use crate::import::knowledge::KnowledgeImporter;
+
+        let importer = KnowledgeImporter::new();
+        let article = importer
+            .import_without_validation(knowledge_yaml)
+            .map_err(import_error_to_js)?;
+
+        let exporter = MarkdownExporter::new();
+        exporter
+            .export_knowledge(&article)
+            .map_err(export_error_to_js)
+    }
 }

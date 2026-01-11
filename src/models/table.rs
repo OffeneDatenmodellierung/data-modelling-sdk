@@ -322,4 +322,100 @@ impl Table {
     ) -> Uuid {
         Uuid::new_v4()
     }
+
+    /// Create a Table from imported TableData.
+    ///
+    /// Converts the import format (TableData) to the internal Table model.
+    /// This is used when exporting ODCS YAML directly to PDF/Markdown.
+    ///
+    /// # Arguments
+    ///
+    /// * `table_data` - The imported table data from ODCS parser
+    ///
+    /// # Returns
+    ///
+    /// A new Table instance populated from the import data
+    pub fn from_table_data(table_data: &crate::import::TableData) -> Self {
+        use crate::models::Column;
+
+        let table_name = table_data
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("table_{}", table_data.table_index));
+
+        let columns: Vec<Column> = table_data
+            .columns
+            .iter()
+            .map(|col_data| Column {
+                id: col_data.id.clone(),
+                name: col_data.name.clone(),
+                business_name: col_data.business_name.clone(),
+                description: col_data.description.clone().unwrap_or_default(),
+                data_type: col_data.data_type.clone(),
+                physical_type: col_data.physical_type.clone(),
+                physical_name: col_data.physical_name.clone(),
+                logical_type_options: col_data.logical_type_options.clone(),
+                primary_key: col_data.primary_key,
+                primary_key_position: col_data.primary_key_position,
+                unique: col_data.unique,
+                nullable: col_data.nullable,
+                partitioned: col_data.partitioned,
+                partition_key_position: col_data.partition_key_position,
+                clustered: col_data.clustered,
+                classification: col_data.classification.clone(),
+                critical_data_element: col_data.critical_data_element,
+                encrypted_name: col_data.encrypted_name.clone(),
+                transform_source_objects: col_data.transform_source_objects.clone(),
+                transform_logic: col_data.transform_logic.clone(),
+                transform_description: col_data.transform_description.clone(),
+                examples: col_data.examples.clone(),
+                default_value: col_data.default_value.clone(),
+                relationships: col_data.relationships.clone(),
+                authoritative_definitions: col_data.authoritative_definitions.clone(),
+                quality: col_data.quality.clone().unwrap_or_default(),
+                enum_values: col_data.enum_values.clone().unwrap_or_default(),
+                tags: col_data.tags.clone(),
+                custom_properties: col_data.custom_properties.clone(),
+                ..Default::default()
+            })
+            .collect();
+
+        let mut table = Self::new(table_name, columns);
+
+        // Preserve ODCS metadata
+        if let Some(ref domain) = table_data.domain {
+            table
+                .odcl_metadata
+                .insert("domain".to_string(), serde_json::json!(domain));
+        }
+        if let Some(ref version) = table_data.version {
+            table
+                .odcl_metadata
+                .insert("version".to_string(), serde_json::json!(version));
+        }
+        if let Some(ref status) = table_data.status {
+            table
+                .odcl_metadata
+                .insert("status".to_string(), serde_json::json!(status));
+        }
+        if let Some(ref description) = table_data.description {
+            table
+                .odcl_metadata
+                .insert("description".to_string(), serde_json::json!(description));
+        }
+        if let Some(ref team) = table_data.team {
+            table.odcl_metadata.insert(
+                "team".to_string(),
+                serde_json::to_value(team).unwrap_or_default(),
+            );
+        }
+        if let Some(ref support) = table_data.support {
+            table.odcl_metadata.insert(
+                "support".to_string(),
+                serde_json::to_value(support).unwrap_or_default(),
+            );
+        }
+
+        table
+    }
 }
