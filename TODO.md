@@ -325,7 +325,13 @@ This document provides a detailed task breakdown for implementing the data pipel
 - [x] Migrate batch tracking to table properties
 - [x] Keep both DuckDB and Iceberg backends available (user choice)
 - [x] Keep DuckDB for complex batch queries (optional)
-- [ ] Update resume logic for Iceberg (future)
+- [x] Implement resume logic for Iceberg ingestion
+  - [x] Enhanced `BatchMetadata` with `last_file_path`, `status`, `files_processed`, etc.
+  - [x] Added `BatchStatus` enum (Running, Completed, Failed)
+  - [x] Added `IcebergIngestConfig` with resume support
+  - [x] Added `ingest_to_iceberg_with_config()` for full control
+  - [x] Resume skips files before last processed file
+  - [x] Periodic batch metadata updates for crash recovery
 
 ### 3.5 Schema-Inferenced Views
 - [x] Generate CREATE VIEW SQL from inferred schema (in CLI)

@@ -60,7 +60,7 @@ pub struct RawJsonRecord {
     pub ingested_at: DateTime<Utc>,
 }
 
-/// Batch metadata stored in table properties
+/// Batch metadata stored in table properties for resume support
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchMetadata {
     /// Batch ID
@@ -71,10 +71,77 @@ pub struct BatchMetadata {
     pub completed_at: Option<DateTime<Utc>>,
     /// Number of records in batch
     pub record_count: usize,
+    /// Number of files processed
+    pub files_processed: usize,
+    /// Number of files skipped (dedup)
+    pub files_skipped: usize,
+    /// Total bytes processed
+    pub bytes_processed: u64,
     /// Source path or pattern
     pub source: String,
     /// Partition key
     pub partition: Option<String>,
+    /// Last file path processed (for resume)
+    pub last_file_path: Option<String>,
+    /// Batch status
+    pub status: BatchStatus,
+    /// Error message if failed
+    pub error_message: Option<String>,
+}
+
+/// Batch status for tracking progress
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchStatus {
+    /// Batch is currently running
+    Running,
+    /// Batch completed successfully
+    Completed,
+    /// Batch failed with error
+    Failed,
+}
+
+impl BatchMetadata {
+    /// Create a new batch metadata
+    pub fn new(batch_id: String, source: String, partition: Option<String>) -> Self {
+        Self {
+            batch_id,
+            started_at: Utc::now(),
+            completed_at: None,
+            record_count: 0,
+            files_processed: 0,
+            files_skipped: 0,
+            bytes_processed: 0,
+            source,
+            partition,
+            last_file_path: None,
+            status: BatchStatus::Running,
+            error_message: None,
+        }
+    }
+
+    /// Generate a unique batch ID
+    pub fn generate_id() -> String {
+        format!("batch-{}", uuid::Uuid::new_v4())
+    }
+
+    /// Check if the batch can be resumed
+    pub fn can_resume(&self) -> bool {
+        self.status == BatchStatus::Running || self.status == BatchStatus::Failed
+    }
+
+    /// Mark the batch as completed
+    pub fn complete(&mut self) {
+        self.status = BatchStatus::Completed;
+        self.completed_at = Some(Utc::now());
+    }
+
+    /// Mark the batch as failed
+    pub fn fail(&mut self, error: String) {
+        self.status = BatchStatus::Failed;
+        self.completed_at = Some(Utc::now());
+        self.error_message = Some(error);
+    }
 }
 
 /// Snapshot info for time travel

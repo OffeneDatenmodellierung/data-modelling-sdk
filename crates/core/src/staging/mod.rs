@@ -59,8 +59,10 @@ pub use error::{IngestError, StagingError};
 #[cfg(feature = "iceberg")]
 pub use export::{ExportConfig, ExportResult, ExportTarget};
 #[cfg(feature = "iceberg")]
-pub use iceberg_table::IcebergTable;
+pub use iceberg_table::{
+    BatchMetadata as IcebergBatchMetadata, BatchStatus as IcebergBatchStatus, IcebergTable,
+};
 pub use ingest::IngestStats;
 #[cfg(feature = "iceberg")]
-pub use ingest::ingest_to_iceberg;
+pub use ingest::{IcebergIngestConfig, ingest_to_iceberg, ingest_to_iceberg_with_config};
 pub use schema::StagingSchema;

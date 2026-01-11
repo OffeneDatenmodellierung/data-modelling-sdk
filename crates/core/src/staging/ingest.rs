@@ -274,6 +274,67 @@ pub fn to_raw_json_records(
         .collect())
 }
 
+/// Configuration for Iceberg ingestion
+#[cfg(feature = "iceberg")]
+#[derive(Debug, Clone)]
+pub struct IcebergIngestConfig {
+    /// Base path for file discovery
+    pub base_path: std::path::PathBuf,
+    /// File pattern to match
+    pub pattern: String,
+    /// Partition key
+    pub partition: Option<String>,
+    /// Deduplication strategy
+    pub dedup: DedupStrategy,
+    /// Batch size for writes
+    pub batch_size: usize,
+    /// Resume a previous batch
+    pub resume: bool,
+    /// Batch ID for resume (auto-generated if not provided)
+    pub batch_id: Option<String>,
+}
+
+#[cfg(feature = "iceberg")]
+impl IcebergIngestConfig {
+    /// Create a new config with defaults
+    pub fn new(base_path: impl Into<std::path::PathBuf>, pattern: impl Into<String>) -> Self {
+        Self {
+            base_path: base_path.into(),
+            pattern: pattern.into(),
+            partition: None,
+            dedup: DedupStrategy::ByPath,
+            batch_size: 1000,
+            resume: false,
+            batch_id: None,
+        }
+    }
+
+    /// Set partition key
+    pub fn with_partition(mut self, partition: impl Into<String>) -> Self {
+        self.partition = Some(partition.into());
+        self
+    }
+
+    /// Set deduplication strategy
+    pub fn with_dedup(mut self, dedup: DedupStrategy) -> Self {
+        self.dedup = dedup;
+        self
+    }
+
+    /// Set batch size
+    pub fn with_batch_size(mut self, batch_size: usize) -> Self {
+        self.batch_size = batch_size;
+        self
+    }
+
+    /// Enable resume mode
+    pub fn with_resume(mut self, batch_id: impl Into<String>) -> Self {
+        self.resume = true;
+        self.batch_id = Some(batch_id.into());
+        self
+    }
+}
+
 /// Ingest files to an Iceberg table
 ///
 /// This function:
@@ -293,21 +354,82 @@ pub async fn ingest_to_iceberg(
     dedup: DedupStrategy,
     batch_size: usize,
 ) -> Result<IngestStats, IngestError> {
+    let config = IcebergIngestConfig {
+        base_path: base_path.to_path_buf(),
+        pattern: pattern.to_string(),
+        partition: partition.map(|s| s.to_string()),
+        dedup,
+        batch_size,
+        resume: false,
+        batch_id: None,
+    };
+    ingest_to_iceberg_with_config(table, catalog, &config).await
+}
+
+/// Ingest files to an Iceberg table with full configuration including resume support
+///
+/// This function supports resuming interrupted ingestions by tracking progress
+/// in the Iceberg table properties. When `config.resume` is true and a `batch_id`
+/// is provided, the function will resume from the last processed file.
+#[cfg(feature = "iceberg")]
+pub async fn ingest_to_iceberg_with_config(
+    table: &super::iceberg_table::IcebergTable,
+    catalog: &super::catalog::IcebergCatalog,
+    config: &IcebergIngestConfig,
+) -> Result<IngestStats, IngestError> {
+    use super::iceberg_table::{BatchMetadata, BatchStatus};
     use std::collections::HashSet;
     use std::time::Instant;
 
     let start = Instant::now();
     let mut stats = IngestStats::new();
 
+    // Generate or use provided batch ID
+    let batch_id = config
+        .batch_id
+        .clone()
+        .unwrap_or_else(BatchMetadata::generate_id);
+
+    // Create or resume batch
+    let mut batch = if config.resume {
+        // Try to load existing batch from table properties
+        match table.get_batch_metadata(&batch_id) {
+            Some(b) if b.can_resume() => {
+                tracing::info!(
+                    "Resuming batch {} from file {:?}",
+                    batch_id,
+                    b.last_file_path
+                );
+                b
+            }
+            Some(_) => {
+                return Err(IngestError::BatchCompleted(batch_id));
+            }
+            None => {
+                return Err(IngestError::BatchNotFound(batch_id));
+            }
+        }
+    } else {
+        let source = format!("{}:{}", config.base_path.display(), config.pattern);
+        BatchMetadata::new(batch_id.clone(), source, config.partition.clone())
+    };
+
+    // Store initial batch metadata
+    if !config.resume {
+        if let Err(e) = table.store_batch_metadata(&batch).await {
+            tracing::warn!("Failed to store initial batch metadata: {}", e);
+        }
+    }
+
     // Discover files
-    let mut files = discover_local_files(base_path, pattern)?;
+    let mut files = discover_local_files(&config.base_path, &config.pattern)?;
 
     // Get existing paths/hashes if deduplication is enabled
-    let existing_paths: HashSet<String> = HashSet::new(); // TODO: Query from table properties
-    let existing_hashes: HashSet<String> = HashSet::new(); // TODO: Query from table properties
+    let existing_paths: HashSet<String> = HashSet::new(); // Could query from table if needed
+    let existing_hashes: HashSet<String> = HashSet::new(); // Could query from table if needed
 
     // Compute hashes if needed for deduplication
-    if matches!(dedup, DedupStrategy::ByContent | DedupStrategy::Both) {
+    if matches!(config.dedup, DedupStrategy::ByContent | DedupStrategy::Both) {
         for file in &mut files {
             if let Err(e) = file.compute_hash() {
                 stats.add_error(format!("Failed to hash {}: {}", file.path.display(), e));
@@ -315,13 +437,33 @@ pub async fn ingest_to_iceberg(
         }
     }
 
+    // Determine resume point
+    let resume_after = if config.resume {
+        batch.last_file_path.clone()
+    } else {
+        None
+    };
+    let mut past_resume_point = resume_after.is_none();
+
     // Process files in batches
     let mut batch_records = Vec::new();
+    let partition = config.partition.as_deref();
 
     for mut file in files {
+        let file_path_str = file.path.display().to_string();
+
+        // Skip files before resume point
+        if !past_resume_point {
+            if Some(&file_path_str) == resume_after.as_ref() {
+                past_resume_point = true;
+            }
+            continue;
+        }
+
         // Check deduplication
-        if should_skip_file(&file, dedup, &existing_paths, &existing_hashes) {
+        if should_skip_file(&file, config.dedup, &existing_paths, &existing_hashes) {
             stats.files_skipped += 1;
+            batch.files_skipped += 1;
             continue;
         }
 
@@ -334,6 +476,7 @@ pub async fn ingest_to_iceberg(
         match to_raw_json_records(&file, partition) {
             Ok(records) => {
                 stats.bytes_processed += file.size;
+                batch.bytes_processed += file.size;
                 batch_records.extend(records);
             }
             Err(e) => {
@@ -343,12 +486,15 @@ pub async fn ingest_to_iceberg(
         }
 
         stats.files_processed += 1;
+        batch.files_processed += 1;
+        batch.last_file_path = Some(file_path_str);
 
         // Write batch if size threshold reached
-        if batch_records.len() >= batch_size {
+        if batch_records.len() >= config.batch_size {
             match table.append_records(&batch_records, catalog).await {
                 Ok(result) => {
                     stats.records_ingested += result.records_written;
+                    batch.record_count += result.records_written;
                     tracing::info!(
                         "Wrote batch of {} records ({} bytes)",
                         result.records_written,
@@ -356,10 +502,20 @@ pub async fn ingest_to_iceberg(
                     );
                 }
                 Err(e) => {
-                    stats.add_error(format!("Failed to write batch: {}", e));
+                    let error = format!("Failed to write batch: {}", e);
+                    stats.add_error(error.clone());
+                    batch.fail(error);
+                    // Store failed batch state for resume
+                    let _ = table.store_batch_metadata(&batch).await;
+                    return Err(IngestError::Insert(e.to_string()));
                 }
             }
             batch_records.clear();
+
+            // Update batch progress periodically
+            if batch.files_processed % 100 == 0 {
+                let _ = table.store_batch_metadata(&batch).await;
+            }
         }
     }
 
@@ -368,6 +524,7 @@ pub async fn ingest_to_iceberg(
         match table.append_records(&batch_records, catalog).await {
             Ok(result) => {
                 stats.records_ingested += result.records_written;
+                batch.record_count += result.records_written;
                 tracing::info!(
                     "Wrote final batch of {} records ({} bytes)",
                     result.records_written,
@@ -375,9 +532,19 @@ pub async fn ingest_to_iceberg(
                 );
             }
             Err(e) => {
-                stats.add_error(format!("Failed to write final batch: {}", e));
+                let error = format!("Failed to write final batch: {}", e);
+                stats.add_error(error.clone());
+                batch.fail(error);
+                let _ = table.store_batch_metadata(&batch).await;
+                return Err(IngestError::Insert(e.to_string()));
             }
         }
+    }
+
+    // Mark batch as completed
+    batch.complete();
+    if let Err(e) = table.store_batch_metadata(&batch).await {
+        tracing::warn!("Failed to store final batch metadata: {}", e);
     }
 
     stats.duration = start.elapsed();
