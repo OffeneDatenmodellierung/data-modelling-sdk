@@ -43,7 +43,13 @@ pub mod export;
 #[cfg(feature = "iceberg")]
 pub mod iceberg_table;
 mod ingest;
+#[cfg(feature = "staging")]
+pub mod progress;
+#[cfg(feature = "s3")]
+pub mod s3;
 mod schema;
+#[cfg(feature = "databricks")]
+pub mod unity;
 
 pub use batch::{BatchStatus, ProcessingBatch};
 #[cfg(feature = "iceberg")]
@@ -62,7 +68,17 @@ pub use export::{ExportConfig, ExportResult, ExportTarget};
 pub use iceberg_table::{
     BatchMetadata as IcebergBatchMetadata, BatchStatus as IcebergBatchStatus, IcebergTable,
 };
-pub use ingest::IngestStats;
+pub use ingest::{
+    DiscoveredFile, IngestStats, ParallelBatchProcessor, ParsedFile, ParsedRecord,
+    StreamingJsonlReader, compute_hashes_parallel, parse_files_parallel,
+};
 #[cfg(feature = "iceberg")]
 pub use ingest::{IcebergIngestConfig, ingest_to_iceberg, ingest_to_iceberg_with_config};
 pub use schema::StagingSchema;
+
+#[cfg(feature = "staging")]
+pub use progress::{InferenceProgress, IngestProgress, Spinner, format_bytes, format_number};
+#[cfg(feature = "s3")]
+pub use s3::{S3Ingester, S3Source, SecureCredentials, redact_secret, redact_secrets_in_string};
+#[cfg(feature = "databricks")]
+pub use unity::{UnityVolumeIngester, UnityVolumeSource};

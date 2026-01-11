@@ -5,9 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-01-11
 
 ### Added
+
+- **feat(staging)**: Real-time progress reporting for ingestion operations
+  - `IngestProgress` with multi-bar display (files, records, bytes throughput)
+  - `InferenceProgress` for schema inference operations
+  - `Spinner` for indeterminate operations
+  - `format_bytes()` and `format_number()` helper functions
+  - Uses `indicatif` crate for terminal progress bars
+
+- **feat(s3)**: AWS S3 ingestion support (feature: `s3`)
+  - `S3Source` configuration with bucket, prefix, region, profile, endpoint
+  - `S3Ingester` with streaming file discovery and download
+  - Async file listing with pagination support
+  - Memory-efficient streaming downloads
+  - Integration with staging pipeline
+
+- **feat(databricks)**: Databricks Unity Catalog Volumes ingestion (feature: `databricks`)
+  - `UnityVolumeSource` configuration with host, token, catalog, schema, volume
+  - `UnityVolumeIngester` using Databricks Files REST API
+  - Secure token handling with `SecureCredentials` wrapper
+  - File discovery and download from Unity Catalog Volumes
+
+- **feat(security)**: Secure credential handling
+  - `SecureCredentials` wrapper type preventing accidental Display/Debug logging
+  - `redact_secret()` function showing only first N characters
+  - `redact_secrets_in_string()` with regex-based detection for:
+    - AWS access keys (AKIA...)
+    - AWS secret keys
+    - Bearer tokens
+    - URL-embedded passwords
+  - All credential types implement safe Display trait
+
+- **feat(tests)**: Comprehensive integration and performance tests
+  - 10 integration tests covering full staging pipeline
+  - Performance benchmarks for 10K, 100K, and 1M records
+  - Criterion benchmarks for staging operations
+
+- **feat(pipeline)**: Full data pipeline orchestration (Phase 6)
+  - `PipelineExecutor` for running multi-stage data pipelines
+  - `PipelineConfig` with comprehensive configuration options
+  - `PipelineStage` enum: Ingest, Infer, Refine, Map, Export
+  - Checkpointing and resume support with `Checkpoint` struct
+  - Dry-run mode for validation without execution
+  - Stage timing and success/failure tracking
+  - CLI command: `odm pipeline run` with 15+ options
+  - CLI command: `odm pipeline status` for pipeline monitoring
+  - 20 unit tests for pipeline functionality
+
+- **feat(mapping)**: Schema-to-schema mapping with transformation generation (Phase 5)
+  - `SchemaMatcher` with multiple matching algorithms
+  - Match methods: Exact, CaseInsensitive, Fuzzy (Levenshtein), Semantic, LLM
+  - `SchemaMapping` result with direct mappings, transformations, gaps, extras
+  - Compatibility scoring (0.0-1.0)
+  - `TransformType` variants: TypeCast, Rename, Merge, Split, FormatChange, Custom, Extract, Default
+  - Transformation script generation: SQL, JQ, Python, PySpark
+  - CLI command: `odm map` with fuzzy matching and transform output
+  - 29 unit tests for mapping functionality
+
+- **feat(llm-matcher)**: LLM-enhanced schema matching
+  - `LlmSchemaMatcher` combining algorithmic and LLM matching
+  - Retry logic with exponential backoff for LLM failures
+  - Batching for large schemas exceeding prompt limits
+  - Transform hint parsing to create `TransformMapping`s
+  - Example value inclusion in prompts for better matching
+  - Feature-gated under `llm` feature
+  - 12 unit tests for LLM matching
 
 - **feat(iceberg)**: Apache Iceberg integration for data lakehouse staging (Phase 3)
   - New `iceberg` feature flag for optional Iceberg support

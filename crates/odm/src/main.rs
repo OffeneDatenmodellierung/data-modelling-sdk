@@ -28,6 +28,12 @@ use commands::import::{
 use commands::inference::{
     InferenceInferArgs, InferenceSchemasArgs, handle_inference_infer, handle_inference_schemas,
 };
+#[cfg(feature = "mapping")]
+use commands::mapping::{MapArgs, handle_map};
+#[cfg(feature = "pipeline")]
+use commands::pipeline::{
+    PipelineRunArgs, PipelineStatusArgs, handle_pipeline_run, handle_pipeline_status,
+};
 #[cfg(feature = "duckdb-backend")]
 use commands::query::{QueryArgs, handle_query};
 #[cfg(feature = "staging")]
@@ -170,6 +176,43 @@ enum Commands {
     Inference {
         #[command(subcommand)]
         command: InferenceCommands,
+    },
+
+    /// Map source schema to target schema
+    #[cfg(feature = "mapping")]
+    Map {
+        /// Source schema file (.json or .yaml)
+        source: PathBuf,
+        /// Target schema file (.json or .yaml)
+        target: PathBuf,
+        /// Output file for mapping result
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Minimum similarity threshold for fuzzy matching (0.0-1.0)
+        #[arg(long, default_value = "0.7")]
+        min_similarity: f64,
+        /// Enable fuzzy matching
+        #[arg(long)]
+        fuzzy: bool,
+        /// Enable case-insensitive matching
+        #[arg(long)]
+        case_insensitive: bool,
+        /// Transform format (sql, jq, python, pyspark)
+        #[arg(long, default_value = "sql")]
+        transform_format: String,
+        /// Output file for generated transform script
+        #[arg(long)]
+        transform_output: Option<PathBuf>,
+        /// Show verbose mapping details
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Run full data pipeline (ingest → infer → map → export)
+    #[cfg(feature = "pipeline")]
+    Pipeline {
+        #[command(subcommand)]
+        command: PipelineCommands,
     },
 }
 
@@ -395,6 +438,32 @@ enum InferenceCommands {
         /// Output file path (stdout if not provided)
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        // LLM refinement options
+        /// LLM mode: none, online, offline (requires llm feature)
+        #[arg(long, default_value = "none")]
+        llm: String,
+        /// Ollama URL for online mode
+        #[arg(long, default_value = "http://localhost:11434")]
+        ollama_url: String,
+        /// Model name for LLM refinement
+        #[arg(long, default_value = "llama3.2")]
+        model: String,
+        /// Path to GGUF model file for offline mode
+        #[arg(long)]
+        model_path: Option<PathBuf>,
+        /// Path to documentation file for context
+        #[arg(long)]
+        doc_path: Option<PathBuf>,
+        /// Skip LLM refinement even if configured
+        #[arg(long)]
+        no_refine: bool,
+        /// Temperature for LLM generation (0.0-2.0)
+        #[arg(long, default_value = "0.3")]
+        temperature: f32,
+        /// Verbose LLM output
+        #[arg(long)]
+        verbose_llm: bool,
     },
 
     /// Analyze and group schemas across partitions
@@ -408,6 +477,72 @@ enum InferenceCommands {
         /// Output format (table, json)
         #[arg(short, long, default_value = "table")]
         format: String,
+    },
+}
+
+#[cfg(feature = "pipeline")]
+#[derive(Subcommand)]
+enum PipelineCommands {
+    /// Run the data pipeline
+    Run {
+        /// Path to the staging database file
+        #[arg(short, long, default_value = "staging.duckdb")]
+        database: PathBuf,
+        /// Source directory containing files to ingest
+        #[arg(short, long)]
+        source: Option<PathBuf>,
+        /// File pattern to match (e.g., "*.json", "**/*.jsonl")
+        #[arg(short, long, default_value = "*.json")]
+        pattern: String,
+        /// Partition key for organizing data
+        #[arg(short = 'k', long)]
+        partition: Option<String>,
+        /// Output directory for results
+        #[arg(short, long, default_value = "./output")]
+        output_dir: PathBuf,
+        /// Target schema file for mapping stage
+        #[arg(long)]
+        target_schema: Option<PathBuf>,
+        /// Stages to run (ingest, infer, map, export)
+        #[arg(long, value_delimiter = ',')]
+        stages: Vec<String>,
+        /// LLM mode for inference: none, online, offline
+        #[arg(long, default_value = "none")]
+        llm_mode: String,
+        /// Ollama URL for online LLM mode
+        #[arg(long, default_value = "http://localhost:11434")]
+        ollama_url: String,
+        /// LLM model name
+        #[arg(long, default_value = "llama3.2")]
+        model: String,
+        /// Path to GGUF model file for offline mode
+        #[arg(long)]
+        model_path: Option<PathBuf>,
+        /// Path to documentation file for LLM context
+        #[arg(long)]
+        doc_path: Option<PathBuf>,
+        /// Temperature for LLM generation (0.0-2.0)
+        #[arg(long, default_value = "0.3")]
+        temperature: f32,
+        /// Configuration file path
+        #[arg(long)]
+        config_file: Option<PathBuf>,
+        /// Dry run mode (don't write outputs)
+        #[arg(long)]
+        dry_run: bool,
+        /// Resume from last checkpoint
+        #[arg(long)]
+        resume: bool,
+        /// Show verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Show pipeline status and checkpoint info
+    Status {
+        /// Path to the staging database file
+        #[arg(short, long, default_value = "staging.duckdb")]
+        database: PathBuf,
     },
 }
 
@@ -893,6 +1028,14 @@ fn main() {
                 no_formats,
                 format,
                 output,
+                llm,
+                ollama_url,
+                model,
+                model_path,
+                doc_path,
+                no_refine,
+                temperature,
+                verbose_llm,
             } => {
                 let args = InferenceInferArgs {
                     database,
@@ -903,6 +1046,14 @@ fn main() {
                     detect_formats: !no_formats,
                     format,
                     output,
+                    llm_mode: llm,
+                    ollama_url,
+                    model,
+                    model_path,
+                    doc_path,
+                    no_refine,
+                    temperature,
+                    verbose_llm,
                 };
                 handle_inference_infer(&args)
             }
@@ -917,6 +1068,80 @@ fn main() {
                     format,
                 };
                 handle_inference_schemas(&args)
+            }
+        },
+
+        #[cfg(feature = "mapping")]
+        Commands::Map {
+            source,
+            target,
+            output,
+            min_similarity,
+            fuzzy,
+            case_insensitive,
+            transform_format,
+            transform_output,
+            verbose,
+        } => {
+            let args = MapArgs {
+                source,
+                target,
+                output,
+                min_similarity,
+                fuzzy,
+                case_insensitive,
+                transform_format,
+                transform_output,
+                verbose,
+            };
+            handle_map(&args)
+        }
+
+        #[cfg(feature = "pipeline")]
+        Commands::Pipeline { command } => match command {
+            PipelineCommands::Run {
+                database,
+                source,
+                pattern,
+                partition,
+                output_dir,
+                target_schema,
+                stages,
+                llm_mode,
+                ollama_url,
+                model,
+                model_path,
+                doc_path,
+                temperature,
+                config_file,
+                dry_run,
+                resume,
+                verbose,
+            } => {
+                let args = PipelineRunArgs {
+                    database,
+                    source,
+                    pattern,
+                    partition,
+                    output_dir,
+                    target_schema,
+                    stages,
+                    llm_mode,
+                    ollama_url,
+                    model,
+                    model_path,
+                    doc_path,
+                    temperature,
+                    config_file,
+                    dry_run,
+                    resume,
+                    verbose,
+                };
+                handle_pipeline_run(&args)
+            }
+            PipelineCommands::Status { database } => {
+                let args = PipelineStatusArgs { database };
+                handle_pipeline_status(&args)
             }
         },
     };

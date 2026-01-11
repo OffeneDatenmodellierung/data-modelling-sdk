@@ -1,6 +1,9 @@
 //! Schema inference engine
+//!
+//! Provides both single-threaded and parallel schema inference capabilities.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -450,6 +453,140 @@ fn value_type_name(value: &Value) -> &'static str {
         Value::Array(_) => "array",
         Value::Object(_) => "object",
     }
+}
+
+/// Thread-safe schema inferrer for parallel processing
+///
+/// This wrapper allows multiple threads to add records concurrently.
+#[derive(Clone)]
+pub struct ParallelSchemaInferrer {
+    inner: Arc<Mutex<SchemaInferrer>>,
+}
+
+impl ParallelSchemaInferrer {
+    /// Create a new parallel schema inferrer with default configuration
+    pub fn new() -> Self {
+        Self::with_config(InferenceConfig::default())
+    }
+
+    /// Create a new parallel schema inferrer with custom configuration
+    pub fn with_config(config: InferenceConfig) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(SchemaInferrer::with_config(config))),
+        }
+    }
+
+    /// Add a single JSON string for analysis (thread-safe)
+    pub fn add_json(&self, json: &str) -> Result<(), InferenceError> {
+        self.inner
+            .lock()
+            .map_err(|_| InferenceError::LockError)?
+            .add_json(json)
+    }
+
+    /// Add a parsed JSON value for analysis (thread-safe)
+    pub fn add_value(&self, value: &Value) -> Result<(), InferenceError> {
+        self.inner
+            .lock()
+            .map_err(|_| InferenceError::LockError)?
+            .add_value(value)
+    }
+
+    /// Get current inference statistics (thread-safe)
+    pub fn stats(&self) -> Result<InferenceStats, InferenceError> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| InferenceError::LockError)?
+            .stats())
+    }
+
+    /// Finalize inference and generate schema
+    ///
+    /// This consumes the parallel inferrer. All threads must have finished
+    /// adding records before calling this method.
+    pub fn finalize(self) -> Result<InferredSchema, InferenceError> {
+        let inner = Arc::try_unwrap(self.inner)
+            .map_err(|_| InferenceError::LockError)?
+            .into_inner()
+            .map_err(|_| InferenceError::LockError)?;
+        inner.finalize()
+    }
+}
+
+impl Default for ParallelSchemaInferrer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Infer schema from a batch of JSON strings in parallel
+///
+/// This function uses rayon to process records in parallel, providing
+/// significant speedups for large datasets.
+///
+/// # Arguments
+/// * `records` - Iterator of JSON strings
+/// * `config` - Inference configuration
+///
+/// # Returns
+/// The inferred schema, or an error if inference fails
+#[cfg(feature = "staging")]
+pub fn infer_schema_parallel<I>(
+    records: I,
+    config: InferenceConfig,
+) -> Result<InferredSchema, InferenceError>
+where
+    I: IntoIterator<Item = String>,
+{
+    use rayon::prelude::*;
+
+    let records: Vec<String> = records.into_iter().collect();
+    let inferrer = ParallelSchemaInferrer::with_config(config);
+
+    // Process records in parallel
+    let errors: Vec<InferenceError> = records
+        .par_iter()
+        .filter_map(|json| inferrer.add_json(json).err())
+        .collect();
+
+    // Log any errors but don't fail the whole inference
+    for error in &errors {
+        tracing::warn!("Record inference error: {}", error);
+    }
+
+    inferrer.finalize()
+}
+
+/// Infer schema from parsed JSON values in parallel
+///
+/// This function is more efficient than `infer_schema_parallel` when
+/// values are already parsed.
+#[cfg(feature = "staging")]
+pub fn infer_schema_parallel_values<I>(
+    values: I,
+    config: InferenceConfig,
+) -> Result<InferredSchema, InferenceError>
+where
+    I: IntoIterator<Item = Value>,
+{
+    use rayon::prelude::*;
+
+    let values: Vec<Value> = values.into_iter().collect();
+    let inferrer = ParallelSchemaInferrer::with_config(config);
+
+    // Process values in parallel
+    let errors: Vec<InferenceError> = values
+        .par_iter()
+        .filter_map(|value| inferrer.add_value(value).err())
+        .collect();
+
+    // Log any errors but don't fail the whole inference
+    for error in &errors {
+        tracing::warn!("Value inference error: {}", error);
+    }
+
+    inferrer.finalize()
 }
 
 #[cfg(test)]

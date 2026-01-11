@@ -16,3 +16,9 @@ pub mod staging;
 
 #[cfg(all(feature = "inference", feature = "staging"))]
 pub mod inference;
+
+#[cfg(feature = "mapping")]
+pub mod mapping;
+
+#[cfg(feature = "pipeline")]
+pub mod pipeline;

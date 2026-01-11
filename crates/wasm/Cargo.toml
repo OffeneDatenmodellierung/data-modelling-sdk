@@ -1,6 +1,6 @@
 [package]
 name = "data-modelling-wasm"
-version = "1.14.3"
+version = "2.0.0"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"

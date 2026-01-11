@@ -437,6 +437,63 @@ The SDK maintains JSON Schema definitions for all supported formats in the `sche
 
 These schemas serve as authoritative references for validation, documentation, and compliance. See [schemas/README.md](schemas/README.md) for detailed information about each schema.
 
+## Data Pipeline
+
+The SDK includes a complete data pipeline for ingesting JSON data, inferring schemas, and mapping to target formats.
+
+### Pipeline Features
+
+- **JSON Ingestion**: Ingest JSON/JSONL files into a staging database with deduplication
+- **S3 Ingestion**: Ingest directly from AWS S3 buckets with streaming downloads (feature: `s3`)
+- **Databricks Volumes**: Ingest from Databricks Unity Catalog Volumes (feature: `databricks`)
+- **Progress Reporting**: Real-time progress bars with throughput metrics
+- **Schema Inference**: Automatically infer types, formats, and nullability from data
+- **LLM Refinement**: Optionally enhance schemas using Ollama or local LLM models
+- **Schema Mapping**: Map inferred schemas to target schemas with transformation generation
+- **Checkpointing**: Resume pipelines from the last successful stage
+- **Secure Credentials**: Credential wrapper types preventing accidental logging
+
+### Quick Start
+
+```bash
+# Build with pipeline support
+cargo build --release -p odm --features pipeline
+
+# Initialize staging database
+odm staging init staging.duckdb
+
+# Run full pipeline
+odm pipeline run \
+  --database staging.duckdb \
+  --source ./json-data \
+  --output-dir ./output \
+  --verbose
+
+# Check pipeline status
+odm pipeline status --database staging.duckdb
+```
+
+### Schema Mapping
+
+Map source schemas to target schemas with fuzzy matching and transformation script generation:
+
+```bash
+# Map schemas with fuzzy matching
+odm map source.json target.json --fuzzy --min-similarity 0.7
+
+# Generate SQL transformation
+odm map source.json target.json \
+  --transform-format sql \
+  --transform-output transform.sql
+
+# Generate Python transformation
+odm map source.json target.json \
+  --transform-format python \
+  --transform-output transform.py
+```
+
+See [CLI.md](docs/CLI.md) for detailed pipeline and mapping documentation.
+
 ## Status
 
 The SDK provides comprehensive support for multiple data modeling formats:
@@ -455,3 +512,10 @@ The SDK provides comprehensive support for multiple data modeling formats:
 - ✅ Git hooks for automatic synchronization
 - ✅ Decision Records (DDL) with MADR format support
 - ✅ Knowledge Base (KB) with domain partitioning
+- ✅ Data Pipeline with staging, inference, and mapping
+- ✅ Schema Mapping with fuzzy matching and transformation generation
+- ✅ LLM-enhanced schema refinement (Ollama and local models)
+- ✅ S3 ingestion with AWS SDK for Rust
+- ✅ Databricks Unity Catalog Volumes ingestion
+- ✅ Real-time progress reporting with indicatif
+- ✅ Secure credential handling with automatic redaction

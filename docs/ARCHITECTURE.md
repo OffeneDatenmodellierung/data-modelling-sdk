@@ -10,9 +10,10 @@
 6. [Component Architecture](#component-architecture)
 7. [Storage Architecture](#storage-architecture)
 8. [Database Architecture](#database-architecture)
-9. [File Organization](#file-organization)
-10. [Integration Patterns](#integration-patterns)
-11. [Use Cases](#use-cases)
+9. [Data Pipeline Architecture](#data-pipeline-architecture)
+10. [File Organization](#file-organization)
+11. [Integration Patterns](#integration-patterns)
+12. [Use Cases](#use-cases)
 
 ---
 
@@ -134,6 +135,10 @@ Files follow the pattern: `{workspace}_{domain}_{system}_{resource}.{type}.yaml`
 - `database`: Database backend support (DuckDB/PostgreSQL)
 - `duckdb-backend`: DuckDB embedded database
 - `postgres-backend`: PostgreSQL database
+- `staging`: Data staging with progress reporting
+- `s3`: AWS S3 ingestion support
+- `databricks`: Databricks Unity Catalog Volumes ingestion
+- `iceberg`: Apache Iceberg lakehouse storage
 - `cli-full`: Full CLI with all features including database support
 
 ### 6. UUID Strategy
@@ -454,6 +459,130 @@ Storage backend abstraction:
 - **`BrowserStorageBackend`**: Browser storage (WASM, feature-gated)
 - **`ApiStorageBackend`**: HTTP API (default)
 
+#### 8. Staging (`src/staging/`) - Feature: `staging`
+
+Data staging and ingestion layer using DuckDB:
+
+- **`StagingDatabase`**: DuckDB-backed storage for staged JSON data
+- **`BatchTracker`**: Resume-capable batch tracking with metadata
+- **`JsonIngester`**: High-performance JSON file ingestion (glob patterns, partitioning)
+- **`QueryEngine`**: SQL query interface for staged data
+- **`SchemaExporter`**: Export staged data to various formats
+- **`IngestProgress`**: Real-time progress reporting with indicatif (files, records, bytes)
+- **`InferenceProgress`**: Progress bar for schema inference operations
+- **`Spinner`**: Simple spinner for indeterminate operations
+- **`S3Ingester`**: AWS S3 ingestion with streaming download (feature: `s3`)
+- **`UnityVolumeIngester`**: Databricks Unity Catalog Volumes ingestion (feature: `databricks`)
+- **`SecureCredentials`**: Credential wrapper preventing accidental logging
+- **`redact_secrets_in_string()`**: Regex-based secret redaction for logs
+
+**Key Features**:
+- Stage raw JSON files before schema inference
+- Partition-based organization for large datasets
+- Resume interrupted ingestion from last successful batch
+- Query staged data with SQL before committing to schema
+- Real-time progress reporting with throughput metrics
+- S3 ingestion with AWS SDK for Rust (streaming, parallel)
+- Databricks Unity Catalog Volumes ingestion via REST API
+- Secure credential handling with Display trait redaction
+- Automatic secret redaction in error messages and logs
+
+#### 9. Inference (`src/inference/`) - Feature: `inference`
+
+Automatic schema inference from staged data:
+
+- **`SchemaInferer`**: Analyze JSON data to infer column types
+- **`TypeDetector`**: Detect 18+ semantic types (email, UUID, URL, phone, etc.)
+- **`FormatDetector`**: Identify date/time formats, patterns
+- **`StatisticsCollector`**: Gather column statistics (nullability, uniqueness, cardinality)
+- **`ConflictResolver`**: Handle type conflicts across records
+- **`ConstraintInferer`**: Infer constraints (NOT NULL, UNIQUE, ranges)
+- **`SchemaRefiner`**: LLM-enhanced schema refinement
+
+**Type Detection Hierarchy**:
+```
+Semantic Types (highest priority)
+├── uuid, email, url, phone, ip_address
+├── currency, percentage, credit_card
+├── iso_country, iso_language, iso_currency
+└── date, time, datetime, timestamp
+
+Structural Types
+├── boolean, integer, float, decimal
+├── string, text, json, array
+└── object, binary
+```
+
+#### 10. Mapping (`src/mapping/`) - Feature: `mapping`
+
+Schema mapping and transformation:
+
+- **`SchemaMatcher`**: Match source fields to target schema
+- **`LlmMatcher`**: LLM-enhanced matching with semantic understanding
+- **`MappingGenerator`**: Generate field mappings with confidence scores
+- **`TransformGenerator`**: Generate transformation scripts (SQL, JQ, Python, PySpark)
+- **`TransformValidator`**: Validate transformation correctness
+- **`MappingPersistence`**: Save/load mapping configurations
+
+**Matching Strategies**:
+- Exact name matching
+- Fuzzy name matching (Levenshtein distance)
+- Type compatibility analysis
+- Semantic matching via LLM
+- Pattern-based matching
+
+**Transform Outputs**:
+- SQL (standard, Databricks, Snowflake dialects)
+- JQ for JSON transformation
+- Python/PySpark for complex transformations
+
+#### 11. Pipeline (`src/pipeline/`) - Feature: `pipeline`
+
+End-to-end data modeling pipeline:
+
+- **`Pipeline`**: Orchestrate multi-stage data processing
+- **`PipelineStage`**: Individual stage definitions
+- **`Checkpoint`**: Save/restore pipeline state
+- **`StageExecutor`**: Execute individual stages
+- **`PipelineConfig`**: Pipeline configuration and options
+
+**Pipeline Stages**:
+```
+1. Ingest   → Stage raw JSON files to DuckDB
+2. Infer    → Analyze data and infer schema
+3. Refine   → LLM-enhanced schema refinement
+4. Map      → Match to target schema, generate transforms
+5. Export   → Generate ODCS, SQL, or other formats
+```
+
+**Checkpoint System**:
+- Save state after each stage
+- Resume from any checkpoint
+- Track stage completion and metadata
+
+#### 12. LLM Integration (`src/llm/`) - Feature: `llm`
+
+LLM provider abstraction for AI-enhanced features:
+
+- **`LlmProvider`**: Trait for LLM provider implementations
+- **`OpenAIProvider`**: OpenAI GPT-4/GPT-3.5 integration
+- **`OllamaProvider`**: Local Ollama model support
+- **`AnthropicProvider`**: Anthropic Claude integration
+- **`LlmConfig`**: Provider configuration and API keys
+- **`PromptBuilder`**: Build prompts for schema operations
+
+**Feature Flags**:
+- `llm`: Core LLM abstraction
+- `llm-openai`: OpenAI provider
+- `llm-ollama`: Ollama provider
+- `llm-anthropic`: Anthropic provider
+
+**LLM-Enhanced Operations**:
+- Schema refinement (better names, descriptions, types)
+- Semantic field matching
+- Transformation hint generation
+- Documentation generation
+
 ---
 
 ## Storage Architecture
@@ -644,6 +773,155 @@ pool_size = 5
 
 ---
 
+## Data Pipeline Architecture
+
+The SDK includes a comprehensive data pipeline system for end-to-end schema discovery and transformation.
+
+### Pipeline Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Data Pipeline                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐       │
+│  │ INGEST  │ →  │ INFER   │ →  │ REFINE  │ →  │   MAP   │ → ... │
+│  │         │    │         │    │  (LLM)  │    │         │       │
+│  └─────────┘    └─────────┘    └─────────┘    └─────────┘       │
+│       │              │              │              │             │
+│       ▼              ▼              ▼              ▼             │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              Checkpoint Storage (.checkpoints/)          │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Stage Details
+
+| Stage | Input | Output | Feature Flag |
+|-------|-------|--------|--------------|
+| **Ingest** | JSON files (glob pattern) | DuckDB staged_json table | `staging` |
+| **Infer** | Staged JSON data | InferredSchema (types, stats) | `inference` |
+| **Refine** | InferredSchema | Refined schema (LLM-enhanced) | `llm` |
+| **Map** | Source + Target schemas | SchemaMapping + transforms | `mapping` |
+| **Export** | Mapping | ODCS, SQL, transforms | core |
+
+### Checkpoint System
+
+Each stage creates a checkpoint that can be used to resume processing:
+
+```
+.checkpoints/
+├── ingest.json      # Files processed, batch IDs
+├── infer.json       # Inferred schema snapshot
+├── refine.json      # LLM refinements applied
+├── map.json         # Field mappings, transforms
+└── export.json      # Output files generated
+```
+
+**Checkpoint Contents**:
+- Stage name and completion status
+- Timestamp of completion
+- Stage-specific data (serialized)
+- Dependencies and configuration
+
+### Staging Layer
+
+The staging layer uses DuckDB for high-performance JSON ingestion:
+
+```sql
+-- Staged JSON table structure
+CREATE TABLE staged_json (
+    id INTEGER PRIMARY KEY,
+    partition VARCHAR,
+    file_path VARCHAR,
+    line_number INTEGER,
+    raw_json JSON,
+    ingested_at TIMESTAMP
+);
+
+-- Batch tracking
+CREATE TABLE batch_metadata (
+    batch_id VARCHAR PRIMARY KEY,
+    partition VARCHAR,
+    file_pattern VARCHAR,
+    files_processed INTEGER,
+    records_ingested INTEGER,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    status VARCHAR
+);
+```
+
+### Schema Inference Pipeline
+
+```
+Raw JSON Records
+       │
+       ▼
+┌─────────────────┐
+│  Sample Records │ (configurable sample size)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Type Detection │ → Semantic types (email, UUID, URL, etc.)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Statistics      │ → Nullability, uniqueness, cardinality
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Constraint      │ → NOT NULL, UNIQUE, value ranges
+│ Inference       │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ LLM Refinement  │ → Better names, descriptions, types
+│ (optional)      │
+└────────┬────────┘
+         │
+         ▼
+    InferredSchema
+```
+
+### Mapping Pipeline
+
+```
+Source Schema          Target Schema
+      │                      │
+      └──────────┬───────────┘
+                 │
+                 ▼
+        ┌─────────────────┐
+        │ Field Matching  │
+        │ (name + type +  │
+        │  semantic/LLM)  │
+        └────────┬────────┘
+                 │
+                 ▼
+        ┌─────────────────┐
+        │ Transform       │ → Type conversions, format changes
+        │ Detection       │
+        └────────┬────────┘
+                 │
+                 ▼
+        ┌─────────────────┐
+        │ Script          │ → SQL, JQ, Python, PySpark
+        │ Generation      │
+        └────────┬────────┘
+                 │
+                 ▼
+           SchemaMapping
+```
+
+---
+
 ## File Organization
 
 ### Flat File Structure
@@ -754,6 +1032,78 @@ use data_modelling_sdk::convert::convert_to_odcs;
 let odcs_yaml = convert_to_odcs(input_yaml, None)?;
 ```
 
+### Pattern 5: Data Pipeline (Staging → Schema → Mapping)
+
+```rust
+use data_modelling_sdk::pipeline::{Pipeline, PipelineConfig, PipelineStage};
+use data_modelling_sdk::staging::StagingDatabase;
+use data_modelling_sdk::inference::SchemaInferer;
+use data_modelling_sdk::mapping::SchemaMatcher;
+
+// Initialize pipeline with checkpointing
+let config = PipelineConfig {
+    checkpoint_dir: ".checkpoints".into(),
+    source_pattern: "data/**/*.json".into(),
+    target_schema: Some("target_schema.odcs.yaml".into()),
+    ..Default::default()
+};
+let mut pipeline = Pipeline::new(config)?;
+
+// Run full pipeline (resumes from checkpoint if available)
+let result = pipeline.run().await?;
+
+// Or run individual stages
+pipeline.run_stage(PipelineStage::Ingest).await?;
+pipeline.run_stage(PipelineStage::Infer).await?;
+pipeline.run_stage(PipelineStage::Map).await?;
+
+// Access results
+let schema = pipeline.get_inferred_schema()?;
+let mapping = pipeline.get_schema_mapping()?;
+```
+
+### Pattern 6: LLM-Enhanced Schema Refinement
+
+```rust
+use data_modelling_sdk::llm::{LlmProvider, OpenAIProvider};
+use data_modelling_sdk::inference::SchemaRefiner;
+
+// Initialize LLM provider
+let provider = OpenAIProvider::new(api_key, "gpt-4")?;
+
+// Refine inferred schema with LLM
+let refiner = SchemaRefiner::new(Box::new(provider));
+let refined_schema = refiner.refine(&inferred_schema).await?;
+
+// Refinements include:
+// - Better column names (snake_case normalization)
+// - Semantic type detection (email, phone, URL)
+// - Business-friendly descriptions
+// - Suggested constraints
+```
+
+### Pattern 7: Schema Mapping with Transform Generation
+
+```rust
+use data_modelling_sdk::mapping::{SchemaMatcher, TransformGenerator, TransformFormat};
+
+// Match source to target schema
+let matcher = SchemaMatcher::new();
+let mapping = matcher.match_schemas(&source_schema, &target_schema)?;
+
+// Generate transformation scripts
+let generator = TransformGenerator::new();
+
+// SQL transformation
+let sql = generator.generate(&mapping, TransformFormat::Sql)?;
+
+// JQ transformation
+let jq = generator.generate(&mapping, TransformFormat::Jq)?;
+
+// PySpark transformation
+let pyspark = generator.generate(&mapping, TransformFormat::PySpark)?;
+```
+
 ---
 
 ## Use Cases
@@ -856,6 +1206,60 @@ Data Modelling SDK (API Backend)
 Cloud Storage (S3, Azure Blob)
 ```
 
+### Use Case 6: Schema Discovery Pipeline
+
+**Scenario**: Automatically discover and document schemas from raw JSON data files.
+
+**SDK Usage**:
+- Stage JSON files with batch tracking and resume support
+- Infer schema with type detection (18+ semantic types)
+- Refine schema with LLM for better names/descriptions
+- Map to existing target schema
+- Generate transformation scripts (SQL, JQ, PySpark)
+- Export to ODCS data contracts
+
+**Architecture**:
+```
+JSON Files (S3/Local)
+    ↓
+Staging Layer (DuckDB)
+    ↓
+Schema Inference
+    ↓
+LLM Refinement (OpenAI/Ollama)
+    ↓
+Schema Mapping
+    ↓
+ODCS Export + Transform Scripts
+```
+
+### Use Case 7: Data Migration with Schema Mapping
+
+**Scenario**: Migrate data between systems with different schemas.
+
+**SDK Usage**:
+- Import source schema (SQL DDL, JSON Schema, etc.)
+- Import target schema (ODCS, SQL DDL, etc.)
+- Generate field mappings with confidence scores
+- Review and adjust mappings
+- Generate transformation scripts for ETL tools
+- Validate transformations
+
+**Architecture**:
+```
+Source System Schema
+    ↓
+Schema Matcher (+ LLM)
+    ↓
+Mapping Configuration
+    ↓
+Transform Generator
+    ↓
+ETL Pipeline (SQL/Spark/JQ)
+    ↓
+Target System
+```
+
 ---
 
 ## Summary
@@ -867,10 +1271,16 @@ The Data Modelling SDK provides a robust, cross-platform foundation for data mod
 - **Domain-driven**: Organizes assets by business domain
 - **Validation**: Built-in validation and conflict detection
 - **Extensible**: Easy to extend with new formats or backends
+- **Schema Discovery**: Automatic schema inference from raw data
+- **LLM-Enhanced**: AI-powered schema refinement and matching
+- **Transform Generation**: Automatic SQL, JQ, PySpark script generation
+- **Pipeline Support**: End-to-end data modeling with checkpointing
 
-Use the SDK when building data governance tools, schema registries, data catalogs, or any application that needs to work with data contracts across multiple formats and platforms.
+Use the SDK when building data governance tools, schema registries, data catalogs, data migration pipelines, or any application that needs to work with data contracts across multiple formats and platforms.
 
 For more information:
 - [Schema Overview Guide](SCHEMA_OVERVIEW.md) - Detailed schema documentation
+- [Pipeline Tutorial](PIPELINE_TUTORIAL.md) - End-to-end pipeline guide
+- [CLI Reference](CLI.md) - Command-line interface documentation
 - [README](../README.md) - Quick start and usage examples
 - [LLM.txt](../LLM.txt) - Technical reference

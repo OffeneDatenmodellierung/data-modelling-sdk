@@ -28,6 +28,10 @@ pub enum InferenceError {
     /// Staging database error
     #[error("Staging error: {0}")]
     Staging(String),
+
+    /// Lock acquisition failed (for parallel processing)
+    #[error("Failed to acquire lock for parallel processing")]
+    LockError,
 }
 
 impl From<serde_json::Error> for InferenceError {

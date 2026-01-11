@@ -1,10 +1,14 @@
 //! File ingestion logic
+//!
+//! This module provides parallel file discovery, parsing, and ingestion
+//! using rayon for CPU-bound operations.
 
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -249,6 +253,155 @@ pub fn should_skip_file(
     }
 }
 
+/// Result of parsing a single file in parallel
+#[derive(Debug)]
+pub struct ParsedFile {
+    /// The discovered file
+    pub file: DiscoveredFile,
+    /// Parsed records (if successful)
+    pub records: Result<Vec<ParsedRecord>, IngestError>,
+}
+
+/// Parse multiple files in parallel using rayon
+///
+/// This function uses rayon's parallel iterator to parse files concurrently,
+/// which significantly speeds up ingestion for large numbers of files.
+///
+/// # Arguments
+/// * `files` - List of discovered files to parse
+///
+/// # Returns
+/// A vector of ParsedFile results, one for each input file
+pub fn parse_files_parallel(files: Vec<DiscoveredFile>) -> Vec<ParsedFile> {
+    files
+        .into_par_iter()
+        .map(|file| {
+            let records = parse_file(&file.path);
+            ParsedFile { file, records }
+        })
+        .collect()
+}
+
+/// Compute content hashes for files in parallel
+///
+/// This function uses rayon to hash file contents concurrently.
+///
+/// # Arguments
+/// * `files` - Mutable slice of discovered files to hash
+pub fn compute_hashes_parallel(files: &mut [DiscoveredFile]) {
+    files.par_iter_mut().for_each(|file| {
+        if let Err(e) = file.compute_hash() {
+            tracing::warn!("Failed to hash {}: {}", file.path.display(), e);
+        }
+    });
+}
+
+/// Streaming record iterator for memory-efficient processing
+///
+/// Instead of loading all records into memory, this iterator yields
+/// records one at a time from a JSONL file.
+pub struct StreamingJsonlReader {
+    reader: BufReader<File>,
+    path: PathBuf,
+    line_number: usize,
+}
+
+impl StreamingJsonlReader {
+    /// Create a new streaming reader for a JSONL file
+    pub fn new(path: &Path) -> Result<Self, IngestError> {
+        let file = File::open(path)?;
+        Ok(Self {
+            reader: BufReader::new(file),
+            path: path.to_path_buf(),
+            line_number: 0,
+        })
+    }
+}
+
+impl Iterator for StreamingJsonlReader {
+    type Item = Result<ParsedRecord, IngestError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut line = String::new();
+
+        loop {
+            line.clear();
+            match self.reader.read_line(&mut line) {
+                Ok(0) => return None, // EOF
+                Ok(_) => {
+                    let index = self.line_number;
+                    self.line_number += 1;
+
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue; // Skip empty lines
+                    }
+
+                    // Validate JSON
+                    if let Err(e) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                        return Some(Err(IngestError::JsonParse {
+                            path: self.path.clone(),
+                            record: index,
+                            error: e.to_string(),
+                        }));
+                    }
+
+                    return Some(Ok(ParsedRecord {
+                        json: trimmed.to_string(),
+                        index,
+                    }));
+                }
+                Err(e) => {
+                    return Some(Err(IngestError::Io(e)));
+                }
+            }
+        }
+    }
+}
+
+/// Parallel batch processor for processing parsed records
+///
+/// This struct provides a way to process records in parallel batches,
+/// useful for CPU-intensive operations like schema inference.
+pub struct ParallelBatchProcessor<T> {
+    batch_size: usize,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Send> ParallelBatchProcessor<T> {
+    /// Create a new parallel batch processor
+    pub fn new(batch_size: usize) -> Self {
+        Self {
+            batch_size,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Process items in parallel batches
+    ///
+    /// # Arguments
+    /// * `items` - Iterator of items to process
+    /// * `processor` - Function to apply to each item
+    ///
+    /// # Returns
+    /// Vector of results from processing
+    pub fn process<I, F, R>(&self, items: I, processor: F) -> Vec<R>
+    where
+        I: Iterator<Item = T>,
+        F: Fn(T) -> R + Sync + Send,
+        R: Send,
+    {
+        let items: Vec<T> = items.collect();
+
+        // Process in parallel batches
+        items
+            .into_par_iter()
+            .with_min_len(self.batch_size.max(1))
+            .map(processor)
+            .collect()
+    }
+}
+
 /// Convert a discovered file to RawJsonRecords for Iceberg storage
 #[cfg(feature = "iceberg")]
 pub fn to_raw_json_records(
@@ -428,13 +581,13 @@ pub async fn ingest_to_iceberg_with_config(
     let existing_paths: HashSet<String> = HashSet::new(); // Could query from table if needed
     let existing_hashes: HashSet<String> = HashSet::new(); // Could query from table if needed
 
-    // Compute hashes if needed for deduplication
+    // Compute hashes if needed for deduplication (in parallel)
     if matches!(config.dedup, DedupStrategy::ByContent | DedupStrategy::Both) {
-        for file in &mut files {
-            if let Err(e) = file.compute_hash() {
-                stats.add_error(format!("Failed to hash {}: {}", file.path.display(), e));
-            }
-        }
+        tracing::info!(
+            file_count = files.len(),
+            "Computing file hashes in parallel"
+        );
+        compute_hashes_parallel(&mut files);
     }
 
     // Determine resume point

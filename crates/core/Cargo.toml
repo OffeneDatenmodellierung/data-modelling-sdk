@@ -1,6 +1,6 @@
 [package]
 name = "data-modelling-core"
-version = "1.14.3"
+version = "2.0.0"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"
@@ -77,6 +77,19 @@ sha2 = { version = "0.10", optional = true }
 # File globbing (for staging ingestion)
 glob = { version = "0.3", optional = true }
 
+# Parallel processing
+rayon = { version = "1.10", optional = true }
+
+# Progress reporting
+indicatif = { version = "0.17", optional = true }
+
+# AWS SDK for S3 ingestion
+aws-config = { version = "1.5", optional = true }
+aws-sdk-s3 = { version = "1.65", optional = true }
+aws-credential-types = { version = "1.2", optional = true }
+
+# Databricks Unity Catalog (uses reqwest for REST API)
+
 # Apache Iceberg support (for data lakehouse storage)
 iceberg = { version = "0.7", optional = true }
 iceberg-catalog-rest = { version = "0.7", optional = true }
@@ -91,6 +104,12 @@ wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["IdbDatabase", "IdbFactory", "IdbObjectStore", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbOpenDbRequest", "IdbVersionChangeEvent", "Window", "Storage", "console"] }
 js-sys = { version = "0.3", optional = true }
+
+# ZIP archive reading (for docx files in LLM documentation loading)
+zip = { version = "2.2", optional = true, default-features = false, features = ["deflate"] }
+
+# llama.cpp bindings for offline LLM inference
+llama-cpp-2 = { version = "0.1", optional = true }
 
 # jsonschema for all targets - disable default features to avoid reqwest dependency
 [dependencies.jsonschema]
@@ -118,8 +137,14 @@ duckdb-backend = ["database", "duckdb", "native-fs"]
 postgres-backend = ["database", "tokio-postgres", "deadpool-postgres", "native-fs"]
 
 # Staging database for data ingestion pipeline
-staging = ["duckdb-backend", "glob", "sha2"]
-staging-postgres = ["postgres-backend", "glob", "sha2"]
+staging = ["duckdb-backend", "glob", "sha2", "rayon", "indicatif"]
+staging-postgres = ["postgres-backend", "glob", "sha2", "rayon", "indicatif"]
+
+# S3 ingestion support
+s3 = ["staging", "aws-config", "aws-sdk-s3", "aws-credential-types"]
+
+# Databricks Unity Catalog Volumes ingestion (uses reqwest REST API)
+databricks = ["staging", "reqwest", "urlencoding"]
 
 # Apache Iceberg lakehouse storage
 iceberg = ["dep:iceberg", "iceberg-catalog-rest", "tokio", "arrow", "parquet"]
@@ -128,6 +153,32 @@ iceberg-glue = ["iceberg", "iceberg-catalog-glue"]
 # Schema inference engine
 inference = []
 
+# LLM-enhanced schema refinement
+llm = ["tokio", "zip"]
+llm-online = ["llm", "reqwest"]
+llm-offline = ["llm", "llama-cpp-2"]
+
+# Schema mapping for target schema alignment
+mapping = ["inference"]
+
+# Full pipeline integration
+pipeline = ["staging", "inference", "mapping"]
+
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "inference_bench"
+harness = false
+required-features = ["inference"]
+
+[[bench]]
+name = "import_bench"
+harness = false
+
+[[bench]]
+name = "staging_benchmark"
+harness = false
+required-features = ["staging"]

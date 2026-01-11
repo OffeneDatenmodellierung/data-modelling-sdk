@@ -27,6 +27,22 @@ pub struct InferenceInferArgs {
     pub format: String,
     /// Output file path (stdout if not provided)
     pub output: Option<PathBuf>,
+    /// LLM mode (none, online, offline)
+    pub llm_mode: String,
+    /// Ollama URL for online mode
+    pub ollama_url: String,
+    /// Model name
+    pub model: String,
+    /// Path to GGUF model for offline mode
+    pub model_path: Option<PathBuf>,
+    /// Path to documentation file
+    pub doc_path: Option<PathBuf>,
+    /// Skip LLM refinement
+    pub no_refine: bool,
+    /// Temperature for generation
+    pub temperature: f32,
+    /// Verbose LLM output
+    pub verbose_llm: bool,
 }
 
 /// Arguments for the `inference schemas` command
@@ -99,17 +115,33 @@ pub fn handle_inference_infer(args: &InferenceInferArgs) -> Result<(), CliError>
     eprintln!("  Records processed: {}", stats.records_processed);
     eprintln!("  Fields discovered: {}", stats.fields_discovered);
 
+    // Convert to JSON Schema for potential LLM refinement
+    let json_schema = schema.to_json_schema();
+
+    // Apply LLM refinement if enabled
+    let final_schema = if !args.no_refine && args.llm_mode != "none" {
+        #[cfg(feature = "llm")]
+        {
+            refine_with_llm(args, &json_schema, &samples)?
+        }
+        #[cfg(not(feature = "llm"))]
+        {
+            if args.llm_mode != "none" {
+                eprintln!("Warning: LLM refinement requested but 'llm' feature not enabled");
+            }
+            json_schema
+        }
+    } else {
+        json_schema
+    };
+
     // Format output
     let output_str = match args.format.as_str() {
-        "json-schema" => {
-            let json_schema = schema.to_json_schema();
-            serde_json::to_string_pretty(&json_schema)
-                .map_err(|e| CliError::InferenceError(e.to_string()))?
-        }
-        "yaml" => {
-            serde_yaml::to_string(&schema).map_err(|e| CliError::InferenceError(e.to_string()))?
-        }
-        "json" | _ => serde_json::to_string_pretty(&schema)
+        "json-schema" | "json" => serde_json::to_string_pretty(&final_schema)
+            .map_err(|e| CliError::InferenceError(e.to_string()))?,
+        "yaml" => serde_yaml::to_string(&final_schema)
+            .map_err(|e| CliError::InferenceError(e.to_string()))?,
+        _ => serde_json::to_string_pretty(&final_schema)
             .map_err(|e| CliError::InferenceError(e.to_string()))?,
     };
 
@@ -124,6 +156,148 @@ pub fn handle_inference_infer(args: &InferenceInferArgs) -> Result<(), CliError>
     }
 
     Ok(())
+}
+
+/// Refine schema using LLM (feature-gated)
+#[cfg(feature = "llm")]
+fn refine_with_llm(
+    args: &InferenceInferArgs,
+    schema: &serde_json::Value,
+    samples: &[String],
+) -> Result<serde_json::Value, CliError> {
+    use data_modelling_core::llm::{LlmClient, LlmMode, RefinementConfig, refine_schema};
+
+    eprintln!();
+    eprintln!("Refining schema with LLM...");
+    eprintln!("  Mode: {}", args.llm_mode);
+
+    // Build LLM configuration
+    let llm_mode = match args.llm_mode.as_str() {
+        "online" => {
+            eprintln!("  URL: {}", args.ollama_url);
+            eprintln!("  Model: {}", args.model);
+            LlmMode::Online {
+                url: args.ollama_url.clone(),
+                model: args.model.clone(),
+            }
+        }
+        "offline" => {
+            let model_path = args.model_path.clone().ok_or_else(|| {
+                CliError::InferenceError(
+                    "Offline mode requires --model-path to be specified".to_string(),
+                )
+            })?;
+            eprintln!("  Model path: {}", model_path.display());
+            LlmMode::Offline {
+                model_path,
+                gpu_layers: 0,
+            }
+        }
+        _ => {
+            return Err(CliError::InferenceError(format!(
+                "Invalid LLM mode: {}. Use 'online' or 'offline'",
+                args.llm_mode
+            )));
+        }
+    };
+
+    let config = RefinementConfig {
+        llm_mode,
+        documentation_path: args.doc_path.clone(),
+        documentation_text: None,
+        max_context_tokens: 4096,
+        timeout_seconds: 120,
+        max_retries: 3,
+        temperature: args.temperature,
+        include_samples: true,
+        max_samples: 5,
+        verbose: args.verbose_llm,
+    };
+
+    if let Some(ref doc_path) = args.doc_path {
+        eprintln!("  Documentation: {}", doc_path.display());
+    }
+
+    // Create async runtime for LLM call
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| CliError::InferenceError(format!("Failed to create runtime: {}", e)))?;
+
+    let result = rt.block_on(async {
+        // Create client based on mode
+        #[cfg(feature = "llm-online")]
+        if matches!(config.llm_mode, LlmMode::Online { .. }) {
+            if let LlmMode::Online { ref url, ref model } = config.llm_mode {
+                let client = data_modelling_core::llm::OllamaClient::new(url, model);
+
+                // Check if model is available
+                if !client.is_ready().await {
+                    return Err(CliError::InferenceError(
+                        "Ollama server not reachable or model not available".to_string(),
+                    ));
+                }
+
+                let sample_strings: Option<Vec<String>> = if config.include_samples {
+                    Some(samples.iter().take(config.max_samples).cloned().collect())
+                } else {
+                    None
+                };
+
+                return refine_schema(&client, schema, &config, sample_strings)
+                    .await
+                    .map_err(|e| {
+                        CliError::InferenceError(format!("LLM refinement failed: {}", e))
+                    });
+            }
+        }
+
+        #[cfg(feature = "llm-offline")]
+        if matches!(config.llm_mode, LlmMode::Offline { .. }) {
+            if let LlmMode::Offline {
+                ref model_path,
+                gpu_layers,
+            } = config.llm_mode
+            {
+                let client = data_modelling_core::llm::LlamaCppClient::new(model_path, gpu_layers)
+                    .map_err(|e| {
+                        CliError::InferenceError(format!("Failed to load model: {}", e))
+                    })?;
+
+                let sample_strings: Option<Vec<String>> = if config.include_samples {
+                    Some(samples.iter().take(config.max_samples).cloned().collect())
+                } else {
+                    None
+                };
+
+                return refine_schema(&client, schema, &config, sample_strings)
+                    .await
+                    .map_err(|e| {
+                        CliError::InferenceError(format!("LLM refinement failed: {}", e))
+                    });
+            }
+        }
+
+        // Fallback if neither feature is enabled for the mode
+        Err(CliError::InferenceError(
+            "LLM mode not supported. Enable llm-online or llm-offline feature.".to_string(),
+        ))
+    })?;
+
+    if result.was_refined {
+        eprintln!(
+            "  Refinement successful ({}ms)",
+            result.duration_ms.unwrap_or(0)
+        );
+        if !result.warnings.is_empty() {
+            eprintln!("  Warnings:");
+            for warning in &result.warnings {
+                eprintln!("    - {}", warning);
+            }
+        }
+    } else {
+        eprintln!("  Schema unchanged");
+    }
+
+    Ok(result.schema)
 }
 
 /// Handle the `inference schemas` command

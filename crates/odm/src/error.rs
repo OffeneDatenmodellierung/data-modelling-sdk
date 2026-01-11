@@ -69,4 +69,10 @@ pub enum CliError {
 
     #[error("Inference error: {0}")]
     InferenceError(String),
+
+    #[error("Mapping error: {0}")]
+    MappingError(String),
+
+    #[error("Pipeline error: {0}")]
+    PipelineError(String),
 }

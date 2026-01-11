@@ -822,3 +822,754 @@ Or remove the hooks manually:
 ```bash
 rm .git/hooks/pre-commit .git/hooks/post-checkout
 ```
+
+---
+
+## Schema Mapping Commands
+
+The CLI includes commands for mapping source schemas to target schemas, with support for fuzzy matching and transformation script generation.
+
+### Map Schemas
+
+```bash
+# Basic schema mapping
+odm map source-schema.json target-schema.json
+
+# With fuzzy matching enabled
+odm map source.json target.json --fuzzy --min-similarity 0.7
+
+# Case-insensitive matching
+odm map source.json target.json --case-insensitive
+
+# Save mapping result to file
+odm map source.json target.json --output mapping-result.json
+
+# Generate SQL transformation script
+odm map source.json target.json \
+  --transform-format sql \
+  --transform-output transform.sql
+
+# Generate JQ filter
+odm map source.json target.json \
+  --transform-format jq \
+  --transform-output transform.jq
+
+# Generate Python transformation
+odm map source.json target.json \
+  --transform-format python \
+  --transform-output transform.py
+
+# Generate PySpark transformation
+odm map source.json target.json \
+  --transform-format pyspark \
+  --transform-output transform_spark.py
+
+# Verbose output with detailed mapping info
+odm map source.json target.json --verbose
+```
+
+### Mapping Command Reference
+
+```
+odm map <source> <target> [options]
+
+Arguments:
+  <source>                     Source schema file (.json or .yaml)
+  <target>                     Target schema file (.json or .yaml)
+
+Options:
+  -o, --output <file>          Output file for mapping result (JSON)
+  --min-similarity <value>     Minimum similarity threshold (0.0-1.0, default: 0.7)
+  --fuzzy                      Enable fuzzy matching using Levenshtein distance
+  --case-insensitive           Enable case-insensitive field name matching
+  --transform-format <format>  Transform output format: sql, jq, python, pyspark
+  --transform-output <file>    Output file for generated transformation script
+  -v, --verbose                Show detailed mapping information
+```
+
+### Mapping Output
+
+The mapping result includes:
+- **Direct mappings**: Fields that match directly between source and target
+- **Transformations**: Fields requiring type conversions or format changes
+- **Gaps**: Target fields with no corresponding source field
+- **Extras**: Source fields not mapped to any target field
+- **Compatibility score**: Overall compatibility percentage
+
+---
+
+## Pipeline Commands
+
+The CLI includes a full data pipeline for ingesting JSON data, inferring schemas, and exporting results.
+
+### Pipeline Run
+
+Run the complete data pipeline with configurable stages:
+
+```bash
+# Basic pipeline run
+odm pipeline run --database staging.duckdb \
+  --source ./data \
+  --output-dir ./output
+
+# Specify file pattern
+odm pipeline run --database staging.duckdb \
+  --source ./data \
+  --pattern "**/*.jsonl" \
+  --output-dir ./output
+
+# Run specific stages only
+odm pipeline run --database staging.duckdb \
+  --stages ingest,infer,export \
+  --output-dir ./output
+
+# With LLM-enhanced schema refinement (Ollama)
+odm pipeline run --database staging.duckdb \
+  --source ./data \
+  --output-dir ./output \
+  --llm-mode online \
+  --ollama-url http://localhost:11434 \
+  --model llama3.2
+
+# With target schema mapping
+odm pipeline run --database staging.duckdb \
+  --source ./data \
+  --output-dir ./output \
+  --target-schema target-schema.json \
+  --stages ingest,infer,map,export
+
+# Dry run (validate without executing)
+odm pipeline run --database staging.duckdb \
+  --source ./data \
+  --output-dir ./output \
+  --dry-run
+
+# Resume from checkpoint
+odm pipeline run --database staging.duckdb \
+  --output-dir ./output \
+  --resume
+
+# Verbose output
+odm pipeline run --database staging.duckdb \
+  --source ./data \
+  --output-dir ./output \
+  --verbose
+```
+
+### Pipeline Status
+
+Check the status of a pipeline run:
+
+```bash
+# Show pipeline status
+odm pipeline status --database staging.duckdb
+```
+
+### Pipeline Command Reference
+
+```
+odm pipeline run [options]
+
+Options:
+  -d, --database <path>        Staging database path (default: staging.duckdb)
+  -s, --source <path>          Source directory for ingestion
+  -p, --pattern <pattern>      File pattern (default: *.json)
+  -k, --partition <key>        Partition key for data organization
+  -o, --output-dir <path>      Output directory (default: ./output)
+  --target-schema <file>       Target schema file for mapping stage
+  --stages <stages>            Comma-separated stages: ingest,infer,refine,map,export
+  --llm-mode <mode>            LLM mode: none, online, offline (default: none)
+  --ollama-url <url>           Ollama API URL (default: http://localhost:11434)
+  --model <name>               LLM model name (default: llama3.2)
+  --model-path <path>          GGUF model path for offline mode
+  --doc-path <path>            Documentation file for LLM context
+  --temperature <value>        LLM temperature (default: 0.3)
+  --dry-run                    Validate without executing
+  --resume                     Resume from checkpoint
+  -v, --verbose                Verbose output
+
+odm pipeline status [options]
+
+Options:
+  -d, --database <path>        Staging database path (default: staging.duckdb)
+```
+
+### Pipeline Stages
+
+The pipeline consists of the following stages:
+
+1. **Ingest**: Load JSON/JSONL files into the staging database
+2. **Infer**: Infer schema from staged data with type and format detection
+3. **Refine**: (Optional) Enhance schema with LLM-based refinement
+4. **Map**: (Optional) Map inferred schema to target schema
+5. **Export**: Export results (schema, mappings, data)
+
+### Checkpointing and Resume
+
+The pipeline automatically saves checkpoints after each stage:
+- Checkpoints are stored alongside the database
+- Use `--resume` to continue from the last successful stage
+- Configuration changes are detected and require confirmation
+- Stage outputs (timing, success/failure) are tracked
+
+### Example Workflow
+
+```bash
+# 1. Initialize staging database
+odm staging init staging.duckdb
+
+# 2. Run pipeline with all stages
+odm pipeline run \
+  --database staging.duckdb \
+  --source ./raw-json-data \
+  --pattern "**/*.json" \
+  --partition my-dataset \
+  --output-dir ./processed \
+  --llm-mode online \
+  --model llama3.2 \
+  --target-schema ./schemas/target.json \
+  --verbose
+
+# 3. Check status if interrupted
+odm pipeline status --database staging.duckdb
+
+# 4. Resume if needed
+odm pipeline run --database staging.duckdb --resume
+```
+
+---
+
+## Staging Commands
+
+The staging module provides commands for ingesting and managing JSON data in a staging database.
+
+### Initialize Staging Database
+
+```bash
+# Initialize a new DuckDB staging database
+odm staging init staging.duckdb
+
+# Initialize with Iceberg catalog (REST/Lakekeeper)
+odm staging init staging.duckdb \
+  --catalog rest \
+  --endpoint http://localhost:8181 \
+  --warehouse ./local-warehouse
+
+# Initialize with Unity Catalog
+odm staging init staging.duckdb \
+  --catalog unity \
+  --endpoint https://workspace.cloud.databricks.com \
+  --token $DATABRICKS_TOKEN
+
+# Initialize with AWS S3 Tables
+odm staging init staging.duckdb \
+  --catalog s3-tables \
+  --arn arn:aws:s3tables:us-east-1:123456789:bucket/my-table-bucket \
+  --region us-east-1
+
+# Initialize with AWS Glue
+odm staging init staging.duckdb \
+  --catalog glue \
+  --region us-east-1 \
+  --profile my-aws-profile
+```
+
+### Ingest Data
+
+```bash
+# Ingest JSON files from a directory
+odm staging ingest \
+  --database staging.duckdb \
+  --source ./json-data
+
+# Ingest with specific pattern
+odm staging ingest \
+  --database staging.duckdb \
+  --source ./data \
+  --pattern "**/*.jsonl"
+
+# Ingest with partition key
+odm staging ingest \
+  --database staging.duckdb \
+  --source ./data \
+  --partition my-dataset-v1
+
+# Ingest with deduplication
+odm staging ingest \
+  --database staging.duckdb \
+  --source ./data \
+  --dedup content  # Options: none, path, content, both
+
+# Resume interrupted ingestion
+odm staging ingest \
+  --database staging.duckdb \
+  --source ./data \
+  --resume
+
+# Custom batch size
+odm staging ingest \
+  --database staging.duckdb \
+  --source ./data \
+  --batch-size 5000
+```
+
+### Ingest from S3
+
+Ingest JSON/JSONL files directly from AWS S3 buckets. Requires the `s3` feature.
+
+```bash
+# Build with S3 support
+cargo build --release -p odm --features s3
+
+# Ingest from S3 bucket
+odm staging ingest \
+  --database staging.duckdb \
+  --s3-bucket my-data-bucket \
+  --s3-prefix raw/json/ \
+  --s3-region us-east-1
+
+# With specific AWS profile
+odm staging ingest \
+  --database staging.duckdb \
+  --s3-bucket my-data-bucket \
+  --s3-prefix data/ \
+  --s3-profile production
+
+# With custom S3 endpoint (MinIO, LocalStack)
+odm staging ingest \
+  --database staging.duckdb \
+  --s3-bucket local-bucket \
+  --s3-endpoint http://localhost:9000
+```
+
+### Ingest from Databricks Unity Catalog
+
+Ingest JSON/JSONL files from Databricks Unity Catalog Volumes. Requires the `databricks` feature.
+
+```bash
+# Build with Databricks support
+cargo build --release -p odm --features databricks
+
+# Ingest from Unity Catalog Volume
+odm staging ingest \
+  --database staging.duckdb \
+  --databricks-host https://myworkspace.cloud.databricks.com \
+  --databricks-token $DATABRICKS_TOKEN \
+  --databricks-catalog main \
+  --databricks-schema raw_data \
+  --databricks-volume json_files \
+  --databricks-path /2024/01/
+
+# With partition key
+odm staging ingest \
+  --database staging.duckdb \
+  --databricks-host https://myworkspace.cloud.databricks.com \
+  --databricks-token $DATABRICKS_TOKEN \
+  --databricks-catalog main \
+  --databricks-schema raw_data \
+  --databricks-volume json_files \
+  --partition january-2024
+```
+
+### Query Staged Data
+
+```bash
+# Execute SQL query
+odm staging query "SELECT * FROM staged_json LIMIT 10" \
+  --database staging.duckdb
+
+# Query with time travel (Iceberg)
+odm staging query "SELECT * FROM staged" \
+  --database staging.duckdb \
+  --version 5
+
+# Query as of timestamp (Iceberg)
+odm staging query "SELECT * FROM staged" \
+  --database staging.duckdb \
+  --timestamp "2025-01-10T00:00:00Z"
+```
+
+### View Statistics and History
+
+```bash
+# Show ingestion statistics
+odm staging stats --database staging.duckdb
+
+# Show batch history
+odm staging batches --database staging.duckdb
+
+# Get sample records
+odm staging sample --database staging.duckdb --limit 5
+
+# Show table history (Iceberg)
+odm staging history --database staging.duckdb
+```
+
+### Create Schema-Inferenced View
+
+```bash
+# Create a typed view from inferred schema
+odm staging view create \
+  --database staging.duckdb \
+  --name staged_typed \
+  --schema inferred_schema.json \
+  --source-table raw_json
+```
+
+### Export to Production Catalogs
+
+```bash
+# Export to Unity Catalog
+odm staging export \
+  --database staging.duckdb \
+  --target unity \
+  --endpoint https://workspace.cloud.databricks.com \
+  --catalog main \
+  --schema staging \
+  --table raw_json
+
+# Export to S3 Tables
+odm staging export \
+  --database staging.duckdb \
+  --target s3-tables \
+  --arn arn:aws:s3tables:us-east-1:123456789:bucket/my-bucket \
+  --table raw_json
+
+# Export to Glue
+odm staging export \
+  --database staging.duckdb \
+  --target glue \
+  --database staging \
+  --table raw_json
+```
+
+### Staging Command Reference
+
+```
+odm staging init <database> [options]
+
+Arguments:
+  <database>                   Path to the staging database file
+
+Options:
+  --catalog <type>             Catalog type: duckdb, rest, s3-tables, unity, glue
+  --endpoint <url>             Catalog endpoint URL
+  --warehouse <path>           Warehouse path for data storage
+  --token <token>              Authentication token
+  --region <region>            AWS region (for S3/Glue)
+  --arn <arn>                  S3 Tables ARN
+  --profile <profile>          AWS profile name
+
+odm staging ingest [options]
+
+Options:
+  -d, --database <path>        Staging database path
+  -s, --source <path>          Source directory or file
+  -p, --pattern <pattern>      File pattern (default: *.json)
+  -k, --partition <key>        Partition key
+  --batch-size <size>          Insert batch size (default: 1000)
+  --dedup <strategy>           Deduplication: none, path, content, both
+  --resume                     Resume from last batch
+
+odm staging query <sql> [options]
+
+Options:
+  -d, --database <path>        Staging database path
+  --version <n>                Query specific version (Iceberg)
+  --timestamp <ts>             Query as of timestamp (Iceberg)
+
+odm staging stats [options]
+odm staging batches [options]
+odm staging sample [options]
+odm staging history [options]
+
+Options:
+  -d, --database <path>        Staging database path
+  --limit <n>                  Maximum results to show
+
+odm staging view create [options]
+
+Options:
+  -d, --database <path>        Staging database path
+  --name <name>                View name
+  --schema <file>              Inferred schema JSON file
+  --source-table <table>       Source table name
+
+odm staging export [options]
+
+Options:
+  -d, --database <path>        Staging database path
+  --target <type>              Target: unity, glue, s3-tables, local
+  --endpoint <url>             Target catalog endpoint
+  --catalog <name>             Target catalog name
+  --schema <name>              Target schema name
+  --table <name>               Target table name
+  --arn <arn>                  S3 Tables ARN
+```
+
+---
+
+## Inference Commands
+
+The inference module provides commands for inferring schemas from staged JSON data.
+
+### Infer Schema
+
+```bash
+# Basic schema inference
+odm inference infer \
+  --database staging.duckdb \
+  --output inferred-schema.json
+
+# Infer from specific partition
+odm inference infer \
+  --database staging.duckdb \
+  --partition my-dataset \
+  --output schema.json
+
+# Limit sample size for faster inference
+odm inference infer \
+  --database staging.duckdb \
+  --sample-size 10000 \
+  --output schema.json
+
+# Set minimum field frequency threshold
+odm inference infer \
+  --database staging.duckdb \
+  --min-frequency 0.1 \
+  --output schema.json
+
+# Limit nesting depth
+odm inference infer \
+  --database staging.duckdb \
+  --max-depth 5 \
+  --output schema.json
+
+# Disable format detection (faster)
+odm inference infer \
+  --database staging.duckdb \
+  --no-formats \
+  --output schema.json
+
+# Output as YAML
+odm inference infer \
+  --database staging.duckdb \
+  --format yaml \
+  --output schema.yaml
+
+# Output as JSON Schema
+odm inference infer \
+  --database staging.duckdb \
+  --format json-schema \
+  --output schema.json
+```
+
+### Analyze Schema Variations
+
+```bash
+# Group similar schemas
+odm inference schemas \
+  --database staging.duckdb \
+  --threshold 0.8
+
+# Output as JSON
+odm inference schemas \
+  --database staging.duckdb \
+  --format json
+```
+
+### Inference Command Reference
+
+```
+odm inference infer [options]
+
+Options:
+  -d, --database <path>        Staging database path
+  -o, --output <file>          Output schema file
+  -p, --partition <key>        Filter by partition
+  --sample-size <n>            Max records to sample (0 = all)
+  --min-frequency <value>      Min field occurrence rate (0.0-1.0)
+  --max-depth <n>              Max nesting depth (default: 10)
+  --no-formats                 Disable format detection
+  --format <format>            Output format: json, yaml, json-schema
+
+odm inference schemas [options]
+
+Options:
+  -d, --database <path>        Staging database path
+  --threshold <value>          Similarity threshold (0.0-1.0)
+  --format <format>            Output format: table, json
+```
+
+### Detected Formats
+
+The inference engine detects these standard formats in string fields:
+
+| Format | Description | Example |
+|--------|-------------|---------|
+| `date-time` | ISO 8601 datetime | `2025-01-10T14:30:00Z` |
+| `date` | ISO 8601 date | `2025-01-10` |
+| `time` | ISO 8601 time | `14:30:00` |
+| `email` | Email address | `user@example.com` |
+| `uri` | URI/URL | `https://example.com/path` |
+| `uuid` | UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
+| `hostname` | Hostname | `api.example.com` |
+| `ipv4` | IPv4 address | `192.168.1.1` |
+| `ipv6` | IPv6 address | `2001:0db8:85a3::8a2e:0370:7334` |
+| `semver` | Semantic version | `1.2.3` |
+| `country_code` | ISO 3166-1 alpha-2 | `US`, `DE`, `JP` |
+| `currency_code` | ISO 4217 | `USD`, `EUR`, `GBP` |
+| `language_code` | ISO 639-1 | `en`, `de`, `ja` |
+| `mime_type` | MIME type | `application/json` |
+| `base64` | Base64 encoded | `SGVsbG8gV29ybGQ=` |
+| `jwt` | JSON Web Token | `eyJhbGciOiJIUzI1NiIs...` |
+| `slug` | URL slug | `my-article-title` |
+| `phone` | E.164 phone | `+14155551234` |
+
+---
+
+## LLM Refinement Commands
+
+The LLM module provides commands for enhancing inferred schemas using language models.
+
+### Refine Schema with LLM
+
+```bash
+# Refine with Ollama (online mode)
+odm inference infer \
+  --database staging.duckdb \
+  --output schema.json \
+  --llm online \
+  --ollama-url http://localhost:11434 \
+  --model llama3.2
+
+# Refine with custom documentation context
+odm inference infer \
+  --database staging.duckdb \
+  --output schema.json \
+  --llm online \
+  --model llama3.2 \
+  --doc-path ./docs/data-dictionary.md
+
+# Adjust temperature for creativity
+odm inference infer \
+  --database staging.duckdb \
+  --output schema.json \
+  --llm online \
+  --model llama3.2 \
+  --temperature 0.5
+
+# Verbose LLM output for debugging
+odm inference infer \
+  --database staging.duckdb \
+  --output schema.json \
+  --llm online \
+  --verbose-llm
+
+# Skip LLM refinement (inference only)
+odm inference infer \
+  --database staging.duckdb \
+  --output schema.json \
+  --no-refine
+```
+
+### LLM Options Reference
+
+```
+LLM Options (available with inference infer and pipeline run):
+
+  --llm <mode>                 LLM mode: none, online, offline
+  --ollama-url <url>           Ollama API URL (default: http://localhost:11434)
+  --model <name>               Model name (default: llama3.2)
+  --model-path <path>          GGUF model path for offline mode
+  --doc-path <path>            Documentation file for context
+  --temperature <value>        Generation temperature (default: 0.3)
+  --no-refine                  Skip LLM refinement step
+  --verbose-llm                Show LLM debug output
+```
+
+### Supported LLM Backends
+
+| Backend | Mode | Description |
+|---------|------|-------------|
+| Ollama | `online` | Local or remote Ollama server |
+| llama.cpp | `offline` | Embedded inference with GGUF models |
+
+### LLM Refinement Features
+
+The LLM refiner enhances schemas by:
+- Adding meaningful field descriptions
+- Improving type specificity (e.g., `string` → `string` with `format: email`)
+- Suggesting constraints (min/max values, patterns)
+- Identifying semantic relationships between fields
+- Using documentation context for domain-specific terminology
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**Database locked error:**
+```
+Error: database is locked
+```
+Solution: Ensure no other process is using the database. Close any open connections.
+
+**LLM connection refused:**
+```
+Error: connection refused (http://localhost:11434)
+```
+Solution: Ensure Ollama is running: `ollama serve`
+
+**Schema inference out of memory:**
+```
+Error: out of memory during inference
+```
+Solution: Use `--sample-size` to limit records: `--sample-size 10000`
+
+**Iceberg catalog connection failed:**
+```
+Error: Failed to connect to catalog
+```
+Solution: Verify endpoint URL and authentication credentials.
+
+**Pipeline checkpoint mismatch:**
+```
+Error: Configuration has changed since last checkpoint
+```
+Solution: Delete the checkpoint file or use `--force` to override.
+
+### Debug Mode
+
+Enable verbose output for troubleshooting:
+
+```bash
+# Verbose pipeline output
+odm pipeline run --database staging.duckdb --verbose
+
+# Verbose LLM output
+odm inference infer --database staging.duckdb --verbose-llm
+
+# Check staging database contents
+odm staging query "SELECT COUNT(*) FROM staged_json" --database staging.duckdb
+```
+
+### Log Files
+
+Pipeline and staging operations log to:
+- Checkpoint files: `<database>.checkpoint.json`
+- Batch metadata: Stored in database `processing_batches` table
+
+### Getting Help
+
+```bash
+# General help
+odm --help
+
+# Command-specific help
+odm staging --help
+odm inference --help
+odm pipeline --help
+odm map --help
+```

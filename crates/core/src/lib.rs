@@ -18,8 +18,14 @@ pub mod git;
 pub mod import;
 #[cfg(feature = "inference")]
 pub mod inference;
+#[cfg(any(feature = "llm", feature = "llm-online", feature = "llm-offline"))]
+pub mod llm;
+#[cfg(feature = "mapping")]
+pub mod mapping;
 pub mod model;
 pub mod models;
+#[cfg(feature = "pipeline")]
+pub mod pipeline;
 #[cfg(any(feature = "staging", feature = "staging-postgres"))]
 pub mod staging;
 pub mod storage;

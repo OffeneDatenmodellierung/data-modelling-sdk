@@ -37,6 +37,10 @@ mod types;
 pub use config::{InferenceConfig, InferenceConfigBuilder};
 pub use error::InferenceError;
 pub use formats::{Format, detect_format};
-pub use inferrer::{InferenceStats, SchemaInferrer};
+pub use inferrer::{InferenceStats, ParallelSchemaInferrer, SchemaInferrer};
 pub use merge::{group_similar_schemas, merge_schemas};
 pub use types::{InferredField, InferredSchema, InferredType};
+
+// Re-export parallel inference functions when staging feature is enabled
+#[cfg(feature = "staging")]
+pub use inferrer::{infer_schema_parallel, infer_schema_parallel_values};

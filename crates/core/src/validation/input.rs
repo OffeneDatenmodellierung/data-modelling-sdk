@@ -522,6 +522,292 @@ pub fn validate_bpmn_dmn_file_size(file_size: u64) -> ValidationResult<()> {
     Ok(())
 }
 
+// ============================================================================
+// Path Validation
+// ============================================================================
+
+/// Maximum path length (platform-dependent, using conservative limit)
+pub const MAX_PATH_LENGTH: usize = 4096;
+
+/// Validate a file path for security.
+///
+/// # Security Checks
+///
+/// - Rejects paths containing ".." (path traversal)
+/// - Rejects paths containing null bytes
+/// - Rejects excessively long paths
+/// - Rejects absolute paths when `allow_absolute` is false
+///
+/// # Arguments
+///
+/// * `path` - The path to validate
+/// * `allow_absolute` - Whether to allow absolute paths
+///
+/// # Examples
+///
+/// ```
+/// use data_modelling_core::validation::input::validate_path;
+///
+/// assert!(validate_path("data/file.json", false).is_ok());
+/// assert!(validate_path("../etc/passwd", false).is_err());
+/// assert!(validate_path("/absolute/path", false).is_err());
+/// assert!(validate_path("/absolute/path", true).is_ok());
+/// ```
+pub fn validate_path(path: &str, allow_absolute: bool) -> ValidationResult<()> {
+    // Check for empty path
+    if path.is_empty() {
+        return Err(ValidationError::Empty("path"));
+    }
+
+    // Check for null bytes (could be used to bypass checks)
+    if path.contains('\0') {
+        return Err(ValidationError::InvalidCharacters {
+            field: "path",
+            reason: "null bytes not allowed".to_string(),
+        });
+    }
+
+    // Check length
+    if path.len() > MAX_PATH_LENGTH {
+        return Err(ValidationError::TooLong {
+            field: "path",
+            max: MAX_PATH_LENGTH,
+            actual: path.len(),
+        });
+    }
+
+    // Check for path traversal
+    if path.contains("..") {
+        return Err(ValidationError::InvalidCharacters {
+            field: "path",
+            reason: "path traversal (..) not allowed".to_string(),
+        });
+    }
+
+    // Check for absolute paths if not allowed
+    if !allow_absolute && (path.starts_with('/') || path.starts_with('\\')) {
+        return Err(ValidationError::InvalidFormat(
+            "path",
+            "absolute paths not allowed".to_string(),
+        ));
+    }
+
+    // Check for Windows-style absolute paths (e.g., C:\)
+    if !allow_absolute && path.len() >= 2 {
+        let bytes = path.as_bytes();
+        if bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+            return Err(ValidationError::InvalidFormat(
+                "path",
+                "absolute paths not allowed".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate a glob pattern for security.
+///
+/// # Security Checks
+///
+/// - Rejects patterns containing ".."
+/// - Rejects patterns containing null bytes
+/// - Rejects excessively long patterns
+///
+/// # Examples
+///
+/// ```
+/// use data_modelling_core::validation::input::validate_glob_pattern;
+///
+/// assert!(validate_glob_pattern("**/*.json").is_ok());
+/// assert!(validate_glob_pattern("data/*.csv").is_ok());
+/// assert!(validate_glob_pattern("../secret/*.json").is_err());
+/// ```
+pub fn validate_glob_pattern(pattern: &str) -> ValidationResult<()> {
+    // Check for empty pattern
+    if pattern.is_empty() {
+        return Err(ValidationError::Empty("glob pattern"));
+    }
+
+    // Check for null bytes
+    if pattern.contains('\0') {
+        return Err(ValidationError::InvalidCharacters {
+            field: "glob pattern",
+            reason: "null bytes not allowed".to_string(),
+        });
+    }
+
+    // Check length
+    if pattern.len() > MAX_PATH_LENGTH {
+        return Err(ValidationError::TooLong {
+            field: "glob pattern",
+            max: MAX_PATH_LENGTH,
+            actual: pattern.len(),
+        });
+    }
+
+    // Check for path traversal
+    if pattern.contains("..") {
+        return Err(ValidationError::InvalidCharacters {
+            field: "glob pattern",
+            reason: "path traversal (..) not allowed".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+/// Sanitize a file path by removing dangerous components.
+///
+/// # Transformations
+///
+/// - Removes null bytes
+/// - Replaces ".." with empty string
+/// - Normalizes path separators
+/// - Removes leading slashes (makes relative)
+///
+/// # Examples
+///
+/// ```
+/// use data_modelling_core::validation::input::sanitize_path;
+///
+/// assert_eq!(sanitize_path("data/file.json"), "data/file.json");
+/// assert_eq!(sanitize_path("../data/file.json"), "data/file.json");
+/// assert_eq!(sanitize_path("/absolute/path"), "absolute/path");
+/// ```
+pub fn sanitize_path(path: &str) -> String {
+    let mut sanitized = path
+        // Remove null bytes
+        .replace('\0', "")
+        // Remove path traversal
+        .replace("..", "")
+        // Normalize Windows separators
+        .replace('\\', "/");
+
+    // Remove leading slashes
+    while sanitized.starts_with('/') {
+        sanitized = sanitized[1..].to_string();
+    }
+
+    // Remove duplicate slashes
+    while sanitized.contains("//") {
+        sanitized = sanitized.replace("//", "/");
+    }
+
+    // Remove trailing slashes
+    while sanitized.ends_with('/') && sanitized.len() > 1 {
+        sanitized.pop();
+    }
+
+    sanitized
+}
+
+/// Validate a URL for security.
+///
+/// # Security Checks
+///
+/// - Must start with http:// or https://
+/// - Rejects file://, javascript:, data:, etc.
+/// - Rejects URLs with embedded credentials
+///
+/// # Examples
+///
+/// ```
+/// use data_modelling_core::validation::input::validate_url;
+///
+/// assert!(validate_url("https://api.example.com/data").is_ok());
+/// assert!(validate_url("file:///etc/passwd").is_err());
+/// assert!(validate_url("javascript:alert(1)").is_err());
+/// ```
+pub fn validate_url(url: &str) -> ValidationResult<()> {
+    // Check for empty URL
+    if url.is_empty() {
+        return Err(ValidationError::Empty("URL"));
+    }
+
+    // Only allow http and https schemes
+    let lower = url.to_lowercase();
+    if !lower.starts_with("http://") && !lower.starts_with("https://") {
+        return Err(ValidationError::InvalidFormat(
+            "URL",
+            "only http:// and https:// URLs are allowed".to_string(),
+        ));
+    }
+
+    // Check for embedded credentials (user:pass@host)
+    // Find the host portion (after :// and before first /)
+    if let Some(after_scheme) = url.split("://").nth(1) {
+        let host_part = after_scheme.split('/').next().unwrap_or("");
+        if host_part.contains('@') {
+            return Err(ValidationError::InvalidFormat(
+                "URL",
+                "URLs with embedded credentials not allowed".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod path_validation_tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_path() {
+        // Valid paths
+        assert!(validate_path("data/file.json", false).is_ok());
+        assert!(validate_path("nested/path/to/file.csv", false).is_ok());
+        assert!(validate_path("file.txt", false).is_ok());
+        assert!(validate_path("/absolute/path", true).is_ok());
+
+        // Invalid paths
+        assert!(validate_path("../etc/passwd", false).is_err());
+        assert!(validate_path("data/../secret", false).is_err());
+        assert!(validate_path("/absolute/path", false).is_err());
+        assert!(validate_path("", false).is_err());
+        assert!(validate_path("path\0with\0null", false).is_err());
+    }
+
+    #[test]
+    fn test_validate_glob_pattern() {
+        // Valid patterns
+        assert!(validate_glob_pattern("**/*.json").is_ok());
+        assert!(validate_glob_pattern("data/*.csv").is_ok());
+        assert!(validate_glob_pattern("*.txt").is_ok());
+
+        // Invalid patterns
+        assert!(validate_glob_pattern("../secret/*.json").is_err());
+        assert!(validate_glob_pattern("").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_path() {
+        assert_eq!(sanitize_path("data/file.json"), "data/file.json");
+        assert_eq!(sanitize_path("../data/file.json"), "data/file.json");
+        assert_eq!(sanitize_path("/absolute/path"), "absolute/path");
+        assert_eq!(sanitize_path("data//double//slash"), "data/double/slash");
+        assert_eq!(
+            sanitize_path("path\\with\\backslash"),
+            "path/with/backslash"
+        );
+    }
+
+    #[test]
+    fn test_validate_url() {
+        // Valid URLs
+        assert!(validate_url("https://api.example.com/data").is_ok());
+        assert!(validate_url("http://localhost:8080/api").is_ok());
+
+        // Invalid URLs
+        assert!(validate_url("file:///etc/passwd").is_err());
+        assert!(validate_url("javascript:alert(1)").is_err());
+        assert!(validate_url("data:text/html,<script>").is_err());
+        assert!(validate_url("https://user:pass@example.com").is_err());
+        assert!(validate_url("").is_err());
+    }
+}
+
 /// Validate file size for OpenAPI specifications.
 ///
 /// # Arguments

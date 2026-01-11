@@ -95,6 +95,77 @@ pub enum IngestError {
     Databricks(String),
 }
 
+impl StagingError {
+    /// Get a user-friendly error message for CLI output
+    pub fn user_message(&self) -> String {
+        match self {
+            StagingError::NotInitialized => {
+                "Staging database not initialized.\n\nHint: Run 'odm staging init' first."
+                    .to_string()
+            }
+            StagingError::SchemaVersionMismatch { expected, found } => {
+                format!(
+                    "Schema version mismatch (expected v{expected}, found v{found}).\n\n\
+                    Hint: Run 'odm staging init --force' to reinitialize the database."
+                )
+            }
+            StagingError::InvalidConfig(msg) => {
+                format!("Invalid configuration: {msg}\n\nHint: Check your staging configuration.")
+            }
+            _ => self.to_string(),
+        }
+    }
+}
+
+impl IngestError {
+    /// Get a user-friendly error message for CLI output
+    pub fn user_message(&self) -> String {
+        match self {
+            IngestError::FileNotFound(path) => {
+                format!(
+                    "File not found: {}\n\nHint: Check that the file exists and the path is correct.",
+                    path.display()
+                )
+            }
+            IngestError::InvalidFormat { path, reason } => {
+                format!(
+                    "Invalid file format: {}\nReason: {reason}\n\nHint: Ensure the file contains valid JSON.",
+                    path.display()
+                )
+            }
+            IngestError::JsonParse {
+                path,
+                record,
+                error,
+            } => {
+                format!(
+                    "JSON parse error in {} at record {record}:\n{error}\n\n\
+                    Hint: Check the JSON syntax around record {record}.",
+                    path.display()
+                )
+            }
+            IngestError::BatchNotFound(batch_id) => {
+                format!(
+                    "Batch not found: {batch_id}\n\nHint: Use 'odm staging batches' to list available batches."
+                )
+            }
+            IngestError::InvalidPattern(pattern) => {
+                format!(
+                    "Invalid glob pattern: {pattern}\n\n\
+                    Hint: Use standard glob syntax like '*.json' or '**/*.json'."
+                )
+            }
+            IngestError::SourceNotAccessible { path, reason } => {
+                format!(
+                    "Cannot access source: {path}\nReason: {reason}\n\n\
+                    Hint: Check permissions and network connectivity."
+                )
+            }
+            _ => self.to_string(),
+        }
+    }
+}
+
 #[cfg(feature = "duckdb-backend")]
 impl From<duckdb::Error> for StagingError {
     fn from(err: duckdb::Error) -> Self {
