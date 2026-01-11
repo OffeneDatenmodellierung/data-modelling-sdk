@@ -1,0 +1,176 @@
+name: Release WASM & npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (without v prefix, e.g., 1.14.0)"
+        required: true
+        type: string
+      publish_npm:
+        description: "Publish to npm"
+        required: true
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      version:
+        description: "Version to release (without v prefix)"
+        required: true
+        type: string
+      publish_npm:
+        description: "Publish to npm"
+        required: false
+        type: boolean
+        default: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+  id-token: write  # Required for npm provenance
+
+jobs:
+  build-wasm:
+    name: Build WASM SDK
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-wasm-
+
+      - name: Build WASM
+        run: |
+          wasm-pack build --target web --out-dir pkg --features wasm,openapi,odps-validation
+
+      - name: Set version
+        id: version
+        run: |
+          VERSION="${{ inputs.version }}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building WASM version: $VERSION"
+
+      - name: Update package.json
+        run: |
+          cd pkg
+          # Update version
+          npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
+          # Update package name to scoped package
+          sed -i 's/"name": "data-modelling-sdk"/"name": "@offen-daten\/data-modelling-sdk"/' package.json
+          # Add repository info
+          cat package.json | jq '. + {
+            "repository": {
+              "type": "git",
+              "url": "git+https://github.com/OffeneDatenmodellierung/data-modelling-sdk.git"
+            },
+            "homepage": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk#readme",
+            "bugs": {
+              "url": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk/issues"
+            },
+            "keywords": ["wasm", "data-modelling", "odcs", "schema", "rust"]
+          }' > package.json.tmp && mv package.json.tmp package.json
+          echo "Updated package.json:"
+          cat package.json
+
+      - name: Create WASM archive
+        id: archive
+        run: |
+          ARCHIVE_NAME="data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz"
+          tar -czf $ARCHIVE_NAME -C pkg .
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload WASM archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-sdk
+          path: ${{ steps.archive.outputs.archive_name }}
+          retention-days: 30
+
+      - name: Upload npm package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: pkg/
+          retention-days: 30
+
+  publish-npm:
+    name: Publish to npm
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    if: inputs.publish_npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download npm package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: pkg/
+
+      - name: Verify package contents
+        run: |
+          echo "Package contents:"
+          ls -la pkg/
+          echo ""
+          echo "package.json:"
+          cat pkg/package.json
+
+      - name: Publish to npm
+        run: |
+          cd pkg
+          npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  update-release:
+    name: Update GitHub Release
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download WASM archive
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-sdk
+          path: artifacts/
+
+      - name: Create checksum
+        run: |
+          cd artifacts
+          sha256sum *.tar.gz > data-modelling-sdk-wasm-v${{ needs.build-wasm.outputs.version }}.tar.gz.sha256
+
+      - name: Upload to existing release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.build-wasm.outputs.version }}
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.sha256
+          fail_on_unmatched_files: false
