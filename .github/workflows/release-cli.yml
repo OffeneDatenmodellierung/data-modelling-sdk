@@ -350,7 +350,7 @@ jobs:
           # Update version in package.json to match Cargo.toml
           npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
           # Update package name to scoped package for npm
-          sed -i 's/"name": "data-modelling-sdk"/"name": "@offen-daten\/data-modelling-sdk"/' package.json
+          sed -i 's/"name": "data-modelling-sdk"/"name": "@offenedatenmodellierung\/data-modelling-sdk"/' package.json
           # Add repository info
           cat package.json | jq '. + {
             "repository": {
@@ -497,7 +497,7 @@ jobs:
             ### npm Package
 
             ```bash
-            npm install @offen-daten/data-modelling-sdk
+            npm install @offenedatenmodellierung/data-modelling-sdk
             ```
 
           files: |
