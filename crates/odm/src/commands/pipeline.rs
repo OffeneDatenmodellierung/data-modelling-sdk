@@ -1,4 +1,9 @@
 //! CLI commands for pipeline operations
+//!
+//! Note: Some fields in argument structs are defined for future configuration
+//! file support but are not yet used.
+
+#![allow(dead_code)]
 
 use std::path::PathBuf;
 

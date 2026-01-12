@@ -1,8 +1,12 @@
 //! Decision (ADR) CLI commands
 //!
 //! Provides CLI commands for managing architecture decision records (ADRs).
+//!
+//! Note: These commands are defined but not yet wired into the main CLI.
+//! They will be enabled in a future release.
 
 #![allow(clippy::collapsible_if)]
+#![allow(dead_code)]
 
 use crate::error::CliError;
 use chrono::Utc;

@@ -1,4 +1,9 @@
 //! CLI commands for staging database operations
+//!
+//! Note: Some command argument structs have fields that are defined for future
+//! Iceberg integration but are not yet used.
+
+#![allow(dead_code)]
 
 use std::path::PathBuf;
 

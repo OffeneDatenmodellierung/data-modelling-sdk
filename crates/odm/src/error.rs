@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// CLI-specific error type
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum CliError {
     #[error("File not found: {0}")]
     FileNotFound(PathBuf),

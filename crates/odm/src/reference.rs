@@ -2,7 +2,6 @@
 
 use crate::error::CliError;
 use std::path::Path;
-use std::time::Duration;
 
 /// Resolve a local file reference relative to the source file's directory
 pub fn resolve_local_reference(reference: &str, source_file: &Path) -> Result<String, CliError> {

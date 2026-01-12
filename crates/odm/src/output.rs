@@ -3,6 +3,7 @@
 use data_modelling_core::import::ImportResult;
 
 /// Format type mapping for display
+#[allow(dead_code)]
 pub struct TypeMapping {
     pub source_type: String,
     pub odcs_type: String,
