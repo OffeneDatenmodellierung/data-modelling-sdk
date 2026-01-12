@@ -50,9 +50,9 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
-      # Run clippy WITHOUT database features to avoid compiling DuckDB
-      - name: Run Rust clippy (core features)
-        run: cargo clippy --lib --features "api-backend,native-fs,git,cli,openapi,bpmn,dmn" -- -D warnings
+      # Run clippy on core crate WITHOUT database features to avoid compiling DuckDB
+      - name: Run Rust clippy (core crate)
+        run: cargo clippy --package data-modelling-core --features "api-backend,native-fs,git,openapi,bpmn,dmn" -- -D warnings
 
       # Run cargo audit directly instead of using rustsec/audit-check action
       # The action uses Check API which fails on forked repos
@@ -93,10 +93,10 @@ jobs:
             ${{ runner.os }}-cargo-test-${{ hashFiles('Cargo.lock') }}-
             ${{ runner.os }}-cargo-test-
 
-      # Run tests WITHOUT database features - DuckDB is too large for GitHub Actions
-      # Database tests should be run locally with: cargo test --features cli-full
+      # Run tests on core crate WITHOUT database features - DuckDB is too large for GitHub Actions
+      # Database tests should be run locally with: cargo test --package data-modelling-core --features staging,inference
       - name: Run tests
-        run: cargo test --features "api-backend,native-fs,git,cli,openapi,bpmn,dmn"
+        run: cargo test --package data-modelling-core --features "api-backend,native-fs,git,openapi,bpmn,dmn"
 
   # Build verification - only runs if tests pass
   build:
@@ -130,11 +130,11 @@ jobs:
             ${{ runner.os }}-cargo-release-${{ hashFiles('Cargo.lock') }}-
             ${{ runner.os }}-cargo-release-
 
-      - name: Build library
-        run: cargo build --release --features "api-backend,native-fs,git,openapi,bpmn,dmn"
+      - name: Build core library
+        run: cargo build --release --package data-modelling-core --features "api-backend,native-fs,git,openapi,bpmn,dmn"
 
-      - name: Build CLI binary
-        run: cargo build --release --bin data-modelling-cli --features cli,openapi
+      - name: Build CLI binary (odm)
+        run: cargo build --release --package odm --features openapi
 
   # WASM build verification
   build-wasm:
@@ -172,4 +172,4 @@ jobs:
             ${{ runner.os }}-cargo-wasm-
 
       - name: Build WASM library
-        run: cargo build --lib --release --target wasm32-unknown-unknown --features wasm
+        run: cargo build --package data-modelling-wasm --release --target wasm32-unknown-unknown

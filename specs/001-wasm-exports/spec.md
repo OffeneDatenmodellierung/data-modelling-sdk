@@ -3,7 +3,7 @@
 **Feature Branch**: `001-wasm-exports`
 **Created**: 2026-01-02
 **Status**: Draft
-**Input**: User description: "https://github.com/pixie79/data-modelling-sdk/issues/5"
+**Input**: User description: "https://github.com/OffeneDatenmodellierung/data-modelling-sdk/issues/5"
 
 ## User Scenarios & Testing *(mandatory)*
 

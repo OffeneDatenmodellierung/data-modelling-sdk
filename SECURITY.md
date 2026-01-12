@@ -75,6 +75,67 @@ SQL reserved words are detected and flagged:
 - All errors are properly propagated with context
 - Sensitive information is not leaked in error messages
 
+### 7. Secure Credential Handling
+
+The SDK provides secure credential handling for cloud service integrations:
+
+- **`SecureCredentials`**: Wrapper type that prevents accidental logging of secrets
+  - Implements `Display` and `Debug` traits to show redacted values
+  - Use `expose()` method to access the actual credential value
+  - Prevents credentials from appearing in logs, error messages, or debug output
+
+```rust
+use data_modelling_sdk::staging::SecureCredentials;
+
+// Create secure credential
+let token = SecureCredentials::new("dapi_secret_token_123456789");
+
+// Safe to log - shows redacted value
+println!("Token: {}", token);  // Output: "Token: dapi****"
+
+// Get actual value when needed
+let actual_value = token.expose();
+```
+
+- **`redact_secret()`**: Utility function to redact secrets while showing prefix
+  - Shows first N characters (default: 4) followed by asterisks
+  - Useful for debugging while protecting sensitive data
+
+```rust
+use data_modelling_sdk::staging::redact_secret;
+
+let redacted = redact_secret("AKIAIOSFODNN7EXAMPLE", 4);
+// Returns: "AKIA****"
+```
+
+- **`redact_secrets_in_string()`**: Automatically detects and redacts secrets in text
+  - AWS access keys (AKIA...)
+  - AWS secret keys (40-character alphanumeric)
+  - Bearer tokens
+  - URL-embedded passwords (user:password@host)
+
+```rust
+use data_modelling_sdk::staging::redact_secrets_in_string;
+
+let log_message = "Connecting with key AKIAIOSFODNN7EXAMPLE";
+let safe_message = redact_secrets_in_string(&log_message);
+// Returns: "Connecting with key AKIA****"
+```
+
+### 8. Cloud Service Security
+
+For S3 and Databricks integrations:
+
+- **AWS Credentials**: Use AWS SDK credential chain (environment, profile, IAM role)
+  - Never hardcode credentials in source files
+  - Prefer IAM roles for EC2/ECS/Lambda workloads
+  - Use `--s3-profile` flag for named profiles
+
+- **Databricks Tokens**: Use `SecureCredentials` wrapper
+  - Store tokens in environment variables (`$DATABRICKS_TOKEN`)
+  - Tokens are automatically redacted in logs and errors
+  - Never pass tokens via command-line arguments in scripts
+
 ## Reporting Vulnerabilities
 
 If you discover a security vulnerability, please:
@@ -136,6 +197,13 @@ backend.read_file(user_path).await?; // Safe - validates against base path
 ```
 
 ## Changelog
+
+### v2.0.0
+- Added `SecureCredentials` wrapper type for preventing credential leaks
+- Added `redact_secret()` and `redact_secrets_in_string()` utilities
+- Automatic secret detection and redaction for AWS keys, tokens, and passwords
+- S3 ingestion uses AWS SDK credential chain (secure by default)
+- Databricks integration uses secure token handling
 
 ### v1.14.0
 - Consistent camelCase serialization across all models for secure API responses

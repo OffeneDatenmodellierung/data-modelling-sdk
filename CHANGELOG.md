@@ -5,7 +5,128 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-01-11
+
+### Fixed
+
+- **fix(pdf)**: Long URLs and field names now wrap correctly in PDF tables (#50)
+  - Text that exceeds column width is now broken with hyphen continuation markers
+  - Prevents text from overlapping into adjacent columns
+  - Works for URLs, long field names, and any text without natural break points
+
+### Added
+
+- **feat(staging)**: Real-time progress reporting for ingestion operations
+  - `IngestProgress` with multi-bar display (files, records, bytes throughput)
+  - `InferenceProgress` for schema inference operations
+  - `Spinner` for indeterminate operations
+  - `format_bytes()` and `format_number()` helper functions
+  - Uses `indicatif` crate for terminal progress bars
+
+- **feat(s3)**: AWS S3 ingestion support (feature: `s3`)
+  - `S3Source` configuration with bucket, prefix, region, profile, endpoint
+  - `S3Ingester` with streaming file discovery and download
+  - Async file listing with pagination support
+  - Memory-efficient streaming downloads
+  - Integration with staging pipeline
+
+- **feat(databricks)**: Databricks Unity Catalog Volumes ingestion (feature: `databricks`)
+  - `UnityVolumeSource` configuration with host, token, catalog, schema, volume
+  - `UnityVolumeIngester` using Databricks Files REST API
+  - Secure token handling with `SecureCredentials` wrapper
+  - File discovery and download from Unity Catalog Volumes
+
+- **feat(security)**: Secure credential handling
+  - `SecureCredentials` wrapper type preventing accidental Display/Debug logging
+  - `redact_secret()` function showing only first N characters
+  - `redact_secrets_in_string()` with regex-based detection for:
+    - AWS access keys (AKIA...)
+    - AWS secret keys
+    - Bearer tokens
+    - URL-embedded passwords
+  - All credential types implement safe Display trait
+
+- **feat(tests)**: Comprehensive integration and performance tests
+  - 10 integration tests covering full staging pipeline
+  - Performance benchmarks for 10K, 100K, and 1M records
+  - Criterion benchmarks for staging operations
+
+- **feat(pipeline)**: Full data pipeline orchestration (Phase 6)
+  - `PipelineExecutor` for running multi-stage data pipelines
+  - `PipelineConfig` with comprehensive configuration options
+  - `PipelineStage` enum: Ingest, Infer, Refine, Map, Export
+  - Checkpointing and resume support with `Checkpoint` struct
+  - Dry-run mode for validation without execution
+  - Stage timing and success/failure tracking
+  - CLI command: `odm pipeline run` with 15+ options
+  - CLI command: `odm pipeline status` for pipeline monitoring
+  - 20 unit tests for pipeline functionality
+
+- **feat(mapping)**: Schema-to-schema mapping with transformation generation (Phase 5)
+  - `SchemaMatcher` with multiple matching algorithms
+  - Match methods: Exact, CaseInsensitive, Fuzzy (Levenshtein), Semantic, LLM
+  - `SchemaMapping` result with direct mappings, transformations, gaps, extras
+  - Compatibility scoring (0.0-1.0)
+  - `TransformType` variants: TypeCast, Rename, Merge, Split, FormatChange, Custom, Extract, Default
+  - Transformation script generation: SQL, JQ, Python, PySpark
+  - CLI command: `odm map` with fuzzy matching and transform output
+  - 29 unit tests for mapping functionality
+
+- **feat(llm-matcher)**: LLM-enhanced schema matching
+  - `LlmSchemaMatcher` combining algorithmic and LLM matching
+  - Retry logic with exponential backoff for LLM failures
+  - Batching for large schemas exceeding prompt limits
+  - Transform hint parsing to create `TransformMapping`s
+  - Example value inclusion in prompts for better matching
+  - Feature-gated under `llm` feature
+  - 12 unit tests for LLM matching
+
+- **feat(iceberg)**: Apache Iceberg integration for data lakehouse staging (Phase 3)
+  - New `iceberg` feature flag for optional Iceberg support
+  - Added `arrow = "55"` and `parquet = "55"` dependencies for data writing
+  - Catalog abstraction supporting REST (Lakekeeper/Nessie/Polaris), S3 Tables, Unity Catalog, and Glue
+  - `CatalogConfig` enum with serializable configuration for all catalog types
+  - `IcebergCatalog` wrapper with async operations for namespace and table management
+  - `IcebergTable` for raw JSON staging with time travel support
+    - `append_records()` method converts JSON records to Arrow RecordBatch and writes Parquet files
+    - `write_parquet_file()` helper with SNAPPY compression
+  - `ingest_to_iceberg()` function for batch ingestion from local files to Iceberg tables
+  - `to_raw_json_records()` conversion function for file-to-record transformation
+  - Export module (`staging/export.rs`) with:
+    - `ExportTarget` enum (Unity, Glue, S3Tables, Local)
+    - `ExportConfig` and `ExportResult` structs
+    - `export_to_catalog()` function with local filesystem export support
+  - Snapshot listing and time travel queries by version or timestamp
+  - Batch metadata storage in Iceberg table properties
+  - New CLI commands:
+    - `odm staging init --catalog <type>` - Initialize with Iceberg catalog (rest, s3-tables, unity, glue)
+    - `odm staging history` - Show table version history
+    - `odm staging query --version N` - Time travel queries by snapshot version
+    - `odm staging query --timestamp <ISO8601>` - Time travel queries by timestamp
+    - `odm staging export --target <unity|glue|s3-tables>` - Export to production catalogs
+    - `odm staging view create` - Create typed views from inferred schemas
+
+### Changed
+
+- **refactor(workspace)**: Restructured monolithic crate into Cargo workspace with three sub-crates
+  - `data-modelling-core` - Core SDK library with all business logic
+  - `odm` - CLI binary (renamed from `data-modelling-cli`)
+  - `data-modelling-wasm` - WASM bindings for browser applications
+  - Root `data-modelling-sdk` crate remains for backward compatibility via re-exports
+  - Uses Cargo workspace with `resolver = "2"` for proper feature unification
+  - Added `wasm` feature to core crate for browser storage backend dependencies
+  - Updated all CI/CD workflows for workspace structure
+
+## [1.14.3] - 2026-01-11
+
+### Added
+
+- **feat(serde)**: Dual-case JSON field name support for WASM deserialization
+  - All struct fields with `#[serde(rename_all = "camelCase")]` now accept both camelCase and snake_case during deserialization
+  - Added `#[serde(alias = "snake_case")]` attributes to all multi-word field names
+  - Serialization output remains camelCase for consistency
+  - Updated structs: `Relationship`, `ForeignKeyDetails`, `ETLJobMetadata`, `VisualMetadata`, `Column`, `ForeignKey`, `PropertyRelationship`, `LogicalTypeOptions`, `AuthoritativeDefinition`, `Workspace`, `AssetReference`, `DomainReference`, `SystemReference`, `Table`, `SlaProperty`, `ContactDetails`, `CADSAsset`, `CADSDescription`, `CADSPricing`, `CADSRisk`, `CADSValidationProfile`, `CADSValidationProfileAppliesTo`, `KnowledgeArticle`, `KnowledgeIndex`, `KnowledgeIndexEntry`, `RelatedArticle`, `Decision`, `DecisionIndex`, `AssetLink`, `ComplianceAssessment`
+  - Enables UI flexibility when passing JSON with either naming convention
 
 ## [1.14.3] - 2026-01-11
 

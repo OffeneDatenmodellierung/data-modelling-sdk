@@ -70,19 +70,19 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: data-modelling-cli-linux-x86_64
+            artifact_name: odm-linux-x86_64
             binary_ext: ""
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: data-modelling-cli-macos-x86_64
+            artifact_name: odm-macos-x86_64
             binary_ext: ""
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: data-modelling-cli-macos-arm64
+            artifact_name: odm-macos-arm64
             binary_ext: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: data-modelling-cli-windows-x86_64
+            artifact_name: odm-windows-x86_64
             binary_ext: ".exe"
 
     steps:
@@ -137,10 +137,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
-      - name: Build CLI binary
+      - name: Build CLI binary (odm)
         shell: bash
         run: |
-          cargo build --release --bin data-modelling-cli --features cli-full,openapi,odps-validation --target ${{ matrix.target }}
+          cargo build --release --package odm --features cli-full,openapi,odps-validation --target ${{ matrix.target }}
 
       - name: Import Code Signing Certificate (macOS)
         if: startsWith(matrix.os, 'macos')
@@ -175,7 +175,7 @@ jobs:
         env:
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
-          BINARY_PATH="target/${{ matrix.target }}/release/data-modelling-cli"
+          BINARY_PATH="target/${{ matrix.target }}/release/odm"
           echo "Signing binary: $BINARY_PATH"
           codesign --force --options runtime --sign "$MACOS_SIGNING_IDENTITY" "$BINARY_PATH"
           echo "Verifying signature..."
@@ -189,10 +189,10 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -n "$APPLE_ID" ] && [ -n "$APPLE_ID_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
-            BINARY_PATH="target/${{ matrix.target }}/release/data-modelling-cli"
+            BINARY_PATH="target/${{ matrix.target }}/release/odm"
 
             # Create a zip for notarization
-            NOTARIZE_ZIP="$RUNNER_TEMP/data-modelling-cli-notarize.zip"
+            NOTARIZE_ZIP="$RUNNER_TEMP/odm-notarize.zip"
             ditto -c -k --keepParent "$BINARY_PATH" "$NOTARIZE_ZIP"
 
             # Submit for notarization
@@ -238,7 +238,7 @@ jobs:
         id: prepare-unix
         shell: bash
         run: |
-          BINARY_NAME="data-modelling-cli${{ matrix.binary_ext }}"
+          BINARY_NAME="odm${{ matrix.binary_ext }}"
           BINARY_PATH="target/${{ matrix.target }}/release/$BINARY_NAME"
           ARCHIVE_NAME="${{ matrix.artifact_name }}-v${{ steps.version.outputs.version }}.tar.gz"
           tar -czf $ARCHIVE_NAME -C target/${{ matrix.target }}/release $BINARY_NAME
@@ -250,7 +250,7 @@ jobs:
         id: prepare-windows
         shell: pwsh
         run: |
-          $BINARY_NAME = "data-modelling-cli${{ matrix.binary_ext }}"
+          $BINARY_NAME = "odm${{ matrix.binary_ext }}"
           $BINARY_PATH = "target/${{ matrix.target }}/release/$BINARY_NAME"
           $ARCHIVE_NAME = "${{ matrix.artifact_name }}-v${{ steps.version.outputs.version }}.zip"
           $SOURCE_DIR = "target/${{ matrix.target }}/release"
@@ -308,9 +308,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-wasm-
 
-      - name: Build WASM with wasm and openapi features
+      - name: Build WASM with openapi features
         run: |
-          wasm-pack build --target web --out-dir pkg --features wasm,openapi,odps-validation
+          cd crates/wasm
+          wasm-pack build --target web --out-dir ../../pkg --features openapi,odps-validation
 
       - name: Get version
         id: version
@@ -444,19 +445,19 @@ jobs:
             The CLI includes embedded DuckDB database support for high-performance local queries.
 
             **Linux (x86_64)**
-            - Binary: [data-modelling-cli-linux-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-cli-linux-x86_64-v${{ steps.version.outputs.version }}.tar.gz)
+            - Binary: [odm-linux-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/odm-linux-x86_64-v${{ steps.version.outputs.version }}.tar.gz)
             - SHA256: See checksum files
 
             **macOS (Intel)**
-            - Binary: [data-modelling-cli-macos-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-cli-macos-x86_64-v${{ steps.version.outputs.version }}.tar.gz)
+            - Binary: [odm-macos-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/odm-macos-x86_64-v${{ steps.version.outputs.version }}.tar.gz)
             - SHA256: See checksum files
 
             **macOS (Apple Silicon)**
-            - Binary: [data-modelling-cli-macos-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-cli-macos-arm64-v${{ steps.version.outputs.version }}.tar.gz)
+            - Binary: [odm-macos-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/odm-macos-arm64-v${{ steps.version.outputs.version }}.tar.gz)
             - SHA256: See checksum files
 
             **Windows (x86_64)**
-            - Binary: [data-modelling-cli-windows-x86_64.zip](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-cli-windows-x86_64-v${{ steps.version.outputs.version }}.zip)
+            - Binary: [odm-windows-x86_64.zip](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/odm-windows-x86_64-v${{ steps.version.outputs.version }}.zip)
             - SHA256: See checksum files
 
             ### WASM Package
@@ -469,13 +470,13 @@ jobs:
 
             **Linux/macOS:**
             ```bash
-            tar -xzf data-modelling-cli-*-v${{ steps.version.outputs.version }}.tar.gz
-            sudo mv data-modelling-cli /usr/local/bin/
+            tar -xzf odm-*-v${{ steps.version.outputs.version }}.tar.gz
+            sudo mv odm /usr/local/bin/
             ```
 
             **Windows:**
             ```powershell
-            Expand-Archive data-modelling-cli-windows-x86_64-v${{ steps.version.outputs.version }}.zip
+            Expand-Archive odm-windows-x86_64-v${{ steps.version.outputs.version }}.zip
             # Add to PATH or use full path
             ```
 

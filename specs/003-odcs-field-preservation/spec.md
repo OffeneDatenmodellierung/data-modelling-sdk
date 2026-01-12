@@ -4,7 +4,7 @@
 **Created**: 2026-01-27
 **Status**: Draft
 **Input**: User description: "Fix ODCS/ODCL parsing to preserve all fields including description, quality arrays, and $ref references"
-**Related Issue**: [#9](https://github.com/pixie79/data-modelling-sdk/issues/9)
+**Related Issue**: [#9](https://github.com/OffeneDatenmodellierung/data-modelling-sdk/issues/9)
 
 ## User Scenarios & Testing *(mandatory)*
 

@@ -3,7 +3,7 @@
 **Feature Branch**: `001-odps-validation`
 **Created**: 2026-01-05
 **Status**: Draft
-**Input**: User description: "Fix the following issue - https://github.com/pixie79/data-modelling-sdk/issues/20 - Add schema validation to ODPS exporter and create manual test script for import/export"
+**Input**: User description: "Fix the following issue - https://github.com/OffeneDatenmodellierung/data-modelling-sdk/issues/20 - Add schema validation to ODPS exporter and create manual test script for import/export"
 
 ## Clarifications
 

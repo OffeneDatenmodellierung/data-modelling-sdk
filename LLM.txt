@@ -4,10 +4,10 @@
 
 The Data Modelling SDK is a Rust library that provides unified interfaces for data modeling operations across multiple platforms (native apps, WASM/web apps, and API backends). It enables importing from various formats (SQL, ODCS, JSON Schema, AVRO, Protobuf, CADS, ODPS, BPMN, DMN, OpenAPI), exporting to multiple formats, model validation, and storage abstraction for different environments.
 
-**Repository**: https://github.com/pixie79/data-modelling-sdk
+**Repository**: https://github.com/OffeneDatenmodellierung/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 1.14.0
+**Version**: 2.0.0
 
 ## Architecture
 
@@ -22,6 +22,11 @@ The SDK is designed with a modular architecture centered around:
 7. **Sync Engine**: Bidirectional YAML ↔ Database synchronization
 8. **Decision Records (DDL)**: Architecture Decision Records with MADR format support
 9. **Knowledge Base (KB)**: Domain documentation and knowledge articles
+10. **Staging**: JSON data ingestion with DuckDB and Apache Iceberg support
+11. **Inference**: Automatic schema inference from JSON data with format detection
+12. **Mapping**: Schema-to-schema mapping with fuzzy matching and transformation generation
+13. **Pipeline**: End-to-end data pipeline orchestration with checkpointing
+14. **LLM**: LLM-enhanced schema refinement and matching (Ollama, llama.cpp)
 
 ## Directory Structure
 
@@ -110,8 +115,51 @@ data-modelling-sdk/
 │   │   ├── relationships.rs   # Relationship validation (circular deps)
 │   │   ├── tables.rs          # Table validation (naming conflicts)
 │   │   └── xml.rs             # XML validation utilities (well-formedness checks)
-│   └── workspace/              # Workspace management types
-│       └── mod.rs             # WorkspaceInfo, ProfileInfo types
+│   ├── workspace/              # Workspace management types
+│   │   └── mod.rs             # WorkspaceInfo, ProfileInfo types
+│   ├── staging/                # Data staging module (feature-gated: staging)
+│   │   ├── mod.rs             # Module exports
+│   │   ├── config.rs          # IngestConfig, DedupStrategy
+│   │   ├── db.rs              # StagingDb for DuckDB operations
+│   │   ├── ingest.rs          # JSON/JSONL ingestion logic
+│   │   ├── batch.rs           # Batch tracking and resume support
+│   │   ├── catalog.rs         # Iceberg catalog abstraction (REST, Unity, Glue, S3 Tables)
+│   │   ├── iceberg_table.rs   # Iceberg table operations
+│   │   ├── export.rs          # Export to production catalogs
+│   │   └── error.rs           # Staging error types
+│   ├── inference/              # Schema inference module (feature-gated: inference)
+│   │   ├── mod.rs             # Module exports
+│   │   ├── config.rs          # InferenceConfig with builder pattern
+│   │   ├── inferrer.rs        # SchemaInferrer implementation
+│   │   ├── types.rs           # Type inference logic
+│   │   ├── formats.rs         # Format detection (18 formats)
+│   │   ├── merge.rs           # Schema merging and similarity
+│   │   └── error.rs           # Inference error types
+│   ├── mapping/                # Schema mapping module (feature-gated: mapping)
+│   │   ├── mod.rs             # Module exports
+│   │   ├── config.rs          # MappingConfig, TransformFormat
+│   │   ├── matcher.rs         # SchemaMatcher with fuzzy matching
+│   │   ├── types.rs           # FieldMapping, TransformMapping, MatchMethod
+│   │   ├── generator.rs       # Transformation script generation (SQL, JQ, Python, PySpark)
+│   │   ├── llm_matcher.rs     # LLM-enhanced matching (feature-gated: llm)
+│   │   └── error.rs           # Mapping error types
+│   ├── pipeline/               # Pipeline orchestration module (feature-gated: pipeline)
+│   │   ├── mod.rs             # Module exports
+│   │   ├── config.rs          # PipelineConfig, LlmPipelineConfig
+│   │   ├── executor.rs        # PipelineExecutor with stage execution
+│   │   ├── checkpoint.rs      # Checkpoint, StageOutput, PipelineStatus
+│   │   └── error.rs           # Pipeline error types
+│   └── llm/                    # LLM integration module (feature-gated: llm)
+│       ├── mod.rs             # Module exports
+│       ├── config.rs          # LlmMode, RefinementConfig
+│       ├── client.rs          # LlmClient trait, MockLlmClient
+│       ├── ollama.rs          # Ollama API client (feature-gated: llm-online)
+│       ├── llamacpp.rs        # llama.cpp client (feature-gated: llm-offline)
+│       ├── prompt.rs          # Prompt templates and context building
+│       ├── validation.rs      # Schema refinement validation
+│       ├── docs.rs            # Documentation loading (.txt, .md, .docx)
+│       ├── refine.rs          # SchemaRefiner implementation
+│       └── error.rs           # LLM error types
 ├── src/cli/commands/           # CLI command implementations
 │   ├── mod.rs                 # Command module exports
 │   ├── db.rs                  # Database commands (init, sync, status, export)
@@ -322,6 +370,262 @@ Exporters convert SDK models to various formats:
 
 - **`GitService`**: Git operations (status, commit, push, pull) - requires `git` feature
 
+### Staging (`src/staging/`) - Feature: `staging`
+
+Data ingestion and staging with DuckDB and Apache Iceberg support:
+
+- **`StagingDb`**: DuckDB-based staging database
+  - `open(path)`: Open or create a staging database
+  - `memory()`: Create in-memory database for testing
+  - `init()`: Initialize database schema
+  - `record_count(partition)`: Count staged records
+  - `get_sample(limit, partition)`: Get sample records
+  - `query(sql)`: Execute arbitrary SQL
+  - `list_batches(limit)`: List batch history
+  - `partition_stats()`: Get partition statistics
+
+- **`IngestConfig`**: Ingestion configuration
+  - `batch_size`: Insert batch size (default: 1000)
+  - `dedup_strategy`: Deduplication strategy (None, ByPath, ByContent, Both)
+  - `partition_key`: Optional partition key
+  - `file_pattern`: Glob pattern for file matching
+
+- **`IcebergTable`**: Apache Iceberg table operations
+  - `create(catalog, schema)`: Create new Iceberg table
+  - `append_records(records)`: Append JSON records as Parquet
+  - `get_snapshot(version)`: Time travel by version
+  - `list_snapshots()`: List table history
+  - `get_batch_metadata()`: Get batch tracking metadata
+
+- **`CatalogConfig`**: Iceberg catalog abstraction
+  - `Rest`: REST catalog (Lakekeeper, Nessie, Polaris)
+  - `Unity`: Databricks Unity Catalog
+  - `Glue`: AWS Glue Data Catalog
+  - `S3Tables`: AWS S3 Tables
+
+- **`export_to_catalog()`**: Export to production catalogs
+
+- **`IngestProgress`**: Real-time progress reporting (feature: `staging`)
+  - Multi-bar display with files, records, bytes throughput
+  - `new(total_files, show_bytes)`: Create progress display
+  - `start_file(path)`: Begin processing a file
+  - `add_records(count)`: Update record count
+  - `add_bytes(count)`: Update bytes processed
+  - `finish()`: Complete progress display
+
+- **`InferenceProgress`**: Progress bar for schema inference
+  - `new(total_records)`: Create progress bar
+  - `inc(count)`: Increment progress
+  - `finish()`: Complete with message
+
+- **`Spinner`**: Simple spinner for indeterminate operations
+  - `new(message)`: Create spinner
+  - `finish_with_message(message)`: Complete with status
+
+- **`S3Ingester`**: AWS S3 ingestion (feature: `s3`)
+  - `new(source)`: Create with S3Source configuration
+  - `discover_files()`: List files matching pattern
+  - `download_file(key)`: Stream download file content
+  - Supports custom endpoints (MinIO, LocalStack)
+
+- **`S3Source`**: S3 configuration
+  - `bucket`: S3 bucket name
+  - `prefix`: Optional key prefix filter
+  - `region`: AWS region
+  - `profile`: Optional AWS profile name
+  - `endpoint_url`: Optional custom endpoint
+
+- **`UnityVolumeIngester`**: Databricks Unity Catalog Volumes (feature: `databricks`)
+  - `new(source)`: Create with UnityVolumeSource configuration
+  - `discover_files()`: List files in volume
+  - `download_file(path)`: Download file content via REST API
+
+- **`UnityVolumeSource`**: Unity Catalog configuration
+  - `host`: Databricks workspace URL
+  - `token`: SecureCredentials wrapper for PAT
+  - `catalog`: Unity Catalog name
+  - `schema`: Schema name
+  - `volume`: Volume name
+  - `path`: Optional path within volume
+
+- **`SecureCredentials`**: Credential wrapper preventing accidental logging
+  - Implements Display/Debug to show redacted value
+  - `new(value)`: Create secure wrapper
+  - `expose()`: Get actual credential value
+
+- **`redact_secret(value, visible_chars)`**: Redact secret showing first N chars
+- **`redact_secrets_in_string(text)`**: Regex-based redaction for:
+  - AWS access keys (AKIA...)
+  - AWS secret keys
+  - Bearer tokens
+  - URL-embedded passwords
+
+### Inference (`src/inference/`) - Feature: `inference`
+
+Automatic schema inference from JSON data:
+
+- **`SchemaInferrer`**: Main inference engine
+  - `new()`: Create with default config
+  - `with_config(config)`: Create with custom config
+  - `add_json(json)`: Add single JSON record
+  - `add_value(value)`: Add parsed serde_json::Value
+  - `add_json_batch(records)`: Add batch of records
+  - `finalize()`: Generate InferredSchema
+  - `stats()`: Get inference statistics
+
+- **`InferenceConfig`**: Configuration options
+  - `sample_size`: Max records to sample (0 = all)
+  - `min_field_frequency`: Min occurrence rate (0.0-1.0)
+  - `detect_formats`: Enable format detection
+  - `max_depth`: Max nested object depth
+  - `collect_examples`: Collect example values
+  - `max_examples`: Max examples per field
+
+- **`InferredSchema`**: Inference result
+  - `to_json_schema()`: Convert to JSON Schema format
+  - Type support: null, boolean, integer, number, string, array, object, mixed
+
+- **Format Detection** (18 formats):
+  - Temporal: `date-time`, `date`, `time`
+  - Network: `email`, `uri`, `hostname`, `ipv4`, `ipv6`
+  - Identifiers: `uuid`, `semver`, `slug`
+  - Standards: `country_code`, `currency_code`, `language_code`, `mime_type`
+  - Encoded: `base64`, `jwt`
+  - Contact: `phone` (E.164)
+
+- **Schema Merging**:
+  - `merge_schemas()`: Merge compatible schemas
+  - `group_similar_schemas()`: Group by similarity (Jaccard index)
+
+### Mapping (`src/mapping/`) - Feature: `mapping`
+
+Schema-to-schema mapping with transformation generation:
+
+- **`SchemaMatcher`**: Field matching engine
+  - `new()`: Create with default config
+  - `with_config(config)`: Create with custom config
+  - `match_schemas(source, target)`: Match two JSON Schemas
+  - Match methods: Exact, CaseInsensitive, Fuzzy (Levenshtein), Semantic, LLM
+
+- **`MappingConfig`**: Configuration options
+  - `min_confidence`: Minimum match confidence (0.0-1.0)
+  - `fuzzy_matching`: Enable fuzzy matching
+  - `case_insensitive`: Enable case-insensitive matching
+  - `transform_format`: Output format (SQL, JQ, Python, PySpark)
+
+- **`SchemaMapping`**: Mapping result
+  - `direct_mappings`: Direct field-to-field mappings
+  - `transformations`: Fields requiring transformation
+  - `gaps`: Target fields with no source
+  - `extras`: Source fields not mapped
+  - `compatibility_score`: Overall compatibility (0.0-1.0)
+
+- **`FieldMapping`**: Individual field mapping
+  - `source_path`, `target_path`: Field paths
+  - `confidence`: Match confidence
+  - `type_compatible`: Whether types are compatible
+  - `match_method`: How the match was found
+
+- **`TransformMapping`**: Transformation definition
+  - `source_paths`: Source field(s)
+  - `target_path`: Target field
+  - `transform_type`: TypeCast, Rename, Merge, Split, FormatChange, Custom, Extract, Default
+
+- **`generate_transform()`**: Generate transformation scripts
+  - SQL: DuckDB-compatible INSERT/SELECT
+  - JQ: jq filter expressions
+  - Python: pandas transformation script
+  - PySpark: PySpark DataFrame transformation
+
+- **`LlmSchemaMatcher`**: LLM-enhanced matching (feature: `llm`)
+  - Combines algorithmic and LLM-based matching
+  - Retry logic with exponential backoff
+  - Batching for large schemas
+  - Transform hint parsing
+
+### Pipeline (`src/pipeline/`) - Feature: `pipeline`
+
+End-to-end data pipeline orchestration:
+
+- **`PipelineExecutor`**: Pipeline execution engine
+  - `new(config)`: Create with configuration
+  - `run()`: Execute full pipeline
+  - Returns `PipelineReport` with stage results
+
+- **`PipelineConfig`**: Pipeline configuration
+  - `database_path`: Staging database path
+  - `source_path`: Input data source
+  - `output_dir`: Output directory
+  - `target_schema`: Optional target schema for mapping
+  - `stages`: Stages to execute
+  - `llm_config`: LLM configuration
+  - `dry_run`: Validate without executing
+  - `resume`: Resume from checkpoint
+
+- **`PipelineStage`**: Pipeline stages
+  - `Ingest`: Load JSON into staging database
+  - `Infer`: Infer schema from staged data
+  - `Refine`: LLM-enhanced schema refinement
+  - `Map`: Map to target schema
+  - `Export`: Export results
+
+- **`Checkpoint`**: Checkpoint for resume support
+  - `load(path)`: Load existing checkpoint
+  - `save(path)`: Save checkpoint
+  - `completed_stages`: List of completed stages
+  - `current_stage`: Currently executing stage
+  - `stage_outputs`: Results for each stage
+  - `config_hash`: Configuration hash for change detection
+
+- **`PipelineReport`**: Execution report
+  - `stages`: Stage execution results
+  - `total_duration`: Total execution time
+  - `success`: Whether pipeline succeeded
+  - `print_summary()`: Print human-readable summary
+
+### LLM (`src/llm/`) - Feature: `llm`
+
+LLM integration for schema refinement:
+
+- **`LlmClient` trait**: Common interface for LLM backends
+  - `complete(prompt)`: Send prompt and get completion
+  - `model_name()`: Get model name
+  - `max_tokens()`: Get max token limit
+  - `is_ready()`: Check if client is ready
+
+- **`OllamaClient`**: Ollama API client (feature: `llm-online`)
+  - Connects to local or remote Ollama server
+  - Supports `/api/generate` endpoint
+  - Configurable model, temperature, timeout
+
+- **`LlamaCppClient`**: llama.cpp client (feature: `llm-offline`)
+  - Local inference with GGUF models
+  - GPU acceleration support
+  - Configurable context size
+
+- **`RefinementConfig`**: Refinement configuration
+  - `llm_mode`: None, Online, Offline
+  - `documentation_path`: Path to context documentation
+  - `temperature`: Generation temperature
+  - `max_retries`: Retry count on failure
+  - `include_samples`: Include sample records in prompt
+
+- **`SchemaRefiner`**: Schema refinement engine
+  - `refine(schema, samples)`: Refine schema with LLM
+  - `RefinementResult`: Contains refined schema and metadata
+  - Validation ensures field preservation
+
+- **`DocumentationLoader`**: Load context documentation
+  - Supports `.txt`, `.md`, `.docx` formats
+  - `extract_relevant_sections()`: Keyword-based extraction
+  - `truncate_documentation()`: Token-aware truncation
+
+- **`ValidationResult`**: Refinement validation
+  - Ensures all original fields preserved
+  - Detects field renames (not allowed)
+  - Validates type compatibility
+  - Allows narrowing (number → integer)
+
 ## Features
 
 The SDK uses Cargo features to enable optional functionality:
@@ -337,6 +641,16 @@ The SDK uses Cargo features to enable optional functionality:
 - **`duckdb-backend`**: Enables DuckDB embedded database (duckdb)
 - **`postgres-backend`**: Enables PostgreSQL database (tokio-postgres)
 - **`cli-full`**: Full CLI with all features including database support
+- **`staging`**: Enables data staging module (duckdb, indicatif for progress)
+- **`s3`**: Enables S3 ingestion (aws-config, aws-sdk-s3, aws-credential-types)
+- **`databricks`**: Enables Databricks Unity Catalog Volumes ingestion (reqwest)
+- **`inference`**: Enables schema inference module
+- **`mapping`**: Enables schema mapping module (depends on `inference`)
+- **`pipeline`**: Enables pipeline orchestration (depends on `staging`, `inference`, `mapping`)
+- **`llm`**: Enables LLM integration base (tokio, zip)
+- **`llm-online`**: Enables Ollama API client (depends on `llm`, adds `reqwest`)
+- **`llm-offline`**: Enables llama.cpp client (depends on `llm`)
+- **`iceberg`**: Enables Apache Iceberg support (iceberg, iceberg-catalog-rest, arrow, parquet)
 
 ## Dependencies
 
