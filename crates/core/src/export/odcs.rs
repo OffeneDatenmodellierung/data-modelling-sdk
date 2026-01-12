@@ -939,6 +939,204 @@ impl ODCSExporter {
                         );
                     }
 
+                    // === Additional Column Metadata Fields for Nested Columns ===
+
+                    // businessName
+                    if let Some(ref biz_name) = child_col.business_name {
+                        child_prop.insert(
+                            serde_yaml::Value::String("businessName".to_string()),
+                            serde_yaml::Value::String(biz_name.clone()),
+                        );
+                    }
+
+                    // physicalName
+                    if let Some(ref phys_name) = child_col.physical_name {
+                        child_prop.insert(
+                            serde_yaml::Value::String("physicalName".to_string()),
+                            serde_yaml::Value::String(phys_name.clone()),
+                        );
+                    }
+
+                    // unique
+                    if child_col.unique {
+                        child_prop.insert(
+                            serde_yaml::Value::String("unique".to_string()),
+                            serde_yaml::Value::Bool(true),
+                        );
+                    }
+
+                    // primaryKey
+                    if child_col.primary_key {
+                        child_prop.insert(
+                            serde_yaml::Value::String("primaryKey".to_string()),
+                            serde_yaml::Value::Bool(true),
+                        );
+                    }
+
+                    // primaryKeyPosition
+                    if let Some(pk_pos) = child_col.primary_key_position {
+                        child_prop.insert(
+                            serde_yaml::Value::String("primaryKeyPosition".to_string()),
+                            serde_yaml::Value::Number(serde_yaml::Number::from(pk_pos)),
+                        );
+                    }
+
+                    // partitioned
+                    if child_col.partitioned {
+                        child_prop.insert(
+                            serde_yaml::Value::String("partitioned".to_string()),
+                            serde_yaml::Value::Bool(true),
+                        );
+                    }
+
+                    // partitionKeyPosition
+                    if let Some(pos) = child_col.partition_key_position {
+                        child_prop.insert(
+                            serde_yaml::Value::String("partitionKeyPosition".to_string()),
+                            serde_yaml::Value::Number(serde_yaml::Number::from(pos)),
+                        );
+                    }
+
+                    // clustered
+                    if child_col.clustered {
+                        child_prop.insert(
+                            serde_yaml::Value::String("clustered".to_string()),
+                            serde_yaml::Value::Bool(true),
+                        );
+                    }
+
+                    // classification
+                    if let Some(ref class) = child_col.classification {
+                        child_prop.insert(
+                            serde_yaml::Value::String("classification".to_string()),
+                            serde_yaml::Value::String(class.clone()),
+                        );
+                    }
+
+                    // criticalDataElement
+                    if child_col.critical_data_element {
+                        child_prop.insert(
+                            serde_yaml::Value::String("criticalDataElement".to_string()),
+                            serde_yaml::Value::Bool(true),
+                        );
+                    }
+
+                    // encryptedName
+                    if let Some(ref enc) = child_col.encrypted_name {
+                        child_prop.insert(
+                            serde_yaml::Value::String("encryptedName".to_string()),
+                            serde_yaml::Value::String(enc.clone()),
+                        );
+                    }
+
+                    // transformSourceObjects
+                    if !child_col.transform_source_objects.is_empty() {
+                        let sources: Vec<serde_yaml::Value> = child_col
+                            .transform_source_objects
+                            .iter()
+                            .map(|s| serde_yaml::Value::String(s.clone()))
+                            .collect();
+                        child_prop.insert(
+                            serde_yaml::Value::String("transformSourceObjects".to_string()),
+                            serde_yaml::Value::Sequence(sources),
+                        );
+                    }
+
+                    // transformLogic
+                    if let Some(ref logic) = child_col.transform_logic {
+                        child_prop.insert(
+                            serde_yaml::Value::String("transformLogic".to_string()),
+                            serde_yaml::Value::String(logic.clone()),
+                        );
+                    }
+
+                    // transformDescription
+                    if let Some(ref desc) = child_col.transform_description {
+                        child_prop.insert(
+                            serde_yaml::Value::String("transformDescription".to_string()),
+                            serde_yaml::Value::String(desc.clone()),
+                        );
+                    }
+
+                    // examples
+                    if !child_col.examples.is_empty() {
+                        let examples: Vec<serde_yaml::Value> =
+                            child_col.examples.iter().map(json_to_yaml_fn).collect();
+                        child_prop.insert(
+                            serde_yaml::Value::String("examples".to_string()),
+                            serde_yaml::Value::Sequence(examples),
+                        );
+                    }
+
+                    // authoritativeDefinitions
+                    if !child_col.authoritative_definitions.is_empty() {
+                        let defs: Vec<serde_yaml::Value> = child_col
+                            .authoritative_definitions
+                            .iter()
+                            .map(|d| {
+                                let mut def_map = serde_yaml::Mapping::new();
+                                def_map.insert(
+                                    serde_yaml::Value::String("type".to_string()),
+                                    serde_yaml::Value::String(d.definition_type.clone()),
+                                );
+                                def_map.insert(
+                                    serde_yaml::Value::String("url".to_string()),
+                                    serde_yaml::Value::String(d.url.clone()),
+                                );
+                                serde_yaml::Value::Mapping(def_map)
+                            })
+                            .collect();
+                        child_prop.insert(
+                            serde_yaml::Value::String("authoritativeDefinitions".to_string()),
+                            serde_yaml::Value::Sequence(defs),
+                        );
+                    }
+
+                    // tags
+                    if !child_col.tags.is_empty() {
+                        let tags: Vec<serde_yaml::Value> = child_col
+                            .tags
+                            .iter()
+                            .map(|t| serde_yaml::Value::String(t.clone()))
+                            .collect();
+                        child_prop.insert(
+                            serde_yaml::Value::String("tags".to_string()),
+                            serde_yaml::Value::Sequence(tags),
+                        );
+                    }
+
+                    // customProperties
+                    if !child_col.custom_properties.is_empty() {
+                        let props: Vec<serde_yaml::Value> = child_col
+                            .custom_properties
+                            .iter()
+                            .map(|(k, v)| {
+                                let mut m = serde_yaml::Mapping::new();
+                                m.insert(
+                                    serde_yaml::Value::String("property".to_string()),
+                                    serde_yaml::Value::String(k.clone()),
+                                );
+                                m.insert(
+                                    serde_yaml::Value::String("value".to_string()),
+                                    json_to_yaml_fn(v),
+                                );
+                                serde_yaml::Value::Mapping(m)
+                            })
+                            .collect();
+                        child_prop.insert(
+                            serde_yaml::Value::String("customProperties".to_string()),
+                            serde_yaml::Value::Sequence(props),
+                        );
+                    }
+
+                    // businessKey (secondary_key)
+                    if child_col.secondary_key {
+                        child_prop.insert(
+                            serde_yaml::Value::String("businessKey".to_string()),
+                            serde_yaml::Value::Bool(true),
+                        );
+                    }
+
                     nested_props_map.insert(
                         serde_yaml::Value::String(child_name.clone()),
                         serde_yaml::Value::Mapping(child_prop),
@@ -1071,6 +1269,204 @@ impl ODCSExporter {
                             child_prop.insert(
                                 serde_yaml::Value::String("description".to_string()),
                                 serde_yaml::Value::String(first_col.description.clone()),
+                            );
+                        }
+
+                        // === Additional Column Metadata Fields for Nested Columns ===
+
+                        // businessName
+                        if let Some(ref biz_name) = first_col.business_name {
+                            child_prop.insert(
+                                serde_yaml::Value::String("businessName".to_string()),
+                                serde_yaml::Value::String(biz_name.clone()),
+                            );
+                        }
+
+                        // physicalName
+                        if let Some(ref phys_name) = first_col.physical_name {
+                            child_prop.insert(
+                                serde_yaml::Value::String("physicalName".to_string()),
+                                serde_yaml::Value::String(phys_name.clone()),
+                            );
+                        }
+
+                        // unique
+                        if first_col.unique {
+                            child_prop.insert(
+                                serde_yaml::Value::String("unique".to_string()),
+                                serde_yaml::Value::Bool(true),
+                            );
+                        }
+
+                        // primaryKey
+                        if first_col.primary_key {
+                            child_prop.insert(
+                                serde_yaml::Value::String("primaryKey".to_string()),
+                                serde_yaml::Value::Bool(true),
+                            );
+                        }
+
+                        // primaryKeyPosition
+                        if let Some(pk_pos) = first_col.primary_key_position {
+                            child_prop.insert(
+                                serde_yaml::Value::String("primaryKeyPosition".to_string()),
+                                serde_yaml::Value::Number(serde_yaml::Number::from(pk_pos)),
+                            );
+                        }
+
+                        // partitioned
+                        if first_col.partitioned {
+                            child_prop.insert(
+                                serde_yaml::Value::String("partitioned".to_string()),
+                                serde_yaml::Value::Bool(true),
+                            );
+                        }
+
+                        // partitionKeyPosition
+                        if let Some(pos) = first_col.partition_key_position {
+                            child_prop.insert(
+                                serde_yaml::Value::String("partitionKeyPosition".to_string()),
+                                serde_yaml::Value::Number(serde_yaml::Number::from(pos)),
+                            );
+                        }
+
+                        // clustered
+                        if first_col.clustered {
+                            child_prop.insert(
+                                serde_yaml::Value::String("clustered".to_string()),
+                                serde_yaml::Value::Bool(true),
+                            );
+                        }
+
+                        // classification
+                        if let Some(ref class) = first_col.classification {
+                            child_prop.insert(
+                                serde_yaml::Value::String("classification".to_string()),
+                                serde_yaml::Value::String(class.clone()),
+                            );
+                        }
+
+                        // criticalDataElement
+                        if first_col.critical_data_element {
+                            child_prop.insert(
+                                serde_yaml::Value::String("criticalDataElement".to_string()),
+                                serde_yaml::Value::Bool(true),
+                            );
+                        }
+
+                        // encryptedName
+                        if let Some(ref enc) = first_col.encrypted_name {
+                            child_prop.insert(
+                                serde_yaml::Value::String("encryptedName".to_string()),
+                                serde_yaml::Value::String(enc.clone()),
+                            );
+                        }
+
+                        // transformSourceObjects
+                        if !first_col.transform_source_objects.is_empty() {
+                            let sources: Vec<serde_yaml::Value> = first_col
+                                .transform_source_objects
+                                .iter()
+                                .map(|s| serde_yaml::Value::String(s.clone()))
+                                .collect();
+                            child_prop.insert(
+                                serde_yaml::Value::String("transformSourceObjects".to_string()),
+                                serde_yaml::Value::Sequence(sources),
+                            );
+                        }
+
+                        // transformLogic
+                        if let Some(ref logic) = first_col.transform_logic {
+                            child_prop.insert(
+                                serde_yaml::Value::String("transformLogic".to_string()),
+                                serde_yaml::Value::String(logic.clone()),
+                            );
+                        }
+
+                        // transformDescription
+                        if let Some(ref desc) = first_col.transform_description {
+                            child_prop.insert(
+                                serde_yaml::Value::String("transformDescription".to_string()),
+                                serde_yaml::Value::String(desc.clone()),
+                            );
+                        }
+
+                        // examples
+                        if !first_col.examples.is_empty() {
+                            let examples: Vec<serde_yaml::Value> =
+                                first_col.examples.iter().map(json_to_yaml_fn).collect();
+                            child_prop.insert(
+                                serde_yaml::Value::String("examples".to_string()),
+                                serde_yaml::Value::Sequence(examples),
+                            );
+                        }
+
+                        // authoritativeDefinitions
+                        if !first_col.authoritative_definitions.is_empty() {
+                            let defs: Vec<serde_yaml::Value> = first_col
+                                .authoritative_definitions
+                                .iter()
+                                .map(|d| {
+                                    let mut def_map = serde_yaml::Mapping::new();
+                                    def_map.insert(
+                                        serde_yaml::Value::String("type".to_string()),
+                                        serde_yaml::Value::String(d.definition_type.clone()),
+                                    );
+                                    def_map.insert(
+                                        serde_yaml::Value::String("url".to_string()),
+                                        serde_yaml::Value::String(d.url.clone()),
+                                    );
+                                    serde_yaml::Value::Mapping(def_map)
+                                })
+                                .collect();
+                            child_prop.insert(
+                                serde_yaml::Value::String("authoritativeDefinitions".to_string()),
+                                serde_yaml::Value::Sequence(defs),
+                            );
+                        }
+
+                        // tags
+                        if !first_col.tags.is_empty() {
+                            let tags: Vec<serde_yaml::Value> = first_col
+                                .tags
+                                .iter()
+                                .map(|t| serde_yaml::Value::String(t.clone()))
+                                .collect();
+                            child_prop.insert(
+                                serde_yaml::Value::String("tags".to_string()),
+                                serde_yaml::Value::Sequence(tags),
+                            );
+                        }
+
+                        // customProperties
+                        if !first_col.custom_properties.is_empty() {
+                            let props: Vec<serde_yaml::Value> = first_col
+                                .custom_properties
+                                .iter()
+                                .map(|(k, v)| {
+                                    let mut m = serde_yaml::Mapping::new();
+                                    m.insert(
+                                        serde_yaml::Value::String("property".to_string()),
+                                        serde_yaml::Value::String(k.clone()),
+                                    );
+                                    m.insert(
+                                        serde_yaml::Value::String("value".to_string()),
+                                        json_to_yaml_fn(v),
+                                    );
+                                    serde_yaml::Value::Mapping(m)
+                                })
+                                .collect();
+                            child_prop.insert(
+                                serde_yaml::Value::String("customProperties".to_string()),
+                                serde_yaml::Value::Sequence(props),
+                            );
+                        }
+
+                        // businessKey (secondary_key)
+                        if first_col.secondary_key {
+                            child_prop.insert(
+                                serde_yaml::Value::String("businessKey".to_string()),
+                                serde_yaml::Value::Bool(true),
                             );
                         }
 

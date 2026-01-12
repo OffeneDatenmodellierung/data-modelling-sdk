@@ -2394,23 +2394,277 @@ impl ODCSImporter {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        columns.push(Column {
-            name: field_name.to_string(),
-            data_type: field_type,
+        // Parse the column with all ODCS v3.1.0 metadata fields
+        let column = self.parse_column_metadata_from_field(
+            field_name,
+            &field_type,
             physical_type,
-            nullable: !required,
-            primary_key: field_data
-                .get("primaryKey")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false),
-            foreign_key: self.parse_foreign_key_from_data_contract(field_data),
-            description: field_description,
-            quality: column_quality_rules,
-            relationships: self.parse_relationships_from_field(field_data),
-            ..Default::default()
-        });
+            !required,
+            field_description,
+            column_quality_rules,
+            field_data,
+        );
+
+        columns.push(column);
 
         Ok(columns)
+    }
+
+    /// Parse all column metadata fields from ODCS v3.1.0 field data.
+    /// This extracts all supported column-level metadata including:
+    /// - businessName, physicalName, logicalTypeOptions
+    /// - primaryKey, primaryKeyPosition, unique
+    /// - partitioned, partitionKeyPosition, clustered
+    /// - classification, criticalDataElement, encryptedName
+    /// - transformSourceObjects, transformLogic, transformDescription
+    /// - examples, authoritativeDefinitions, tags, customProperties
+    #[allow(clippy::too_many_arguments)]
+    fn parse_column_metadata_from_field(
+        &self,
+        name: &str,
+        data_type: &str,
+        physical_type: Option<String>,
+        nullable: bool,
+        description: String,
+        quality: Vec<HashMap<String, serde_json::Value>>,
+        field_data: &serde_json::Map<String, JsonValue>,
+    ) -> Column {
+        use crate::models::{AuthoritativeDefinition, LogicalTypeOptions};
+
+        // businessName
+        let business_name = field_data
+            .get("businessName")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // physicalName
+        let physical_name = field_data
+            .get("physicalName")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // logicalTypeOptions
+        let logical_type_options = field_data.get("logicalTypeOptions").and_then(|v| {
+            v.as_object().map(|opts| LogicalTypeOptions {
+                min_length: opts.get("minLength").and_then(|v| v.as_i64()),
+                max_length: opts.get("maxLength").and_then(|v| v.as_i64()),
+                pattern: opts
+                    .get("pattern")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                format: opts
+                    .get("format")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                minimum: opts.get("minimum").cloned(),
+                maximum: opts.get("maximum").cloned(),
+                exclusive_minimum: opts.get("exclusiveMinimum").cloned(),
+                exclusive_maximum: opts.get("exclusiveMaximum").cloned(),
+                precision: opts
+                    .get("precision")
+                    .and_then(|v| v.as_i64())
+                    .map(|n| n as i32),
+                scale: opts.get("scale").and_then(|v| v.as_i64()).map(|n| n as i32),
+            })
+        });
+
+        // primaryKey
+        let primary_key = field_data
+            .get("primaryKey")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // primaryKeyPosition
+        let primary_key_position = field_data
+            .get("primaryKeyPosition")
+            .and_then(|v| v.as_i64())
+            .map(|n| n as i32);
+
+        // unique
+        let unique = field_data
+            .get("unique")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // partitioned
+        let partitioned = field_data
+            .get("partitioned")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // partitionKeyPosition
+        let partition_key_position = field_data
+            .get("partitionKeyPosition")
+            .and_then(|v| v.as_i64())
+            .map(|n| n as i32);
+
+        // clustered
+        let clustered = field_data
+            .get("clustered")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // classification
+        let classification = field_data
+            .get("classification")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // criticalDataElement
+        let critical_data_element = field_data
+            .get("criticalDataElement")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // encryptedName
+        let encrypted_name = field_data
+            .get("encryptedName")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // transformSourceObjects
+        let transform_source_objects = field_data
+            .get("transformSourceObjects")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // transformLogic
+        let transform_logic = field_data
+            .get("transformLogic")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // transformDescription
+        let transform_description = field_data
+            .get("transformDescription")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // examples
+        let examples = field_data
+            .get("examples")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.to_vec())
+            .unwrap_or_default();
+
+        // authoritativeDefinitions
+        let authoritative_definitions = field_data
+            .get("authoritativeDefinitions")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| {
+                        item.as_object().map(|obj| AuthoritativeDefinition {
+                            definition_type: obj
+                                .get("type")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            url: obj
+                                .get("url")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // tags
+        let tags = field_data
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // customProperties
+        let custom_properties = field_data
+            .get("customProperties")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| {
+                        item.as_object().and_then(|obj| {
+                            let key = obj.get("property").and_then(|v| v.as_str())?;
+                            let value = obj.get("value").cloned()?;
+                            Some((key.to_string(), value))
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // businessKey (secondary_key)
+        let secondary_key = field_data
+            .get("businessKey")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // enum values
+        let enum_values = field_data
+            .get("enum")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // constraints
+        let constraints = field_data
+            .get("constraints")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Column {
+            name: name.to_string(),
+            data_type: data_type.to_string(),
+            physical_type,
+            physical_name,
+            nullable,
+            description,
+            quality,
+            business_name,
+            logical_type_options,
+            primary_key,
+            primary_key_position,
+            unique,
+            partitioned,
+            partition_key_position,
+            clustered,
+            classification,
+            critical_data_element,
+            encrypted_name,
+            transform_source_objects,
+            transform_logic,
+            transform_description,
+            examples,
+            authoritative_definitions,
+            tags,
+            custom_properties,
+            secondary_key,
+            enum_values,
+            constraints,
+            foreign_key: self.parse_foreign_key_from_data_contract(field_data),
+            relationships: self.parse_relationships_from_field(field_data),
+            ..Default::default()
+        }
     }
 
     /// Parse foreign key from Data Contract field data.
