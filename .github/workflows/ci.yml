@@ -14,76 +14,16 @@ permissions:
   pull-requests: read
 
 jobs:
-  # Version consistency check - runs first to fail fast on version mismatches
+  # Version consistency check - runs first
   version-check:
-    name: Version Consistency Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check version consistency across all files
-        run: |
-          echo "Checking version consistency across all Cargo.toml files, CHANGELOG.md, and package.json..."
-
-          # Extract versions from all locations
-          ROOT_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
-          CORE_VERSION=$(grep -A 10 '^\[package\]' crates/core/Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
-          ODM_VERSION=$(grep -A 10 '^\[package\]' crates/odm/Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
-          WASM_VERSION=$(grep -A 10 '^\[package\]' crates/wasm/Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
-          PKG_VERSION=$(grep '"version"' pkg/package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
-          CHANGELOG_VERSION=$(grep -E '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | head -1 | sed -E 's/^## \[([0-9]+\.[0-9]+\.[0-9]+)\].*/\1/')
-
-          echo "Versions found:"
-          echo "  Root Cargo.toml:        $ROOT_VERSION"
-          echo "  crates/core/Cargo.toml: $CORE_VERSION"
-          echo "  crates/odm/Cargo.toml:  $ODM_VERSION"
-          echo "  crates/wasm/Cargo.toml: $WASM_VERSION"
-          echo "  pkg/package.json:       $PKG_VERSION"
-          echo "  CHANGELOG.md:           $CHANGELOG_VERSION"
-
-          # Check all versions match
-          ERRORS=0
-
-          if [ "$ROOT_VERSION" != "$CORE_VERSION" ]; then
-            echo "❌ ERROR: Root Cargo.toml ($ROOT_VERSION) != crates/core/Cargo.toml ($CORE_VERSION)"
-            ERRORS=$((ERRORS + 1))
-          fi
-
-          if [ "$ROOT_VERSION" != "$ODM_VERSION" ]; then
-            echo "❌ ERROR: Root Cargo.toml ($ROOT_VERSION) != crates/odm/Cargo.toml ($ODM_VERSION)"
-            ERRORS=$((ERRORS + 1))
-          fi
-
-          if [ "$ROOT_VERSION" != "$WASM_VERSION" ]; then
-            echo "❌ ERROR: Root Cargo.toml ($ROOT_VERSION) != crates/wasm/Cargo.toml ($WASM_VERSION)"
-            ERRORS=$((ERRORS + 1))
-          fi
-
-          if [ "$ROOT_VERSION" != "$PKG_VERSION" ]; then
-            echo "❌ ERROR: Root Cargo.toml ($ROOT_VERSION) != pkg/package.json ($PKG_VERSION)"
-            ERRORS=$((ERRORS + 1))
-          fi
-
-          if [ "$ROOT_VERSION" != "$CHANGELOG_VERSION" ]; then
-            echo "❌ ERROR: Root Cargo.toml ($ROOT_VERSION) != CHANGELOG.md ($CHANGELOG_VERSION)"
-            ERRORS=$((ERRORS + 1))
-          fi
-
-          if [ $ERRORS -gt 0 ]; then
-            echo ""
-            echo "Version consistency check failed with $ERRORS error(s)"
-            echo "All version files must have the same version number."
-            exit 1
-          fi
-
-          echo ""
-          echo "✅ All versions are consistent: $ROOT_VERSION"
+    name: Version Check
+    uses: ./.github/workflows/version-check.yml
 
   # Linting and formatting check
   lint:
     name: Lint and Format Check
+    needs: version-check
     runs-on: ubuntu-latest
-    needs: [version-check]
     steps:
       - uses: actions/checkout@v4
 
@@ -131,8 +71,8 @@ jobs:
   # Core tests - runs without database features (fast)
   test:
     name: Test
+    needs: version-check
     runs-on: ubuntu-latest
-    needs: [version-check]
     steps:
       - uses: actions/checkout@v4
 

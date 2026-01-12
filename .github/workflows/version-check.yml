@@ -1,0 +1,83 @@
+name: Version Check
+
+on:
+  workflow_dispatch: # Allow manual triggering
+  workflow_call: # Allow being called from other workflows
+    outputs:
+      version:
+        description: "The verified version"
+        value: ${{ jobs.verify-versions.outputs.version }}
+
+jobs:
+  verify-versions:
+    name: Verify Version Consistency
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract and verify versions
+        id: version
+        run: |
+          echo "Checking version consistency across all Cargo.toml files and CHANGELOG.md..."
+
+          # Get versions from all Cargo.toml files
+          ROOT_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+          CORE_VERSION=$(grep -A 10 '^\[package\]' crates/core/Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+          ODM_VERSION=$(grep -A 10 '^\[package\]' crates/odm/Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+          WASM_VERSION=$(grep -A 10 '^\[package\]' crates/wasm/Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+
+          # Get version from CHANGELOG.md
+          CHANGELOG_VERSION=$(grep -E '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | head -1 | sed -E 's/^## \[([0-9]+\.[0-9]+\.[0-9]+)\].*/\1/')
+
+          echo "Versions found:"
+          echo "  Root Cargo.toml:        $ROOT_VERSION"
+          echo "  crates/core/Cargo.toml: $CORE_VERSION"
+          echo "  crates/odm/Cargo.toml:  $ODM_VERSION"
+          echo "  crates/wasm/Cargo.toml: $WASM_VERSION"
+          echo "  CHANGELOG.md:           $CHANGELOG_VERSION"
+
+          # Check for version mismatches
+          ERRORS=0
+
+          if [ "$ROOT_VERSION" != "$CORE_VERSION" ]; then
+            echo "::error::Root Cargo.toml ($ROOT_VERSION) != crates/core/Cargo.toml ($CORE_VERSION)"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          if [ "$ROOT_VERSION" != "$ODM_VERSION" ]; then
+            echo "::error::Root Cargo.toml ($ROOT_VERSION) != crates/odm/Cargo.toml ($ODM_VERSION)"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          if [ "$ROOT_VERSION" != "$WASM_VERSION" ]; then
+            echo "::error::Root Cargo.toml ($ROOT_VERSION) != crates/wasm/Cargo.toml ($WASM_VERSION)"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          if [ "$ROOT_VERSION" != "$CHANGELOG_VERSION" ]; then
+            echo "::error::Root Cargo.toml ($ROOT_VERSION) != CHANGELOG.md ($CHANGELOG_VERSION)"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # If triggered by tag, verify tag matches
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_VERSION=${GITHUB_REF#refs/tags/v}
+            echo "  Tag version:            $TAG_VERSION"
+            if [ "$ROOT_VERSION" != "$TAG_VERSION" ]; then
+              echo "::error::Tag version ($TAG_VERSION) does not match Cargo.toml ($ROOT_VERSION)"
+              ERRORS=$((ERRORS + 1))
+            fi
+          fi
+
+          if [ $ERRORS -gt 0 ]; then
+            echo ""
+            echo "Version consistency check failed with $ERRORS error(s)"
+            echo "All version files must have the same version number."
+            exit 1
+          fi
+
+          echo ""
+          echo "All versions consistent: $ROOT_VERSION"
+          echo "version=$ROOT_VERSION" >> $GITHUB_OUTPUT

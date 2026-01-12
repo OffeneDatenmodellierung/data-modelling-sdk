@@ -1,4 +1,4 @@
-name: Release CLI and WASM
+name: Release CLI
 
 on:
   workflow_dispatch: # Allow manual triggering
@@ -8,11 +8,6 @@ on:
         description: "Version to release (without v prefix)"
         required: true
         type: string
-  push:
-    tags:
-      - "v*" # Trigger on version tags (e.g., v1.6.2)
-    branches:
-      - "release/*" # Trigger on release branches for dev releases
 
 env:
   CARGO_TERM_COLOR: always
@@ -23,46 +18,12 @@ permissions:
   contents: write
 
 jobs:
-  verify-versions:
-    name: Verify Version Consistency
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract and verify versions
-        id: version
-        run: |
-          # Get version from Cargo.toml
-          CARGO_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
-          echo "Cargo.toml version: $CARGO_VERSION"
-
-          # Get version from CHANGELOG.md
-          CHANGELOG_VERSION=$(grep -E '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | head -1 | sed -E 's/^## \[([0-9]+\.[0-9]+\.[0-9]+)\].*/\1/')
-          echo "CHANGELOG.md version: $CHANGELOG_VERSION"
-
-          # Check for version match
-          if [ "$CARGO_VERSION" != "$CHANGELOG_VERSION" ]; then
-            echo "::error::Version mismatch! Cargo.toml ($CARGO_VERSION) != CHANGELOG.md ($CHANGELOG_VERSION)"
-            exit 1
-          fi
-
-          # If triggered by tag, verify tag matches
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            TAG_VERSION=${GITHUB_REF#refs/tags/v}
-            echo "Tag version: $TAG_VERSION"
-            if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
-              echo "::error::Tag version ($TAG_VERSION) does not match Cargo.toml ($CARGO_VERSION)"
-              exit 1
-            fi
-          fi
-
-          echo "version=$CARGO_VERSION" >> $GITHUB_OUTPUT
-          echo "✓ All versions consistent: $CARGO_VERSION"
+  version-check:
+    name: Version Check
+    uses: ./.github/workflows/version-check.yml
 
   build-cli:
-    needs: verify-versions
+    needs: version-check
     name: Build CLI
     runs-on: ${{ matrix.os }}
     strategy:
@@ -213,10 +174,14 @@ jobs:
         shell: bash
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          VERIFIED_VERSION: ${{ needs.version-check.outputs.version }}
         run: |
           if [ -n "$INPUT_VERSION" ]; then
             # Version passed from workflow_call
             VERSION="$INPUT_VERSION"
+          elif [ -n "$VERIFIED_VERSION" ]; then
+            # Use version from version-check job
+            VERSION="$VERIFIED_VERSION"
           elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             # Tag release: use tag version
             VERSION=${GITHUB_REF#refs/tags/v}
@@ -274,7 +239,6 @@ jobs:
         shell: bash
         run: |
           echo "Version: ${{ steps.version.outputs.version }}"
-          echo "Is Dev: ${{ steps.version.outputs.is_dev }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -282,269 +246,3 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ steps.prepare.outputs.archive_name }}
           retention-days: 30
-
-  build-wasm:
-    name: Build WASM SDK
-    needs: verify-versions
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-wasm-
-
-      - name: Build WASM with openapi features
-        run: |
-          cd crates/wasm
-          wasm-pack build --target web --out-dir ../../pkg --features openapi,odps-validation
-
-      - name: Get version
-        id: version
-        shell: bash
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          if [ -n "$INPUT_VERSION" ]; then
-            # Version passed from workflow_call
-            VERSION="$INPUT_VERSION"
-          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            # Tag release: use tag version
-            VERSION=${GITHUB_REF#refs/tags/v}
-          elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
-            # Release branch: use Cargo.toml version with dev postfix
-            BASE_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-            VERSION="${BASE_VERSION}-dev.${SHORT_SHA}"
-          else
-            # Manual run: use Cargo.toml version with dev postfix
-            BASE_VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
-            VERSION="${BASE_VERSION}-dev"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Building WASM version: $VERSION"
-
-          # Determine if this is a production release (tag push)
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "is_release=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_release=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Update package.json version
-        run: |
-          cd pkg
-          # Update version in package.json to match Cargo.toml
-          npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
-          # Update package name to scoped package for npm
-          sed -i 's/"name": "data-modelling-sdk"/"name": "@offenedatenmodellierung\/data-modelling-sdk"/' package.json
-          # Add repository info
-          cat package.json | jq '. + {
-            "repository": {
-              "type": "git",
-              "url": "git+https://github.com/OffeneDatenmodellierung/data-modelling-sdk.git"
-            },
-            "homepage": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk#readme",
-            "bugs": {
-              "url": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk/issues"
-            },
-            "keywords": ["wasm", "data-modelling", "odcs", "schema", "rust"]
-          }' > package.json.tmp && mv package.json.tmp package.json
-          echo "Updated package.json:"
-          cat package.json
-
-      - name: Create WASM archive
-        id: archive
-        shell: bash
-        run: |
-          ARCHIVE_NAME="data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz"
-          tar -czf $ARCHIVE_NAME -C pkg .
-          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wasm-sdk
-          path: ${{ steps.archive.outputs.archive_name }}
-          retention-days: 30
-
-      - name: Upload npm package artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-package
-          path: pkg/
-          retention-days: 30
-
-  create-release:
-    name: Create GitHub Release
-    needs: [build-cli, build-wasm]
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Get version
-        id: version
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          if [ -n "$INPUT_VERSION" ]; then
-            VERSION="$INPUT_VERSION"
-          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          else
-            VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          pattern: "*"
-          merge-multiple: true
-
-      - name: Create checksums
-        shell: bash
-        run: |
-          cd artifacts
-          if command -v sha256sum >/dev/null 2>&1; then
-            find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) | while read file; do
-              sha256sum "$file" > "${file}.sha256"
-            done
-          elif command -v shasum >/dev/null 2>&1; then
-            find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) | while read file; do
-              shasum -a 256 "$file" | awk '{print $1}' > "${file}.sha256"
-            done
-          fi
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: v${{ steps.version.outputs.version }}
-          body: |
-            ## Data Modelling SDK v${{ steps.version.outputs.version }}
-
-            ### CLI Downloads
-
-            The CLI includes embedded DuckDB database support for high-performance local queries.
-
-            **Linux (x86_64)**
-            - Binary: [odm-linux-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/odm-linux-x86_64-v${{ steps.version.outputs.version }}.tar.gz)
-            - SHA256: See checksum files
-
-            **macOS (Intel)**
-            - Binary: [odm-macos-x86_64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/odm-macos-x86_64-v${{ steps.version.outputs.version }}.tar.gz)
-            - SHA256: See checksum files
-
-            **macOS (Apple Silicon)**
-            - Binary: [odm-macos-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/odm-macos-arm64-v${{ steps.version.outputs.version }}.tar.gz)
-            - SHA256: See checksum files
-
-            **Windows (x86_64)**
-            - Binary: [odm-windows-x86_64.zip](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/odm-windows-x86_64-v${{ steps.version.outputs.version }}.zip)
-            - SHA256: See checksum files
-
-            ### WASM Package
-
-            **WebAssembly SDK** (for browser/web applications)
-            - Archive: [data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz)
-            - SHA256: See checksum file
-
-            ### CLI Installation
-
-            **Linux/macOS:**
-            ```bash
-            tar -xzf odm-*-v${{ steps.version.outputs.version }}.tar.gz
-            sudo mv odm /usr/local/bin/
-            ```
-
-            **Windows:**
-            ```powershell
-            Expand-Archive odm-windows-x86_64-v${{ steps.version.outputs.version }}.zip
-            # Add to PATH or use full path
-            ```
-
-            ### WASM Installation
-
-            **For Cloudflare Pages / Web Applications:**
-            ```bash
-            # Download and extract
-            curl -L -o wasm.tar.gz https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz
-            tar -xzf wasm.tar.gz
-            # Copy to your frontend/public/wasm/ directory
-            cp -r pkg/* frontend/public/wasm/
-            ```
-
-            ### Usage
-
-            See [CLI.md](https://github.com/${{ github.repository }}/blob/main/CLI.md) for CLI usage instructions.
-
-            ### npm Package
-
-            ```bash
-            npm install @offenedatenmodellierung/data-modelling-sdk
-            ```
-
-          files: |
-            artifacts/**/*
-          draft: false
-          prerelease: false
-
-  publish-npm:
-    name: Publish to npm
-    needs: [build-wasm, create-release]
-    runs-on: ubuntu-latest
-    # Publish to npm on tag releases OR when called from publish.yml with a version
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
-    permissions:
-      contents: read
-      id-token: write # Required for OIDC authentication with npm (provenance)
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Download npm package artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: npm-package
-          path: pkg/
-
-      - name: Verify package contents
-        run: |
-          echo "Package contents:"
-          ls -la pkg/
-          echo ""
-          echo "package.json:"
-          cat pkg/package.json
-
-      # Publish to npm registry
-      # Note: --provenance requires id-token:write permission and creates
-      # a verifiable link between the npm package and this GitHub repo.
-      # If provenance fails, remove the --provenance flag.
-      - name: Publish to npm
-        run: |
-          cd pkg
-          npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

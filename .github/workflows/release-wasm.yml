@@ -1,22 +1,22 @@
 name: Release WASM & npm
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allow manual triggering
     inputs:
       version:
-        description: "Version to release (without v prefix, e.g., 1.14.0)"
-        required: true
+        description: "Version to release (without v prefix, e.g., 2.0.0). Leave empty to use Cargo.toml version."
+        required: false
         type: string
       publish_npm:
         description: "Publish to npm"
         required: true
         type: boolean
         default: true
-  workflow_call:
+  workflow_call: # Allow being called from publish.yml
     inputs:
       version:
         description: "Version to release (without v prefix)"
-        required: true
+        required: false
         type: string
       publish_npm:
         description: "Publish to npm"
@@ -32,8 +32,13 @@ permissions:
   id-token: write # Required for npm provenance
 
 jobs:
+  version-check:
+    name: Version Check
+    uses: ./.github/workflows/version-check.yml
+
   build-wasm:
     name: Build WASM SDK
+    needs: version-check
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -65,8 +70,17 @@ jobs:
 
       - name: Set version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          VERIFIED_VERSION: ${{ needs.version-check.outputs.version }}
         run: |
-          VERSION="${{ inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          elif [ -n "$VERIFIED_VERSION" ]; then
+            VERSION="$VERIFIED_VERSION"
+          else
+            VERSION=$(grep -A 10 '^\[package\]' Cargo.toml | grep '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building WASM version: $VERSION"
 
