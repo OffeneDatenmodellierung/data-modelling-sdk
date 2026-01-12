@@ -1809,6 +1809,7 @@ pub fn handle_import_odps(args: &ImportArgs) -> Result<(), CliError> {
 }
 
 #[cfg(not(feature = "odps-validation"))]
+#[allow(dead_code)]
 pub fn handle_import_odps(args: &ImportArgs) -> Result<(), CliError> {
     // Load ODPS input
     let odps_content = load_input(&args.input)?;

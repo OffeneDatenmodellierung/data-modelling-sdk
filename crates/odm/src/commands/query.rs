@@ -119,6 +119,7 @@ pub fn handle_query(_args: &QueryArgs) -> Result<(), CliError> {
 
 /// Common SQL queries as helper functions
 #[cfg(feature = "duckdb-backend")]
+#[allow(dead_code)]
 pub mod queries {
     /// List all tables in the workspace
     pub const LIST_TABLES: &str = r#"

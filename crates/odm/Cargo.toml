@@ -59,6 +59,8 @@ bpmn = ["data-modelling-core/bpmn"]
 dmn = ["data-modelling-core/dmn"]
 git = ["data-modelling-core/git"]
 odps-validation = ["data-modelling-core/odps-validation"]
+schema-validation = ["data-modelling-core/schema-validation"]
+api-backend = ["data-modelling-core/api-backend"]
 database = ["data-modelling-core/database"]
 duckdb-backend = ["database", "data-modelling-core/duckdb-backend"]
 postgres-backend = ["database", "data-modelling-core/postgres-backend"]
@@ -80,3 +82,6 @@ pipeline = ["data-modelling-core/pipeline", "staging", "inference", "mapping"]
 
 # Full CLI with all features
 cli-full = ["duckdb-backend", "staging", "inference", "mapping", "pipeline"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("schema-validation", "api-backend"))'] }
