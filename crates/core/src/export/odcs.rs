@@ -1523,6 +1523,256 @@ impl ODCSExporter {
                 );
             }
 
+            // === Additional ODCS v3.1.0 Column Fields ===
+
+            // businessName
+            if let Some(ref biz_name) = column.business_name {
+                prop.insert(
+                    serde_yaml::Value::String("businessName".to_string()),
+                    serde_yaml::Value::String(biz_name.clone()),
+                );
+            }
+
+            // physicalName
+            if let Some(ref phys_name) = column.physical_name {
+                prop.insert(
+                    serde_yaml::Value::String("physicalName".to_string()),
+                    serde_yaml::Value::String(phys_name.clone()),
+                );
+            }
+
+            // logicalTypeOptions
+            if let Some(ref opts) = column.logical_type_options
+                && !opts.is_empty()
+            {
+                let mut opts_map = serde_yaml::Mapping::new();
+                if let Some(min_len) = opts.min_length {
+                    opts_map.insert(
+                        serde_yaml::Value::String("minLength".to_string()),
+                        serde_yaml::Value::Number(serde_yaml::Number::from(min_len)),
+                    );
+                }
+                if let Some(max_len) = opts.max_length {
+                    opts_map.insert(
+                        serde_yaml::Value::String("maxLength".to_string()),
+                        serde_yaml::Value::Number(serde_yaml::Number::from(max_len)),
+                    );
+                }
+                if let Some(ref pattern) = opts.pattern {
+                    opts_map.insert(
+                        serde_yaml::Value::String("pattern".to_string()),
+                        serde_yaml::Value::String(pattern.clone()),
+                    );
+                }
+                if let Some(ref format) = opts.format {
+                    opts_map.insert(
+                        serde_yaml::Value::String("format".to_string()),
+                        serde_yaml::Value::String(format.clone()),
+                    );
+                }
+                if let Some(ref minimum) = opts.minimum {
+                    opts_map.insert(
+                        serde_yaml::Value::String("minimum".to_string()),
+                        Self::json_to_yaml_value(minimum),
+                    );
+                }
+                if let Some(ref maximum) = opts.maximum {
+                    opts_map.insert(
+                        serde_yaml::Value::String("maximum".to_string()),
+                        Self::json_to_yaml_value(maximum),
+                    );
+                }
+                if let Some(ref exc_min) = opts.exclusive_minimum {
+                    opts_map.insert(
+                        serde_yaml::Value::String("exclusiveMinimum".to_string()),
+                        Self::json_to_yaml_value(exc_min),
+                    );
+                }
+                if let Some(ref exc_max) = opts.exclusive_maximum {
+                    opts_map.insert(
+                        serde_yaml::Value::String("exclusiveMaximum".to_string()),
+                        Self::json_to_yaml_value(exc_max),
+                    );
+                }
+                if let Some(precision) = opts.precision {
+                    opts_map.insert(
+                        serde_yaml::Value::String("precision".to_string()),
+                        serde_yaml::Value::Number(serde_yaml::Number::from(precision)),
+                    );
+                }
+                if let Some(scale) = opts.scale {
+                    opts_map.insert(
+                        serde_yaml::Value::String("scale".to_string()),
+                        serde_yaml::Value::Number(serde_yaml::Number::from(scale)),
+                    );
+                }
+                if !opts_map.is_empty() {
+                    prop.insert(
+                        serde_yaml::Value::String("logicalTypeOptions".to_string()),
+                        serde_yaml::Value::Mapping(opts_map),
+                    );
+                }
+            }
+
+            // primaryKeyPosition
+            if let Some(pk_pos) = column.primary_key_position {
+                prop.insert(
+                    serde_yaml::Value::String("primaryKeyPosition".to_string()),
+                    serde_yaml::Value::Number(serde_yaml::Number::from(pk_pos)),
+                );
+            }
+
+            // unique
+            if column.unique {
+                prop.insert(
+                    serde_yaml::Value::String("unique".to_string()),
+                    serde_yaml::Value::Bool(true),
+                );
+            }
+
+            // partitioned
+            if column.partitioned {
+                prop.insert(
+                    serde_yaml::Value::String("partitioned".to_string()),
+                    serde_yaml::Value::Bool(true),
+                );
+            }
+
+            // partitionKeyPosition
+            if let Some(part_pos) = column.partition_key_position {
+                prop.insert(
+                    serde_yaml::Value::String("partitionKeyPosition".to_string()),
+                    serde_yaml::Value::Number(serde_yaml::Number::from(part_pos)),
+                );
+            }
+
+            // classification
+            if let Some(ref class) = column.classification {
+                prop.insert(
+                    serde_yaml::Value::String("classification".to_string()),
+                    serde_yaml::Value::String(class.clone()),
+                );
+            }
+
+            // criticalDataElement
+            if column.critical_data_element {
+                prop.insert(
+                    serde_yaml::Value::String("criticalDataElement".to_string()),
+                    serde_yaml::Value::Bool(true),
+                );
+            }
+
+            // encryptedName
+            if let Some(ref enc_name) = column.encrypted_name {
+                prop.insert(
+                    serde_yaml::Value::String("encryptedName".to_string()),
+                    serde_yaml::Value::String(enc_name.clone()),
+                );
+            }
+
+            // transformSourceObjects
+            if !column.transform_source_objects.is_empty() {
+                let sources: Vec<serde_yaml::Value> = column
+                    .transform_source_objects
+                    .iter()
+                    .map(|s| serde_yaml::Value::String(s.clone()))
+                    .collect();
+                prop.insert(
+                    serde_yaml::Value::String("transformSourceObjects".to_string()),
+                    serde_yaml::Value::Sequence(sources),
+                );
+            }
+
+            // transformLogic
+            if let Some(ref logic) = column.transform_logic {
+                prop.insert(
+                    serde_yaml::Value::String("transformLogic".to_string()),
+                    serde_yaml::Value::String(logic.clone()),
+                );
+            }
+
+            // transformDescription
+            if let Some(ref desc) = column.transform_description {
+                prop.insert(
+                    serde_yaml::Value::String("transformDescription".to_string()),
+                    serde_yaml::Value::String(desc.clone()),
+                );
+            }
+
+            // examples
+            if !column.examples.is_empty() {
+                let examples: Vec<serde_yaml::Value> = column
+                    .examples
+                    .iter()
+                    .map(Self::json_to_yaml_value)
+                    .collect();
+                prop.insert(
+                    serde_yaml::Value::String("examples".to_string()),
+                    serde_yaml::Value::Sequence(examples),
+                );
+            }
+
+            // authoritativeDefinitions
+            if !column.authoritative_definitions.is_empty() {
+                let defs: Vec<serde_yaml::Value> = column
+                    .authoritative_definitions
+                    .iter()
+                    .map(|d| {
+                        let mut def_map = serde_yaml::Mapping::new();
+                        def_map.insert(
+                            serde_yaml::Value::String("type".to_string()),
+                            serde_yaml::Value::String(d.definition_type.clone()),
+                        );
+                        def_map.insert(
+                            serde_yaml::Value::String("url".to_string()),
+                            serde_yaml::Value::String(d.url.clone()),
+                        );
+                        serde_yaml::Value::Mapping(def_map)
+                    })
+                    .collect();
+                prop.insert(
+                    serde_yaml::Value::String("authoritativeDefinitions".to_string()),
+                    serde_yaml::Value::Sequence(defs),
+                );
+            }
+
+            // tags
+            if !column.tags.is_empty() {
+                let tags: Vec<serde_yaml::Value> = column
+                    .tags
+                    .iter()
+                    .map(|t| serde_yaml::Value::String(t.clone()))
+                    .collect();
+                prop.insert(
+                    serde_yaml::Value::String("tags".to_string()),
+                    serde_yaml::Value::Sequence(tags),
+                );
+            }
+
+            // customProperties
+            if !column.custom_properties.is_empty() {
+                let custom_props: Vec<serde_yaml::Value> = column
+                    .custom_properties
+                    .iter()
+                    .map(|(key, value)| {
+                        let mut prop_map = serde_yaml::Mapping::new();
+                        prop_map.insert(
+                            serde_yaml::Value::String("property".to_string()),
+                            serde_yaml::Value::String(key.clone()),
+                        );
+                        prop_map.insert(
+                            serde_yaml::Value::String("value".to_string()),
+                            Self::json_to_yaml_value(value),
+                        );
+                        serde_yaml::Value::Mapping(prop_map)
+                    })
+                    .collect();
+                prop.insert(
+                    serde_yaml::Value::String("customProperties".to_string()),
+                    serde_yaml::Value::Sequence(custom_props),
+                );
+            }
+
             // Export foreign key
             if let Some(ref fk) = column.foreign_key {
                 let mut fk_map = serde_yaml::Mapping::new();

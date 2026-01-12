@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-01-12
+
+### Fixed
+
+- **fix(odcs)**: Export all column-level metadata fields to ODCS YAML
+  - Added export for: `businessName`, `physicalName`, `logicalTypeOptions`
+  - Added export for: `primaryKeyPosition`, `partitionKeyPosition`, `unique`, `partitioned`
+  - Added export for: `classification`, `criticalDataElement`, `encryptedName`
+  - Added export for: `transformSourceObjects`, `transformLogic`, `transformDescription`
+  - Added export for: `examples`, `authoritativeDefinitions`, `tags`
+  - Added export for: `customProperties` (fixes data loss on round-trip)
+
 ## [2.0.1] - 2026-01-12
 
 ### Fixed
