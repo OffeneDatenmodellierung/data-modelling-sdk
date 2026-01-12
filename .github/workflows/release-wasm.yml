@@ -89,8 +89,8 @@ jobs:
           cd pkg
           # Update version
           npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
-          # Update package name to scoped package
-          sed -i 's/"name": "data-modelling-sdk"/"name": "@offenedatenmodellierung\/data-modelling-sdk"/' package.json
+          # Update package name to scoped package (wasm-pack uses crate name: data-modelling-wasm)
+          sed -i 's/"name": "data-modelling-wasm"/"name": "@offenedatenmodellierung\/data-modelling-sdk"/' package.json
           # Add repository info
           cat package.json | jq '. + {
             "repository": {
