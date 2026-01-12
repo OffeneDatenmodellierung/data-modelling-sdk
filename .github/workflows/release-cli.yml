@@ -2,11 +2,16 @@ name: Release CLI
 
 on:
   workflow_dispatch: # Allow manual triggering
+    inputs:
+      version:
+        description: "Version to release (without v prefix). Leave empty to use Cargo.toml version."
+        required: false
+        type: string
   workflow_call: # Allow being called from publish.yml
     inputs:
       version:
         description: "Version to release (without v prefix)"
-        required: true
+        required: false
         type: string
 
 env:
@@ -246,3 +251,65 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ steps.prepare.outputs.archive_name }}
           retention-days: 30
+
+  update-release:
+    name: Update GitHub Release
+    needs: [version-check, build-cli]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          VERIFIED_VERSION: ${{ needs.version-check.outputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          elif [ -n "$VERIFIED_VERSION" ]; then
+            VERSION="$VERIFIED_VERSION"
+          else
+            echo "No version available"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Check if this is a dev release
+          if [[ "$VERSION" == *"-dev"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all CLI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: odm-*
+
+      - name: Create checksums
+        run: |
+          cd artifacts
+          find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) | while read file; do
+            sha256sum "$file" > "${file}.sha256"
+          done
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body: |
+            ## CLI Release v${{ steps.version.outputs.version }}
+
+            **Linux (x86_64):** odm-linux-x86_64-v${{ steps.version.outputs.version }}.tar.gz
+            **macOS (Intel):** odm-macos-x86_64-v${{ steps.version.outputs.version }}.tar.gz
+            **macOS (Apple Silicon):** odm-macos-arm64-v${{ steps.version.outputs.version }}.tar.gz
+            **Windows (x86_64):** odm-windows-x86_64-v${{ steps.version.outputs.version }}.zip
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            artifacts/**/*.sha256
+          fail_on_unmatched_files: false
+          prerelease: ${{ steps.version.outputs.is_prerelease }}
