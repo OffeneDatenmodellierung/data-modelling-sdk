@@ -170,6 +170,19 @@ jobs:
     needs: build-wasm
     runs-on: ubuntu-latest
     steps:
+      - name: Get version info
+        id: version
+        run: |
+          VERSION="${{ needs.build-wasm.outputs.version }}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Check if this is a dev release
+          if [[ "$VERSION" == *"-dev"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Download WASM archive
         uses: actions/download-artifact@v4
         with:
@@ -179,13 +192,25 @@ jobs:
       - name: Create checksum
         run: |
           cd artifacts
-          sha256sum *.tar.gz > data-modelling-sdk-wasm-v${{ needs.build-wasm.outputs.version }}.tar.gz.sha256
+          sha256sum *.tar.gz > data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz.sha256
 
-      - name: Upload to existing release
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ needs.build-wasm.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body: |
+            ## WASM Release v${{ steps.version.outputs.version }}
+
+            **WebAssembly SDK:** data-modelling-sdk-wasm-v${{ steps.version.outputs.version }}.tar.gz
+
+            ### npm Package
+
+            ```bash
+            npm install @offenedatenmodellierung/data-modelling-sdk@${{ steps.version.outputs.version }}
+            ```
           files: |
             artifacts/*.tar.gz
             artifacts/*.sha256
           fail_on_unmatched_files: false
+          prerelease: ${{ steps.version.outputs.is_prerelease }}
