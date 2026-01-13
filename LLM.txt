@@ -7,7 +7,7 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/OffeneDatenmodellierung/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 2.0.0
+**Version**: 2.0.4
 
 ## Architecture
 
@@ -91,6 +91,13 @@ data-modelling-sdk/
 │   │   ├── domain.rs          # Business Domain schema models (Domain, System, CADSNode, ODCSNode, etc.)
 │   │   ├── enums.rs           # Enums (DatabaseType, MedallionLayer, InfrastructureType, etc.)
 │   │   ├── knowledge.rs       # Knowledge model structs (KnowledgeArticle, ArticleType, ArticleStatus)
+│   │   ├── odcs/              # ODCS native data structures (v2 API)
+│   │   │   ├── mod.rs         # Module exports
+│   │   │   ├── contract.rs    # ODCSContract - root contract document
+│   │   │   ├── schema.rs      # SchemaObject - schema/table definitions
+│   │   │   ├── property.rs    # Property - column/field with nested support
+│   │   │   ├── supporting.rs  # QualityRule, CustomProperty, Team, Server, etc.
+│   │   │   └── converters.rs  # From implementations for Table/Column interop
 │   │   ├── odps.rs            # ODPS model structs (ODPSDataProduct, ODPSInputPort, etc.)
 │   │   ├── openapi.rs         # OpenAPI model structs (OpenAPIModel, OpenAPIFormat) (feature-gated)
 │   │   ├── relationship.rs    # Relationship model
@@ -262,11 +269,34 @@ Core data structures:
 - **`ContactDetails`**: Contact details structure (email, phone, name, role, other)
 - **Enums**: `DatabaseType`, `MedallionLayer`, `SCDPattern`, `DataVaultClassification`, `ModelingLevel`, `Cardinality` (oneToOne, oneToMany, manyToOne, manyToMany), `RelationshipType` (dataFlow, dependency, foreignKey, etl), `EndpointCardinality` (zeroOrOne, exactlyOne, zeroOrMany, oneOrMany), `FlowDirection` (sourceToTarget, targetToSource, bidirectional), `InfrastructureType` (70+ infrastructure types), `CADSKind`, `CADSStatus`, `ODPSStatus`
 
+### ODCS Native Types (`src/models/odcs/`) - v2 API
+
+Native ODCS v3.1.0 data structures for lossless round-trip import/export:
+
+- **`ODCSContract`**: Root data contract document. Contains all contract-level fields: `apiVersion`, `kind`, `id`, `version`, `name`, `status`, `domain`, `dataProduct`, `tenant`, `description`, `schema` (Vec<SchemaObject>), `servers`, `team`, `support`, `roles`, `serviceLevels`, `quality`, `price`, `terms`, `links`, `tags`, `customProperties`
+- **`SchemaObject`**: Schema/table definition within a contract. Contains: `name`, `physicalName`, `physicalType`, `businessName`, `description`, `dataGranularityDescription`, `properties` (Vec<Property>), `relationships`, `quality`, `authoritativeDefinitions`, `customProperties`
+- **`Property`**: Column/field definition with nested support. Contains all ODCS property fields plus: `properties` (Vec<Property> for OBJECT types), `items` (Box<Property> for ARRAY types). Supports arbitrary nesting depth.
+- **`QualityRule`**: Quality rule definition (type, column, description, mustBe, mustNotBe, etc.)
+- **`CustomProperty`**: Key-value custom property (property, value)
+- **`AuthoritativeDefinition`**: External definition reference (type, url)
+- **`Team`**, **`TeamMember`**, **`Support`**, **`Server`**, **`Role`**, **`ServiceLevel`**, **`Price`**, **`Terms`**, **`Link`**: Supporting types for contract metadata
+
+Converters for backwards compatibility:
+- `From<&Property> for Column` - Flattens nested properties to dot-notation
+- `From<&Column> for Property` - Creates flat property from column
+- `From<&SchemaObject> for Table` - Converts schema to table with flattened columns
+- `From<&Table> for SchemaObject` - Reconstructs schema from table
+- `ODCSContract::to_tables()` - Converts contract to Vec<Table>
+- `ODCSContract::from_tables()` - Creates contract from Vec<Table>
+- `ODCSContract::to_table_data()` - Converts contract to Vec<TableData> for UI
+
 ### Import (`src/import/`)
 
 Importers convert various formats to SDK models:
 
 - **`ODCSImporter`**: Primary importer for ODCS v3.1.0 format (also handles legacy ODCL v1.2.1) - for Data Models (tables). Preserves `description`, `quality`, and `$ref` fields. Supports enhanced tags.
+  - `import()` - Returns flattened Table/Column types (v1 API)
+  - `import_contract()` - Returns native ODCSContract with nested properties (v2 API, lossless)
 - **`CADSImporter`**: Importer for CADS v1.0 format - for compute assets (AI/ML models, applications, pipelines). Supports `bpmn_models`, `dmn_models`, and `openapi_specs` references.
 - **`ODPSImporter`**: Importer for ODPS format - for data products linking to ODCS Tables
 - **`BPMNImporter`**: Importer for BPMN 2.0 XML format - for business process models (requires `bpmn` feature)
@@ -286,6 +316,9 @@ Importers convert various formats to SDK models:
 Exporters convert SDK models to various formats:
 
 - **`ODCSExporter`**: Exports to ODCS v3.1.0 format - for Data Models (tables). Preserves all fields including `description`, `quality`, and `$ref`. Supports enhanced tags.
+  - `export_table()` - Exports Table with reconstruction from flattened columns (v1 API)
+  - `export_contract()` - Directly serializes ODCSContract (v2 API, lossless)
+  - `export_contract_validated()` - Same as export_contract() with optional schema validation
 - **`ODCLExporter`**: Exports to ODCL v1.2.1 format - for legacy compatibility
 - **`CADSExporter`**: Exports to CADS v1.0 format - for compute assets. Supports `bpmn_models`, `dmn_models`, and `openapi_specs` references.
 - **`ODPSExporter`**: Exports to ODPS format - for data products

@@ -54,6 +54,93 @@ impl ODCSExporter {
         Self::export_odcs_v3_1_0_format(table)
     }
 
+    /// Export an ODCSContract directly to YAML format.
+    ///
+    /// This is the preferred v2 API that directly serializes an `ODCSContract` struct,
+    /// preserving all metadata and nested structures without reconstruction.
+    ///
+    /// # Arguments
+    ///
+    /// * `contract` - The ODCSContract to export
+    ///
+    /// # Returns
+    ///
+    /// A YAML string in ODCS v3.1.0 format.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_core::export::odcs::ODCSExporter;
+    /// use data_modelling_core::models::odcs::{ODCSContract, SchemaObject, Property};
+    ///
+    /// let contract = ODCSContract {
+    ///     api_version: "v3.1.0".to_string(),
+    ///     kind: "DataContract".to_string(),
+    ///     id: "my-contract-id".to_string(),
+    ///     name: "My Contract".to_string(),
+    ///     version: "1.0.0".to_string(),
+    ///     status: Some("active".to_string()),
+    ///     schema: vec![SchemaObject {
+    ///         name: "users".to_string(),
+    ///         properties: vec![Property {
+    ///             name: "id".to_string(),
+    ///             logical_type: "integer".to_string(),
+    ///             physical_type: Some("BIGINT".to_string()),
+    ///             required: true,
+    ///             primary_key: true,
+    ///             ..Default::default()
+    ///         }],
+    ///         ..Default::default()
+    ///     }],
+    ///     ..Default::default()
+    /// };
+    ///
+    /// let yaml = ODCSExporter::export_contract(&contract);
+    /// assert!(yaml.contains("apiVersion: v3.1.0"));
+    /// assert!(yaml.contains("kind: DataContract"));
+    /// ```
+    pub fn export_contract(contract: &crate::models::odcs::ODCSContract) -> String {
+        // Serialize the contract directly to YAML
+        // serde will handle the camelCase conversion via #[serde(rename_all = "camelCase")]
+        match serde_yaml::to_string(contract) {
+            Ok(yaml) => yaml,
+            Err(e) => {
+                // Fallback: return error as comment in YAML
+                format!("# Error serializing contract: {}\n", e)
+            }
+        }
+    }
+
+    /// Export an ODCSContract to YAML with validation.
+    ///
+    /// Similar to `export_contract()` but returns a Result for error handling.
+    ///
+    /// # Arguments
+    ///
+    /// * `contract` - The ODCSContract to export
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the YAML string or an ExportError.
+    pub fn export_contract_validated(
+        contract: &crate::models::odcs::ODCSContract,
+    ) -> Result<String, ExportError> {
+        let yaml = serde_yaml::to_string(contract).map_err(|e| {
+            ExportError::SerializationError(format!("Failed to serialize contract: {}", e))
+        })?;
+
+        // Validate exported YAML against ODCS schema (if feature enabled)
+        #[cfg(feature = "schema-validation")]
+        {
+            use crate::validation::schema::validate_odcs_internal;
+            validate_odcs_internal(&yaml).map_err(|e| {
+                ExportError::ValidationError(format!("ODCS validation failed: {}", e))
+            })?;
+        }
+
+        Ok(yaml)
+    }
+
     /// Parse STRUCT definition from data_type string and create nested properties
     /// This is used when SQL parser doesn't create nested columns but we have STRUCT types
     fn parse_struct_properties_from_data_type(

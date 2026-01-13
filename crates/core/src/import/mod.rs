@@ -110,6 +110,20 @@ pub struct TableData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<serde_json::Value>,
 
+    // === Schema Object Level Fields (ODCS v3.1.0) ===
+    /// Physical name of the schema object (ODCS: schema[].physicalName)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub physical_name: Option<String>,
+    /// Physical type of the schema object (ODCS: schema[].physicalType)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub physical_type: Option<String>,
+    /// Business name of the schema object (ODCS: schema[].businessName)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub business_name: Option<String>,
+    /// Data granularity description (ODCS: schema[].dataGranularityDescription)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_granularity_description: Option<String>,
+
     // === Schema/Columns ===
     /// Column definitions (from ODCS schema.properties)
     pub columns: Vec<ColumnData>,
