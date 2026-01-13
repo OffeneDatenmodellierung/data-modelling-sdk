@@ -152,6 +152,11 @@ impl ODCLImporter {
                         .get("info")
                         .and_then(|v| v.get("description"))
                         .cloned(),
+                    // Schema-level fields (ODCL doesn't have these at schema level)
+                    physical_name: table.schema_name.clone(),
+                    physical_type: None,
+                    business_name: None,
+                    data_granularity_description: None,
                     columns: table.columns.iter().map(column_to_column_data).collect(),
                     servers: json_data
                         .get("servers")

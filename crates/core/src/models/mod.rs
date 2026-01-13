@@ -16,6 +16,7 @@ pub mod domain;
 pub mod domain_config;
 pub mod enums;
 pub mod knowledge;
+pub mod odcs;
 pub mod odps;
 #[cfg(feature = "openapi")]
 pub mod openapi;

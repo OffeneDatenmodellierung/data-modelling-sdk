@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] - 2026-01-13
+
+### Added
+
+- **feat(odcs)**: Native ODCS data structures for lossless round-trip
+  - New `ODCSContract` struct representing full ODCS v3.1.0 contracts
+  - New `SchemaObject` struct for schema-level metadata (physicalName, businessName, etc.)
+  - New `Property` struct with nested support (`properties` for OBJECT, `items` for ARRAY)
+  - Supporting types: `QualityRule`, `CustomProperty`, `AuthoritativeDefinition`, `Team`, `Server`, etc.
+  - Converters: `From` trait implementations for Table/Column interop
+  - `ODCSContract::to_tables()` and `ODCSContract::from_tables()` for backwards compatibility
+  - `ODCSContract::to_table_data()` for UI rendering
+
+- **feat(import)**: New `import_contract()` method for native ODCS parsing
+  - Returns `ODCSContract` instead of flattened `Table`/`Column` types
+  - Preserves all contract-level, schema-level, and property-level metadata
+  - Supports nested properties (OBJECT/ARRAY) hierarchically
+  - Multi-table contracts fully supported
+
+- **feat(export)**: New `export_contract()` method for native ODCS serialization
+  - Directly serializes `ODCSContract` to YAML (no reconstruction needed)
+  - Zero data loss on round-trip
+  - `export_contract_validated()` variant with optional schema validation
+
+- **feat(wasm)**: V2 WASM bindings for native ODCS API
+  - `parse_odcs_yaml_v2()` - Returns `ODCSContract` JSON
+  - `export_odcs_yaml_v2()` - Takes `ODCSContract` JSON, returns YAML
+  - `odcs_contract_to_tables()` - Convert contract to Table array
+  - `tables_to_odcs_contract()` - Convert Table array to contract
+  - `odcs_contract_to_table_data()` - Convert contract to TableData for UI
+
 ## [2.0.3] - 2026-01-12
 
 ### Fixed

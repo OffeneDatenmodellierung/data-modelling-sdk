@@ -96,9 +96,10 @@ impl ODCSImporter {
     /// version: 1.0.0
     /// name: users
     /// schema:
-    ///   fields:
-    ///     - name: id
-    ///       type: bigint
+    ///   - name: users
+    ///     properties:
+    ///       - name: id
+    ///         logicalType: bigint
     /// "#;
     /// let result = importer.import(yaml).unwrap();
     /// assert_eq!(result.tables.len(), 1);
@@ -112,79 +113,50 @@ impl ODCSImporter {
             ImportError::ParseError(format!("Failed to convert YAML to JSON: {}", e))
         })?;
 
+        // Store current YAML data for $ref resolution
+        self.current_yaml_data = Some(yaml_data);
+
+        // Check if this is ODCS v3 format with multiple tables in schema array
+        if self.is_odcl_v3_format(&json_data) {
+            // Use parse_odcl_v3_all to get ALL tables from the schema array
+            match self.parse_odcl_v3_all(&json_data) {
+                Ok(tables_with_errors) => {
+                    let mut sdk_tables = Vec::new();
+                    let mut all_errors = Vec::new();
+
+                    for (table_index, (table, errors)) in tables_with_errors.into_iter().enumerate()
+                    {
+                        // Convert errors
+                        for e in errors {
+                            all_errors.push(ImportError::ParseError(e.message));
+                        }
+
+                        // Create TableData for this table
+                        sdk_tables.push(self.table_to_table_data(table, table_index, &json_data));
+                    }
+
+                    info!(
+                        "ODCS import completed: {} tables extracted from schema array",
+                        sdk_tables.len()
+                    );
+
+                    return Ok(ImportResult {
+                        tables: sdk_tables,
+                        tables_requiring_name: Vec::new(),
+                        errors: all_errors,
+                        ai_suggestions: None,
+                    });
+                }
+                Err(e) => {
+                    return Err(ImportError::ParseError(e.to_string()));
+                }
+            }
+        }
+
+        // Fall back to single-table parsing for non-ODCS v3 formats
         match self.parse(yaml_content) {
             Ok((table, errors)) => {
-                // Extract all ODCS contract-level fields from the raw JSON data
-                let sdk_tables = vec![TableData {
-                    table_index: 0,
-                    id: Some(table.id.to_string()),
-                    name: Some(table.name.clone()),
-                    api_version: json_data
-                        .get("apiVersion")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    version: json_data
-                        .get("version")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    status: json_data
-                        .get("status")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    kind: json_data
-                        .get("kind")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    domain: json_data
-                        .get("domain")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    data_product: json_data
-                        .get("dataProduct")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    tenant: json_data
-                        .get("tenant")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    description: json_data.get("description").cloned(),
-                    columns: table.columns.iter().map(column_to_column_data).collect(),
-                    servers: json_data
-                        .get("servers")
-                        .and_then(|v| v.as_array())
-                        .cloned()
-                        .unwrap_or_default(),
-                    team: json_data.get("team").cloned(),
-                    support: json_data.get("support").cloned(),
-                    roles: json_data
-                        .get("roles")
-                        .and_then(|v| v.as_array())
-                        .cloned()
-                        .unwrap_or_default(),
-                    sla_properties: json_data
-                        .get("slaProperties")
-                        .and_then(|v| v.as_array())
-                        .cloned()
-                        .unwrap_or_default(),
-                    quality: table.quality.clone(),
-                    price: json_data.get("price").cloned(),
-                    tags: table.tags.iter().map(|t| t.to_string()).collect(),
-                    custom_properties: json_data
-                        .get("customProperties")
-                        .and_then(|v| v.as_array())
-                        .cloned()
-                        .unwrap_or_default(),
-                    authoritative_definitions: json_data
-                        .get("authoritativeDefinitions")
-                        .and_then(|v| v.as_array())
-                        .cloned()
-                        .unwrap_or_default(),
-                    contract_created_ts: json_data
-                        .get("contractCreatedTs")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    odcs_metadata: table.odcl_metadata.clone(),
-                }];
+                let sdk_tables = vec![self.table_to_table_data(table, 0, &json_data)];
                 let sdk_errors: Vec<ImportError> = errors
                     .iter()
                     .map(|e| ImportError::ParseError(e.message.clone()))
@@ -198,6 +170,802 @@ impl ODCSImporter {
             }
             Err(e) => Err(ImportError::ParseError(e.to_string())),
         }
+    }
+
+    /// Convert a Table to TableData for the SDK interface.
+    fn table_to_table_data(
+        &self,
+        table: Table,
+        table_index: usize,
+        json_data: &JsonValue,
+    ) -> TableData {
+        TableData {
+            table_index,
+            id: Some(table.id.to_string()),
+            name: Some(table.name.clone()),
+            api_version: json_data
+                .get("apiVersion")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            version: json_data
+                .get("version")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            status: json_data
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            kind: json_data
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            domain: json_data
+                .get("domain")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            data_product: json_data
+                .get("dataProduct")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            tenant: json_data
+                .get("tenant")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            description: json_data.get("description").cloned(),
+            // Schema-level fields (from table's odcl_metadata or direct fields)
+            physical_name: table
+                .odcl_metadata
+                .get("physicalName")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .or_else(|| table.schema_name.clone()),
+            physical_type: table
+                .odcl_metadata
+                .get("physicalType")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            business_name: table
+                .odcl_metadata
+                .get("businessName")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            data_granularity_description: table
+                .odcl_metadata
+                .get("dataGranularityDescription")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            columns: table.columns.iter().map(column_to_column_data).collect(),
+            servers: json_data
+                .get("servers")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default(),
+            team: json_data.get("team").cloned(),
+            support: json_data.get("support").cloned(),
+            roles: json_data
+                .get("roles")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default(),
+            sla_properties: json_data
+                .get("slaProperties")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default(),
+            quality: table.quality.clone(),
+            price: json_data.get("price").cloned(),
+            tags: table.tags.iter().map(|t| t.to_string()).collect(),
+            custom_properties: json_data
+                .get("customProperties")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default(),
+            authoritative_definitions: json_data
+                .get("authoritativeDefinitions")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default(),
+            contract_created_ts: json_data
+                .get("contractCreatedTs")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            odcs_metadata: table.odcl_metadata.clone(),
+        }
+    }
+
+    /// Import ODCS YAML content and return an ODCSContract (new v2 API).
+    ///
+    /// This method returns the native ODCS contract structure, which properly models
+    /// the ODCS v3.1.0 three-level hierarchy:
+    /// - Contract level (apiVersion, domain, etc.)
+    /// - Schema level (tables/views with physicalName, businessName, etc.)
+    /// - Property level (columns with all metadata)
+    ///
+    /// This API provides lossless round-trip import/export and supports multi-table contracts.
+    ///
+    /// # Arguments
+    ///
+    /// * `yaml_content` - ODCS YAML content as a string
+    ///
+    /// # Returns
+    ///
+    /// An `ODCSContract` containing the full contract with all schemas and properties.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_core::import::odcs::ODCSImporter;
+    ///
+    /// let mut importer = ODCSImporter::new();
+    /// let yaml = r#"
+    /// apiVersion: v3.1.0
+    /// kind: DataContract
+    /// id: 550e8400-e29b-41d4-a716-446655440000
+    /// version: 1.0.0
+    /// name: my-contract
+    /// domain: retail
+    /// schema:
+    ///   - name: users
+    ///     physicalName: tbl_users
+    ///     properties:
+    ///       - name: id
+    ///         logicalType: integer
+    ///         primaryKey: true
+    ///       - name: email
+    ///         logicalType: string
+    ///         required: true
+    /// "#;
+    /// let contract = importer.import_contract(yaml).unwrap();
+    /// assert_eq!(contract.name, "my-contract");
+    /// assert_eq!(contract.schema.len(), 1);
+    /// assert_eq!(contract.schema[0].name, "users");
+    /// ```
+    pub fn import_contract(
+        &mut self,
+        yaml_content: &str,
+    ) -> Result<crate::models::odcs::ODCSContract, ImportError> {
+        use crate::models::odcs::{
+            AuthoritativeDefinition, CustomProperty, Description, ODCSContract, QualityRule, Role,
+            Server, ServiceLevel, Support, Team,
+        };
+
+        // Parse YAML
+        let yaml_data: serde_yaml::Value = serde_yaml::from_str(yaml_content)
+            .map_err(|e| ImportError::ParseError(format!("Failed to parse YAML: {}", e)))?;
+
+        let json_data = yaml_to_json_value(&yaml_data).map_err(|e| {
+            ImportError::ParseError(format!("Failed to convert YAML to JSON: {}", e))
+        })?;
+
+        // Store current YAML data for $ref resolution
+        self.current_yaml_data = Some(yaml_data);
+
+        // Check if this is ODCS v3 format
+        if !self.is_odcl_v3_format(&json_data) {
+            return Err(ImportError::ParseError(
+                "import_contract() only supports ODCS v3 format. Use import() for legacy formats."
+                    .to_string(),
+            ));
+        }
+
+        // Extract contract-level fields
+        let api_version = json_data
+            .get("apiVersion")
+            .and_then(|v| v.as_str())
+            .unwrap_or("v3.1.0")
+            .to_string();
+        let kind = json_data
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("DataContract")
+            .to_string();
+        let id = json_data
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let version = json_data
+            .get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("1.0.0")
+            .to_string();
+        let name = json_data
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let status = json_data
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let domain = json_data
+            .get("domain")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let data_product = json_data
+            .get("dataProduct")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let tenant = json_data
+            .get("tenant")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Description can be string or object
+        let description = json_data.get("description").and_then(|v| {
+            if v.is_string() {
+                Some(Description::Simple(v.as_str().unwrap().to_string()))
+            } else if v.is_object() {
+                serde_json::from_value::<Description>(json_value_to_serde_value(v)).ok()
+            } else {
+                None
+            }
+        });
+
+        // Parse schema array
+        let schema = self.parse_schema_array_to_odcs(&json_data)?;
+
+        // Parse servers
+        let servers: Vec<Server> = json_data
+            .get("servers")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| serde_json::from_value(json_value_to_serde_value(s)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Parse team
+        let team: Option<Team> = json_data
+            .get("team")
+            .and_then(|v| serde_json::from_value(json_value_to_serde_value(v)).ok());
+
+        // Parse support
+        let support: Option<Support> = json_data
+            .get("support")
+            .and_then(|v| serde_json::from_value(json_value_to_serde_value(v)).ok());
+
+        // Parse roles
+        let roles: Vec<Role> = json_data
+            .get("roles")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|r| serde_json::from_value(json_value_to_serde_value(r)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Parse service levels
+        let service_levels: Vec<ServiceLevel> = json_data
+            .get("slaProperties")
+            .or_else(|| json_data.get("serviceLevels"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| serde_json::from_value(json_value_to_serde_value(s)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Parse contract-level quality rules
+        let quality: Vec<QualityRule> = json_data
+            .get("quality")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|q| serde_json::from_value(json_value_to_serde_value(q)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Parse price
+        let price = json_data
+            .get("price")
+            .and_then(|v| serde_json::from_value(json_value_to_serde_value(v)).ok());
+
+        // Parse terms
+        let terms = json_data
+            .get("terms")
+            .and_then(|v| serde_json::from_value(json_value_to_serde_value(v)).ok());
+
+        // Parse links
+        let links = json_data
+            .get("links")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|l| serde_json::from_value(json_value_to_serde_value(l)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Parse authoritative definitions
+        let authoritative_definitions: Vec<AuthoritativeDefinition> = json_data
+            .get("authoritativeDefinitions")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|ad| serde_json::from_value(json_value_to_serde_value(ad)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Parse tags
+        let tags: Vec<String> = json_data
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Parse custom properties
+        let custom_properties: Vec<CustomProperty> = json_data
+            .get("customProperties")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|cp| serde_json::from_value(json_value_to_serde_value(cp)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Parse contract created timestamp
+        let contract_created_ts = json_data
+            .get("contractCreatedTs")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        Ok(ODCSContract {
+            api_version,
+            kind,
+            id,
+            version,
+            name,
+            status,
+            domain,
+            data_product,
+            tenant,
+            description,
+            schema,
+            servers,
+            team,
+            support,
+            roles,
+            service_levels,
+            quality,
+            price,
+            terms,
+            links,
+            authoritative_definitions,
+            tags,
+            custom_properties,
+            contract_created_ts,
+        })
+    }
+
+    /// Parse the schema array into ODCS SchemaObject types
+    fn parse_schema_array_to_odcs(
+        &self,
+        json_data: &JsonValue,
+    ) -> Result<Vec<crate::models::odcs::SchemaObject>, ImportError> {
+        use crate::models::odcs::{
+            AuthoritativeDefinition, CustomProperty, QualityRule, SchemaObject, SchemaRelationship,
+        };
+
+        let schema_arr = match json_data.get("schema").and_then(|v| v.as_array()) {
+            Some(arr) => arr,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut schemas = Vec::new();
+
+        for (idx, schema_value) in schema_arr.iter().enumerate() {
+            let schema_obj = match schema_value.as_object() {
+                Some(obj) => obj,
+                None => {
+                    return Err(ImportError::ParseError(format!(
+                        "Schema object at index {} must be a dictionary",
+                        idx
+                    )));
+                }
+            };
+
+            let name = schema_obj
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ImportError::ParseError(format!(
+                        "Schema object at index {} missing 'name' field",
+                        idx
+                    ))
+                })?
+                .to_string();
+
+            let id = schema_obj
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let physical_name = schema_obj
+                .get("physicalName")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let physical_type = schema_obj
+                .get("physicalType")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let business_name = schema_obj
+                .get("businessName")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let description = schema_obj
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let data_granularity_description = schema_obj
+                .get("dataGranularityDescription")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            // Parse properties
+            let properties = self.parse_properties_to_odcs(schema_obj, json_data)?;
+
+            // Parse schema-level relationships
+            let relationships: Vec<SchemaRelationship> = schema_obj
+                .get("relationships")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|r| serde_json::from_value(json_value_to_serde_value(r)).ok())
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // Parse schema-level quality rules
+            let quality: Vec<QualityRule> = schema_obj
+                .get("quality")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|q| serde_json::from_value(json_value_to_serde_value(q)).ok())
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // Parse authoritative definitions
+            let authoritative_definitions: Vec<AuthoritativeDefinition> = schema_obj
+                .get("authoritativeDefinitions")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|ad| serde_json::from_value(json_value_to_serde_value(ad)).ok())
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // Parse tags
+            let tags: Vec<String> = schema_obj
+                .get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // Parse custom properties
+            let custom_properties: Vec<CustomProperty> = schema_obj
+                .get("customProperties")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|cp| serde_json::from_value(json_value_to_serde_value(cp)).ok())
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            schemas.push(SchemaObject {
+                id,
+                name,
+                physical_name,
+                physical_type,
+                business_name,
+                description,
+                data_granularity_description,
+                properties,
+                relationships,
+                quality,
+                authoritative_definitions,
+                tags,
+                custom_properties,
+            });
+        }
+
+        Ok(schemas)
+    }
+
+    /// Parse properties array into ODCS Property types (with nested support)
+    fn parse_properties_to_odcs(
+        &self,
+        schema_obj: &serde_json::Map<String, JsonValue>,
+        root_data: &JsonValue,
+    ) -> Result<Vec<crate::models::odcs::Property>, ImportError> {
+        let props_arr = match schema_obj.get("properties").and_then(|v| v.as_array()) {
+            Some(arr) => arr,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut properties = Vec::new();
+
+        for prop_value in props_arr {
+            let prop_obj = match prop_value.as_object() {
+                Some(obj) => obj,
+                None => continue,
+            };
+
+            let prop = self.parse_single_property_to_odcs(prop_obj, root_data)?;
+            properties.push(prop);
+        }
+
+        Ok(properties)
+    }
+
+    /// Parse a single property object to ODCS Property (recursive for nested)
+    #[allow(clippy::only_used_in_recursion)]
+    fn parse_single_property_to_odcs(
+        &self,
+        prop_obj: &serde_json::Map<String, JsonValue>,
+        root_data: &JsonValue,
+    ) -> Result<crate::models::odcs::Property, ImportError> {
+        use crate::models::odcs::{
+            AuthoritativeDefinition, CustomProperty, LogicalTypeOptions, Property,
+            PropertyRelationship, QualityRule,
+        };
+
+        // Handle $ref
+        if let Some(ref_path) = prop_obj.get("$ref").and_then(|v| v.as_str())
+            && let Some(resolved) = resolve_ref(ref_path, root_data)
+            && let Some(obj) = resolved.as_object()
+        {
+            return self.parse_single_property_to_odcs(obj, root_data);
+        }
+
+        let name = prop_obj
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let logical_type = prop_obj
+            .get("logicalType")
+            .or_else(|| prop_obj.get("type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("string")
+            .to_string();
+
+        let id = prop_obj
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let business_name = prop_obj
+            .get("businessName")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let description = prop_obj
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let physical_type = prop_obj
+            .get("physicalType")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let physical_name = prop_obj
+            .get("physicalName")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Parse logicalTypeOptions
+        let logical_type_options: Option<LogicalTypeOptions> = prop_obj
+            .get("logicalTypeOptions")
+            .and_then(|v| serde_json::from_value(json_value_to_serde_value(v)).ok());
+
+        // Key constraints
+        let required = prop_obj
+            .get("required")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let primary_key = prop_obj
+            .get("primaryKey")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let primary_key_position = prop_obj
+            .get("primaryKeyPosition")
+            .and_then(|v| v.as_i64())
+            .map(|n| n as i32);
+        let unique = prop_obj
+            .get("unique")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Partitioning & clustering
+        let partitioned = prop_obj
+            .get("partitioned")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let partition_key_position = prop_obj
+            .get("partitionKeyPosition")
+            .and_then(|v| v.as_i64())
+            .map(|n| n as i32);
+        let clustered = prop_obj
+            .get("clustered")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Classification & security
+        let classification = prop_obj
+            .get("classification")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let critical_data_element = prop_obj
+            .get("criticalDataElement")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let encrypted_name = prop_obj
+            .get("encryptedName")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Transformation
+        let transform_source_objects: Vec<String> = prop_obj
+            .get("transformSourceObjects")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let transform_logic = prop_obj
+            .get("transformLogic")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let transform_description = prop_obj
+            .get("transformDescription")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Examples & defaults
+        let examples: Vec<serde_json::Value> = prop_obj
+            .get("examples")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().map(json_value_to_serde_value).collect())
+            .unwrap_or_default();
+        let default_value = prop_obj.get("default").map(json_value_to_serde_value);
+
+        // Relationships
+        let relationships: Vec<PropertyRelationship> = prop_obj
+            .get("relationships")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|r| serde_json::from_value(json_value_to_serde_value(r)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Authoritative definitions
+        let authoritative_definitions: Vec<AuthoritativeDefinition> = prop_obj
+            .get("authoritativeDefinitions")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|ad| serde_json::from_value(json_value_to_serde_value(ad)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Quality rules
+        let quality: Vec<QualityRule> = prop_obj
+            .get("quality")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|q| serde_json::from_value(json_value_to_serde_value(q)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Enum values
+        let enum_values: Vec<String> = prop_obj
+            .get("enum")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|e| e.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Tags
+        let tags: Vec<String> = prop_obj
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Custom properties
+        let custom_properties: Vec<CustomProperty> = prop_obj
+            .get("customProperties")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|cp| serde_json::from_value(json_value_to_serde_value(cp)).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Parse nested properties (for OBJECT types)
+        let nested_properties: Vec<Property> =
+            if let Some(props) = prop_obj.get("properties").and_then(|v| v.as_array()) {
+                props
+                    .iter()
+                    .filter_map(|p| {
+                        p.as_object()
+                            .and_then(|obj| self.parse_single_property_to_odcs(obj, root_data).ok())
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+        // Parse items (for ARRAY types)
+        let items: Option<Box<Property>> = prop_obj.get("items").and_then(|v| {
+            v.as_object()
+                .and_then(|obj| self.parse_single_property_to_odcs(obj, root_data).ok())
+                .map(Box::new)
+        });
+
+        Ok(Property {
+            id,
+            name,
+            business_name,
+            description,
+            logical_type,
+            physical_type,
+            physical_name,
+            logical_type_options,
+            required,
+            primary_key,
+            primary_key_position,
+            unique,
+            partitioned,
+            partition_key_position,
+            clustered,
+            classification,
+            critical_data_element,
+            encrypted_name,
+            transform_source_objects,
+            transform_logic,
+            transform_description,
+            examples,
+            default_value,
+            relationships,
+            authoritative_definitions,
+            quality,
+            enum_values,
+            tags,
+            custom_properties,
+            items,
+            properties: nested_properties,
+        })
     }
 
     /// Parse ODCS/ODCL YAML content and create Table (public method for native app use).
@@ -1152,6 +1920,382 @@ impl ODCSImporter {
             errors.len()
         );
         Ok((table, errors))
+    }
+
+    /// Parse ALL tables from ODCS v3.0.x/v3.1.0 format schema array.
+    ///
+    /// Unlike `parse_odcl_v3` which only returns the first table, this method
+    /// iterates over all schema objects and returns a vector of tables.
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of (Table, Vec<ParserError>) tuples, one for each schema object.
+    fn parse_odcl_v3_all(&self, data: &JsonValue) -> Result<Vec<(Table, Vec<ParserError>)>> {
+        let mut all_tables = Vec::new();
+
+        // Extract schema array - ODCS v3.0.x/v3.1.0 uses array of SchemaObject
+        let schema = match data.get("schema").and_then(|v| v.as_array()) {
+            Some(s) if !s.is_empty() => s,
+            Some(_) => {
+                // Empty schema array - return empty result
+                return Ok(Vec::new());
+            }
+            None => {
+                // No schema field - return empty result
+                return Ok(Vec::new());
+            }
+        };
+
+        // Extract contract-level metadata (shared across all tables)
+        let (medallion_layers, scd_pattern, data_vault_classification, contract_tags): (
+            _,
+            _,
+            _,
+            Vec<Tag>,
+        ) = self.extract_metadata_from_custom_properties(data);
+
+        // Extract database type from servers (shared)
+        let database_type = self.extract_database_type_from_odcl_v3_servers(data);
+
+        // Extract quality rules (contract-level, shared)
+        let contract_quality_rules = self.extract_quality_rules(data);
+
+        // Build base ODCL metadata (shared across all tables)
+        let base_odcl_metadata = self.build_odcl_metadata(data);
+
+        // Parse each schema object as a separate table
+        for (schema_idx, schema_value) in schema.iter().enumerate() {
+            let mut errors = Vec::new();
+
+            let schema_object = match schema_value.as_object() {
+                Some(obj) => obj,
+                None => {
+                    errors.push(ParserError {
+                        error_type: "validation_error".to_string(),
+                        field: format!("schema[{}]", schema_idx),
+                        message: format!(
+                            "Schema object at index {} must be a dictionary",
+                            schema_idx
+                        ),
+                    });
+                    continue;
+                }
+            };
+
+            // Get table name from schema object
+            let table_name = match schema_object.get("name").and_then(|v| v.as_str()) {
+                Some(name) => name.to_string(),
+                None => {
+                    errors.push(ParserError {
+                        error_type: "validation_error".to_string(),
+                        field: format!("schema[{}].name", schema_idx),
+                        message: format!(
+                            "Schema object at index {} missing 'name' field",
+                            schema_idx
+                        ),
+                    });
+                    continue;
+                }
+            };
+
+            // Parse columns from properties
+            let columns = self.parse_schema_object_properties(schema_object, data, &mut errors);
+
+            // Extract table-specific tags (merge with contract tags)
+            let mut tags = contract_tags.clone();
+            if let Some(tags_arr) = schema_object.get("tags").and_then(|v| v.as_array()) {
+                for item in tags_arr {
+                    if let Some(s) = item.as_str() {
+                        let tag = Tag::from_str(s).unwrap_or_else(|_| Tag::Simple(s.to_string()));
+                        if !tags.contains(&tag) {
+                            tags.push(tag);
+                        }
+                    }
+                }
+            }
+
+            // Extract table-specific quality rules (merge with contract rules)
+            let mut quality_rules = contract_quality_rules.clone();
+            if let Some(quality_arr) = schema_object.get("quality").and_then(|v| v.as_array()) {
+                for rule in quality_arr {
+                    if let Some(rule_obj) = rule.as_object() {
+                        let mut rule_map = HashMap::new();
+                        for (k, v) in rule_obj {
+                            rule_map.insert(k.clone(), json_value_to_serde_value(v));
+                        }
+                        quality_rules.push(rule_map);
+                    }
+                }
+            }
+
+            // Generate UUID for this table
+            // First check if schema object has its own id
+            let table_uuid = if let Some(id_str) = schema_object.get("id").and_then(|v| v.as_str())
+            {
+                uuid::Uuid::parse_str(id_str)
+                    .unwrap_or_else(|_| Table::generate_id(&table_name, None, None, None))
+            } else {
+                // For multi-table ODCS, generate deterministic UUID from table name
+                Table::generate_id(&table_name, None, None, None)
+            };
+
+            // Clone metadata for this table
+            let mut odcl_metadata = base_odcl_metadata.clone();
+
+            // Add schema-object-specific metadata (ODCS v3.1.0 schema-level fields)
+            if let Some(desc) = schema_object.get("description") {
+                odcl_metadata.insert(
+                    "schemaDescription".to_string(),
+                    json_value_to_serde_value(desc),
+                );
+            }
+
+            // physicalName at schema object level
+            if let Some(phys_name) = schema_object.get("physicalName").and_then(|v| v.as_str()) {
+                odcl_metadata.insert(
+                    "schemaPhysicalName".to_string(),
+                    serde_json::Value::String(phys_name.to_string()),
+                );
+            }
+
+            // physicalType at schema object level
+            if let Some(phys_type) = schema_object.get("physicalType").and_then(|v| v.as_str()) {
+                odcl_metadata.insert(
+                    "schemaPhysicalType".to_string(),
+                    serde_json::Value::String(phys_type.to_string()),
+                );
+            }
+
+            // businessName at schema object level
+            if let Some(biz_name) = schema_object.get("businessName").and_then(|v| v.as_str()) {
+                odcl_metadata.insert(
+                    "schemaBusinessName".to_string(),
+                    serde_json::Value::String(biz_name.to_string()),
+                );
+            }
+
+            // dataGranularityDescription at schema object level
+            if let Some(granularity) = schema_object
+                .get("dataGranularityDescription")
+                .and_then(|v| v.as_str())
+            {
+                odcl_metadata.insert(
+                    "dataGranularityDescription".to_string(),
+                    serde_json::Value::String(granularity.to_string()),
+                );
+            }
+
+            // authoritativeDefinitions at schema object level
+            if let Some(auth_defs) = schema_object.get("authoritativeDefinitions") {
+                odcl_metadata.insert(
+                    "schemaAuthoritativeDefinitions".to_string(),
+                    json_value_to_serde_value(auth_defs),
+                );
+            }
+
+            // relationships at schema object level
+            if let Some(relationships) = schema_object.get("relationships") {
+                odcl_metadata.insert(
+                    "schemaRelationships".to_string(),
+                    json_value_to_serde_value(relationships),
+                );
+            }
+
+            let table = Table {
+                id: table_uuid,
+                name: table_name.clone(),
+                columns,
+                database_type,
+                catalog_name: None,
+                schema_name: None,
+                medallion_layers: medallion_layers.clone(),
+                scd_pattern,
+                data_vault_classification,
+                modeling_level: None,
+                tags,
+                odcl_metadata,
+                owner: None,
+                sla: None,
+                contact_details: None,
+                infrastructure_type: None,
+                notes: None,
+                position: None,
+                yaml_file_path: None,
+                drawio_cell_id: None,
+                quality: quality_rules,
+                errors: Vec::new(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            };
+
+            info!(
+                "Parsed ODCS v3 table {}/{}: {} with {} columns, {} warnings/errors",
+                schema_idx + 1,
+                schema.len(),
+                table.name,
+                table.columns.len(),
+                errors.len()
+            );
+
+            all_tables.push((table, errors));
+        }
+
+        Ok(all_tables)
+    }
+
+    /// Parse properties from a schema object into columns.
+    fn parse_schema_object_properties(
+        &self,
+        schema_object: &serde_json::Map<String, JsonValue>,
+        data: &JsonValue,
+        errors: &mut Vec<ParserError>,
+    ) -> Vec<Column> {
+        let mut columns = Vec::new();
+
+        if let Some(properties_obj) = schema_object.get("properties").and_then(|v| v.as_object()) {
+            // Object format (v3.0.x): properties is a map of name -> property object
+            for (prop_name, prop_data) in properties_obj {
+                if let Some(prop_obj) = prop_data.as_object() {
+                    match self.parse_odcl_v3_property(prop_name, prop_obj, data) {
+                        Ok(mut cols) => columns.append(&mut cols),
+                        Err(e) => {
+                            errors.push(ParserError {
+                                error_type: "property_parse_error".to_string(),
+                                field: format!("Property '{}'", prop_name),
+                                message: e.to_string(),
+                            });
+                        }
+                    }
+                } else {
+                    errors.push(ParserError {
+                        error_type: "validation_error".to_string(),
+                        field: format!("Property '{}'", prop_name),
+                        message: format!("Property '{}' must be an object", prop_name),
+                    });
+                }
+            }
+        } else if let Some(properties_arr) =
+            schema_object.get("properties").and_then(|v| v.as_array())
+        {
+            // Array format (v3.1.0): properties is an array of property objects with 'name' field
+            for (idx, prop_data) in properties_arr.iter().enumerate() {
+                if let Some(prop_obj) = prop_data.as_object() {
+                    let prop_name = match prop_obj.get("name").or_else(|| prop_obj.get("id")) {
+                        Some(JsonValue::String(s)) => s.as_str(),
+                        _ => {
+                            errors.push(ParserError {
+                                error_type: "validation_error".to_string(),
+                                field: format!("Property[{}]", idx),
+                                message: format!(
+                                    "Property[{}] missing required 'name' or 'id' field",
+                                    idx
+                                ),
+                            });
+                            continue;
+                        }
+                    };
+
+                    match self.parse_odcl_v3_property(prop_name, prop_obj, data) {
+                        Ok(mut cols) => columns.append(&mut cols),
+                        Err(e) => {
+                            errors.push(ParserError {
+                                error_type: "property_parse_error".to_string(),
+                                field: format!("Property[{}] '{}'", idx, prop_name),
+                                message: e.to_string(),
+                            });
+                        }
+                    }
+                } else {
+                    errors.push(ParserError {
+                        error_type: "validation_error".to_string(),
+                        field: format!("Property[{}]", idx),
+                        message: format!("Property[{}] must be an object", idx),
+                    });
+                }
+            }
+        }
+
+        columns
+    }
+
+    /// Build base ODCL metadata from contract-level fields.
+    fn build_odcl_metadata(&self, data: &JsonValue) -> HashMap<String, serde_json::Value> {
+        let mut odcl_metadata = HashMap::new();
+
+        // Core identity fields
+        odcl_metadata.insert(
+            "apiVersion".to_string(),
+            json_value_to_serde_value(data.get("apiVersion").unwrap_or(&JsonValue::Null)),
+        );
+        odcl_metadata.insert(
+            "kind".to_string(),
+            json_value_to_serde_value(data.get("kind").unwrap_or(&JsonValue::Null)),
+        );
+        odcl_metadata.insert(
+            "id".to_string(),
+            json_value_to_serde_value(data.get("id").unwrap_or(&JsonValue::Null)),
+        );
+        odcl_metadata.insert(
+            "version".to_string(),
+            json_value_to_serde_value(data.get("version").unwrap_or(&JsonValue::Null)),
+        );
+        odcl_metadata.insert(
+            "status".to_string(),
+            json_value_to_serde_value(data.get("status").unwrap_or(&JsonValue::Null)),
+        );
+
+        // Optional contract-level fields
+        let optional_fields = [
+            "servicelevels",
+            "links",
+            "domain",
+            "dataProduct",
+            "tenant",
+            "description",
+            "pricing",
+            "team",
+            "roles",
+            "terms",
+            "servers",
+            "infrastructure",
+        ];
+
+        for field in optional_fields {
+            if let Some(val) = data.get(field) {
+                odcl_metadata.insert(field.to_string(), json_value_to_serde_value(val));
+            }
+        }
+
+        // Extract sharedDomains from customProperties
+        if let Some(custom_props) = data.get("customProperties").and_then(|v| v.as_array()) {
+            for prop in custom_props {
+                if let Some(prop_obj) = prop.as_object() {
+                    let prop_key = prop_obj
+                        .get("property")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if (prop_key == "sharedDomains" || prop_key == "shared_domains")
+                        && let Some(arr) = prop_obj.get("value").and_then(|v| v.as_array())
+                    {
+                        let shared_domains: Vec<serde_json::Value> = arr
+                            .iter()
+                            .filter_map(|item| {
+                                item.as_str()
+                                    .map(|s| serde_json::Value::String(s.to_string()))
+                            })
+                            .collect();
+                        if !shared_domains.is_empty() {
+                            odcl_metadata.insert(
+                                "sharedDomains".to_string(),
+                                serde_json::Value::Array(shared_domains),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        odcl_metadata
     }
 
     /// Parse a single property from ODCS v3.0.x format (similar to Data Contract field).
@@ -3223,5 +4367,152 @@ columns:
         assert!(!name_col.nullable);
         assert!(name_col.constraints.contains(&"UNIQUE".to_string()));
         assert_eq!(errors.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_odcs_v3_multiple_tables() {
+        let mut parser = ODCSImporter::new();
+        let odcs_yaml = r#"
+apiVersion: v3.1.0
+kind: DataContract
+id: 550e8400-e29b-41d4-a716-446655440000
+version: 1.0.0
+name: multi_table_contract
+domain: sales
+schema:
+  - name: orders
+    properties:
+      - name: order_id
+        logicalType: integer
+        primaryKey: true
+      - name: customer_id
+        logicalType: integer
+      - name: total_amount
+        logicalType: decimal
+  - name: order_items
+    properties:
+      - name: item_id
+        logicalType: integer
+        primaryKey: true
+      - name: order_id
+        logicalType: integer
+      - name: product_name
+        logicalType: string
+      - name: quantity
+        logicalType: integer
+  - name: customers
+    properties:
+      - name: customer_id
+        logicalType: integer
+        primaryKey: true
+      - name: name
+        logicalType: string
+      - name: email
+        logicalType: string
+"#;
+
+        let result = parser.import(odcs_yaml).unwrap();
+
+        // Should return 3 tables
+        assert_eq!(
+            result.tables.len(),
+            3,
+            "Expected 3 tables, got {}",
+            result.tables.len()
+        );
+
+        // Verify table names
+        let table_names: Vec<&str> = result
+            .tables
+            .iter()
+            .map(|t| t.name.as_deref().unwrap_or(""))
+            .collect();
+        assert!(table_names.contains(&"orders"), "Missing 'orders' table");
+        assert!(
+            table_names.contains(&"order_items"),
+            "Missing 'order_items' table"
+        );
+        assert!(
+            table_names.contains(&"customers"),
+            "Missing 'customers' table"
+        );
+
+        // Verify column counts for each table
+        let orders_table = result
+            .tables
+            .iter()
+            .find(|t| t.name.as_deref() == Some("orders"))
+            .unwrap();
+        assert_eq!(
+            orders_table.columns.len(),
+            3,
+            "orders table should have 3 columns"
+        );
+
+        let order_items_table = result
+            .tables
+            .iter()
+            .find(|t| t.name.as_deref() == Some("order_items"))
+            .unwrap();
+        assert_eq!(
+            order_items_table.columns.len(),
+            4,
+            "order_items table should have 4 columns"
+        );
+
+        let customers_table = result
+            .tables
+            .iter()
+            .find(|t| t.name.as_deref() == Some("customers"))
+            .unwrap();
+        assert_eq!(
+            customers_table.columns.len(),
+            3,
+            "customers table should have 3 columns"
+        );
+
+        // Verify contract-level metadata is shared across all tables
+        for table in &result.tables {
+            assert_eq!(table.api_version.as_deref(), Some("v3.1.0"));
+            assert_eq!(table.kind.as_deref(), Some("DataContract"));
+            assert_eq!(table.domain.as_deref(), Some("sales"));
+        }
+
+        // Verify table indices are sequential
+        assert_eq!(result.tables[0].table_index, 0);
+        assert_eq!(result.tables[1].table_index, 1);
+        assert_eq!(result.tables[2].table_index, 2);
+    }
+
+    #[test]
+    fn test_parse_odcs_v3_single_table_backwards_compatible() {
+        // Ensure single-table ODCS files still work correctly
+        let mut parser = ODCSImporter::new();
+        let odcs_yaml = r#"
+apiVersion: v3.1.0
+kind: DataContract
+id: 550e8400-e29b-41d4-a716-446655440001
+version: 1.0.0
+name: single_table_contract
+schema:
+  - name: users
+    properties:
+      - name: user_id
+        logicalType: integer
+        primaryKey: true
+      - name: username
+        logicalType: string
+"#;
+
+        let result = parser.import(odcs_yaml).unwrap();
+
+        // Should return exactly 1 table
+        assert_eq!(
+            result.tables.len(),
+            1,
+            "Expected 1 table for single-schema ODCS"
+        );
+        assert_eq!(result.tables[0].name.as_deref(), Some("users"));
+        assert_eq!(result.tables[0].columns.len(), 2);
     }
 }

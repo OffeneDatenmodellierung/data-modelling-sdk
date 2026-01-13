@@ -233,6 +233,10 @@ fn flatten_struct_columns(result: ImportResult) -> ImportResult {
                 authoritative_definitions: table_data.authoritative_definitions.clone(),
                 contract_created_ts: table_data.contract_created_ts.clone(),
                 odcs_metadata: table_data.odcs_metadata.clone(),
+                physical_name: table_data.physical_name.clone(),
+                physical_type: table_data.physical_type.clone(),
+                business_name: table_data.business_name.clone(),
+                data_granularity_description: table_data.data_granularity_description.clone(),
             }
         })
         .collect();
@@ -3149,4 +3153,164 @@ pub fn export_knowledge_yaml_to_markdown(knowledge_yaml: &str) -> Result<String,
     exporter
         .export_knowledge(&article)
         .map_err(export_error_to_js)
+}
+
+// ============================================================================
+// ODCS v2 API - Native Data Structures
+// ============================================================================
+// These functions work with ODCSContract directly, preserving all metadata
+// and nested structures without flattening to Table/Column types.
+
+/// Parse ODCS YAML content and return an ODCSContract JSON representation (v2 API).
+///
+/// This is the preferred v2 API that returns the native ODCSContract structure,
+/// preserving all ODCS metadata, nested properties, and multi-table support.
+///
+/// Unlike `parse_odcs_yaml` which flattens to Table/Column types, this function
+/// returns the full ODCSContract with:
+/// - All contract-level fields (apiVersion, domain, team, etc.)
+/// - Multiple schema objects (tables) preserved
+/// - Nested properties (OBJECT/ARRAY types) preserved hierarchically
+/// - All custom properties at each level
+///
+/// # Arguments
+///
+/// * `yaml_content` - ODCS YAML content as a string
+///
+/// # Returns
+///
+/// JSON string containing ODCSContract object, or JsValue error
+///
+/// # Example Response
+///
+/// ```json
+/// {
+///   "apiVersion": "v3.1.0",
+///   "kind": "DataContract",
+///   "name": "My Contract",
+///   "schema": [
+///     {
+///       "name": "users",
+///       "properties": [
+///         { "name": "id", "logicalType": "integer", "primaryKey": true },
+///         { "name": "address", "logicalType": "object", "properties": [...] }
+///       ]
+///     }
+///   ]
+/// }
+/// ```
+#[wasm_bindgen]
+pub fn parse_odcs_yaml_v2(yaml_content: &str) -> Result<String, JsValue> {
+    let mut importer = data_modelling_core::import::ODCSImporter::new();
+    match importer.import_contract(yaml_content) {
+        Ok(contract) => serde_json::to_string(&contract).map_err(serialization_error),
+        Err(err) => Err(import_error_to_js(err)),
+    }
+}
+
+/// Export an ODCSContract JSON to ODCS YAML format (v2 API).
+///
+/// This is the preferred v2 API that directly serializes an ODCSContract struct,
+/// preserving all metadata and nested structures without reconstruction.
+///
+/// Unlike `export_to_odcs_yaml` which takes a workspace and reconstructs the ODCS
+/// structure, this function directly serializes the provided contract.
+///
+/// # Arguments
+///
+/// * `contract_json` - JSON string containing ODCSContract object
+///
+/// # Returns
+///
+/// ODCS YAML format string, or JsValue error
+///
+/// # Example
+///
+/// ```javascript
+/// const contract = {
+///   apiVersion: "v3.1.0",
+///   kind: "DataContract",
+///   name: "My Contract",
+///   schema: [{
+///     name: "users",
+///     properties: [
+///       { name: "id", logicalType: "integer", primaryKey: true }
+///     ]
+///   }]
+/// };
+/// const yaml = export_odcs_yaml_v2(JSON.stringify(contract));
+/// ```
+#[wasm_bindgen]
+pub fn export_odcs_yaml_v2(contract_json: &str) -> Result<String, JsValue> {
+    let contract: data_modelling_core::models::odcs::ODCSContract =
+        serde_json::from_str(contract_json).map_err(deserialization_error)?;
+    Ok(data_modelling_core::export::ODCSExporter::export_contract(
+        &contract,
+    ))
+}
+
+/// Convert an ODCSContract to Table/Column format (v2 API).
+///
+/// This function converts an ODCSContract to the traditional Table/Column
+/// format used by the v1 API. Useful for interoperability with existing code.
+///
+/// Note: This conversion may lose some metadata that doesn't fit in Table/Column.
+/// For lossless round-trip, use `parse_odcs_yaml_v2` and `export_odcs_yaml_v2`.
+///
+/// # Arguments
+///
+/// * `contract_json` - JSON string containing ODCSContract object
+///
+/// # Returns
+///
+/// JSON string containing array of Table objects, or JsValue error
+#[wasm_bindgen]
+pub fn odcs_contract_to_tables(contract_json: &str) -> Result<String, JsValue> {
+    let contract: data_modelling_core::models::odcs::ODCSContract =
+        serde_json::from_str(contract_json).map_err(deserialization_error)?;
+    let tables = contract.to_tables();
+    serde_json::to_string(&tables).map_err(serialization_error)
+}
+
+/// Convert Tables to an ODCSContract (v2 API).
+///
+/// This function converts traditional Table/Column format to an ODCSContract.
+/// Useful for migrating existing code to the v2 API.
+///
+/// Note: The resulting contract will have default values for fields that
+/// don't exist in Table/Column format.
+///
+/// # Arguments
+///
+/// * `tables_json` - JSON string containing array of Table objects
+///
+/// # Returns
+///
+/// JSON string containing ODCSContract object, or JsValue error
+#[wasm_bindgen]
+pub fn tables_to_odcs_contract(tables_json: &str) -> Result<String, JsValue> {
+    let tables: Vec<data_modelling_core::models::Table> =
+        serde_json::from_str(tables_json).map_err(deserialization_error)?;
+    let contract = data_modelling_core::models::odcs::ODCSContract::from_tables(&tables);
+    serde_json::to_string(&contract).map_err(serialization_error)
+}
+
+/// Convert an ODCSContract to TableData format for UI rendering (v2 API).
+///
+/// This function converts an ODCSContract to TableData format, which includes
+/// all the metadata needed for UI rendering (similar to ImportResult.tables).
+///
+/// # Arguments
+///
+/// * `contract_json` - JSON string containing ODCSContract object
+///
+/// # Returns
+///
+/// JSON string containing array of TableData objects, or JsValue error
+#[wasm_bindgen]
+pub fn odcs_contract_to_table_data(contract_json: &str) -> Result<String, JsValue> {
+    let contract: data_modelling_core::models::odcs::ODCSContract =
+        serde_json::from_str(contract_json).map_err(deserialization_error)?;
+    let table_data = contract.to_table_data();
+    serde_json::to_string(&table_data).map_err(serialization_error)
 }
