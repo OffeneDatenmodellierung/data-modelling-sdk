@@ -263,21 +263,20 @@ impl ODCSImporter {
                     .cloned()
                     .unwrap_or_default();
                 // Add schema-level customProperties if present in odcl_metadata
-                if let Some(schema_props) = table.odcl_metadata.get("schemaCustomProperties") {
-                    if let Some(schema_arr) = schema_props.as_array() {
-                        for prop in schema_arr {
-                            // Avoid duplicates by checking if property already exists
-                            let prop_name =
-                                prop.get("property").and_then(|v| v.as_str()).unwrap_or("");
-                            let already_exists = props.iter().any(|p| {
-                                p.get("property")
-                                    .and_then(|v| v.as_str())
-                                    .map(|n| n == prop_name)
-                                    .unwrap_or(false)
-                            });
-                            if !already_exists {
-                                props.push(prop.clone());
-                            }
+                if let Some(schema_props) = table.odcl_metadata.get("schemaCustomProperties")
+                    && let Some(schema_arr) = schema_props.as_array()
+                {
+                    for prop in schema_arr {
+                        // Avoid duplicates by checking if property already exists
+                        let prop_name = prop.get("property").and_then(|v| v.as_str()).unwrap_or("");
+                        let already_exists = props.iter().any(|p| {
+                            p.get("property")
+                                .and_then(|v| v.as_str())
+                                .map(|n| n == prop_name)
+                                .unwrap_or(false)
+                        });
+                        if !already_exists {
+                            props.push(prop.clone());
                         }
                     }
                 }
