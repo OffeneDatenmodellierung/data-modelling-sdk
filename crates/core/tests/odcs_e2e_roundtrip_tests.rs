@@ -12,7 +12,9 @@
 
 use data_modelling_core::export::odcs::ODCSExporter;
 use data_modelling_core::import::odcs::ODCSImporter;
-use data_modelling_core::models::odcs::{CustomProperty, Description, ODCSContract, Property, SchemaObject};
+use data_modelling_core::models::odcs::{
+    CustomProperty, Description, ODCSContract, Property, SchemaObject,
+};
 
 /// Comprehensive ODCS v3.1.0 YAML with ALL specification fields populated
 const COMPREHENSIVE_ODCS_YAML: &str = r#"
@@ -391,7 +393,10 @@ mod contract_level_tests {
 
         assert_eq!(contract.status, Some("active".to_string()));
         assert_eq!(contract.domain, Some("retail".to_string()));
-        assert_eq!(contract.data_product, Some("customer-analytics".to_string()));
+        assert_eq!(
+            contract.data_product,
+            Some("customer-analytics".to_string())
+        );
         assert_eq!(contract.tenant, Some("acme-corp".to_string()));
     }
 
@@ -547,10 +552,7 @@ mod contract_level_tests {
         let accuracy = &contract.quality[1];
         assert_eq!(accuracy.dimension, Some("accuracy".to_string()));
         assert_eq!(accuracy.must_be_greater_than, Some(serde_json::json!(0)));
-        assert_eq!(
-            accuracy.must_be_less_than,
-            Some(serde_json::json!(1000000))
-        );
+        assert_eq!(accuracy.must_be_less_than, Some(serde_json::json!(1000000)));
     }
 
     #[test]
@@ -678,7 +680,9 @@ mod schema_level_tests {
             .import_contract(COMPREHENSIVE_ODCS_YAML)
             .expect("Import failed");
 
-        let customers = contract.get_schema("customers").expect("Schema should exist");
+        let customers = contract
+            .get_schema("customers")
+            .expect("Schema should exist");
         assert_eq!(customers.id, Some("schema-customers-001".to_string()));
         assert_eq!(customers.name, "customers");
         assert_eq!(customers.physical_name, Some("tbl_customers".to_string()));
@@ -692,7 +696,9 @@ mod schema_level_tests {
             .import_contract(COMPREHENSIVE_ODCS_YAML)
             .expect("Import failed");
 
-        let customers = contract.get_schema("customers").expect("Schema should exist");
+        let customers = contract
+            .get_schema("customers")
+            .expect("Schema should exist");
         assert_eq!(
             customers.business_name,
             Some("Customer Master Data".to_string())
@@ -714,7 +720,9 @@ mod schema_level_tests {
             .import_contract(COMPREHENSIVE_ODCS_YAML)
             .expect("Import failed");
 
-        let customers = contract.get_schema("customers").expect("Schema should exist");
+        let customers = contract
+            .get_schema("customers")
+            .expect("Schema should exist");
         assert_eq!(customers.tags.len(), 2);
         assert!(customers.tags.contains(&"master-data".to_string()));
         assert!(customers.tags.contains(&"pii".to_string()));
@@ -727,7 +735,9 @@ mod schema_level_tests {
             .import_contract(COMPREHENSIVE_ODCS_YAML)
             .expect("Import failed");
 
-        let customers = contract.get_schema("customers").expect("Schema should exist");
+        let customers = contract
+            .get_schema("customers")
+            .expect("Schema should exist");
         assert_eq!(customers.custom_properties.len(), 2);
 
         let owner = customers
@@ -745,7 +755,9 @@ mod schema_level_tests {
             .import_contract(COMPREHENSIVE_ODCS_YAML)
             .expect("Import failed");
 
-        let customers = contract.get_schema("customers").expect("Schema should exist");
+        let customers = contract
+            .get_schema("customers")
+            .expect("Schema should exist");
         assert_eq!(customers.authoritative_definitions.len(), 1);
         assert_eq!(
             customers.authoritative_definitions[0].definition_type,
@@ -760,7 +772,9 @@ mod schema_level_tests {
             .import_contract(COMPREHENSIVE_ODCS_YAML)
             .expect("Import failed");
 
-        let customers = contract.get_schema("customers").expect("Schema should exist");
+        let customers = contract
+            .get_schema("customers")
+            .expect("Schema should exist");
         assert_eq!(customers.relationships.len(), 1);
 
         let rel = &customers.relationships[0];
@@ -781,7 +795,9 @@ mod schema_level_tests {
             .import_contract(COMPREHENSIVE_ODCS_YAML)
             .expect("Import failed");
 
-        let customers = contract.get_schema("customers").expect("Schema should exist");
+        let customers = contract
+            .get_schema("customers")
+            .expect("Schema should exist");
         assert_eq!(customers.quality.len(), 1);
 
         let rule = &customers.quality[0];
@@ -815,7 +831,10 @@ mod property_level_tests {
 
         assert_eq!(id_prop.id, Some("prop-id-001".to_string()));
         assert_eq!(id_prop.name, "id");
-        assert_eq!(id_prop.business_name, Some("Customer Identifier".to_string()));
+        assert_eq!(
+            id_prop.business_name,
+            Some("Customer Identifier".to_string())
+        );
         assert_eq!(
             id_prop.description,
             Some("Unique identifier for the customer".to_string())
@@ -935,7 +954,11 @@ mod property_level_tests {
             .expect("Property should exist");
 
         assert_eq!(email.examples.len(), 2);
-        assert!(email.examples.contains(&serde_json::json!("user@example.com")));
+        assert!(
+            email
+                .examples
+                .contains(&serde_json::json!("user@example.com"))
+        );
     }
 
     #[test]
@@ -1137,7 +1160,10 @@ mod roundtrip_preservation_tests {
         let orig_address = orig_customers.get_property("address").unwrap();
         let reimp_address = reimp_customers.get_property("address").unwrap();
 
-        assert_eq!(orig_address.properties.len(), reimp_address.properties.len());
+        assert_eq!(
+            orig_address.properties.len(),
+            reimp_address.properties.len()
+        );
 
         let orig_metadata = orig_customers.get_property("metadata").unwrap();
         let reimp_metadata = reimp_customers.get_property("metadata").unwrap();
@@ -1210,46 +1236,123 @@ mod roundtrip_preservation_tests {
         let (original, reimported) = roundtrip(COMPREHENSIVE_ODCS_YAML);
 
         // Compare all major fields individually for better error reporting
-        assert_eq!(original.api_version, reimported.api_version, "api_version mismatch");
+        assert_eq!(
+            original.api_version, reimported.api_version,
+            "api_version mismatch"
+        );
         assert_eq!(original.kind, reimported.kind, "kind mismatch");
         assert_eq!(original.id, reimported.id, "id mismatch");
         assert_eq!(original.version, reimported.version, "version mismatch");
         assert_eq!(original.name, reimported.name, "name mismatch");
         assert_eq!(original.status, reimported.status, "status mismatch");
         assert_eq!(original.domain, reimported.domain, "domain mismatch");
-        assert_eq!(original.data_product, reimported.data_product, "data_product mismatch");
+        assert_eq!(
+            original.data_product, reimported.data_product,
+            "data_product mismatch"
+        );
         assert_eq!(original.tenant, reimported.tenant, "tenant mismatch");
-        assert_eq!(original.contract_created_ts, reimported.contract_created_ts, "timestamp mismatch");
+        assert_eq!(
+            original.contract_created_ts, reimported.contract_created_ts,
+            "timestamp mismatch"
+        );
         assert_eq!(original.tags, reimported.tags, "tags mismatch");
-        assert_eq!(original.custom_properties.len(), reimported.custom_properties.len(), "custom_properties count mismatch");
-        assert_eq!(original.servers.len(), reimported.servers.len(), "servers count mismatch");
-        assert_eq!(original.roles.len(), reimported.roles.len(), "roles count mismatch");
-        assert_eq!(original.service_levels.len(), reimported.service_levels.len(), "service_levels count mismatch");
-        assert_eq!(original.quality.len(), reimported.quality.len(), "quality count mismatch");
-        assert_eq!(original.links.len(), reimported.links.len(), "links count mismatch");
-        assert_eq!(original.authoritative_definitions.len(), reimported.authoritative_definitions.len(), "auth_defs count mismatch");
+        assert_eq!(
+            original.custom_properties.len(),
+            reimported.custom_properties.len(),
+            "custom_properties count mismatch"
+        );
+        assert_eq!(
+            original.servers.len(),
+            reimported.servers.len(),
+            "servers count mismatch"
+        );
+        assert_eq!(
+            original.roles.len(),
+            reimported.roles.len(),
+            "roles count mismatch"
+        );
+        assert_eq!(
+            original.service_levels.len(),
+            reimported.service_levels.len(),
+            "service_levels count mismatch"
+        );
+        assert_eq!(
+            original.quality.len(),
+            reimported.quality.len(),
+            "quality count mismatch"
+        );
+        assert_eq!(
+            original.links.len(),
+            reimported.links.len(),
+            "links count mismatch"
+        );
+        assert_eq!(
+            original.authoritative_definitions.len(),
+            reimported.authoritative_definitions.len(),
+            "auth_defs count mismatch"
+        );
 
         // Deep comparison of schemas
-        assert_eq!(original.schema.len(), reimported.schema.len(), "schema count mismatch");
+        assert_eq!(
+            original.schema.len(),
+            reimported.schema.len(),
+            "schema count mismatch"
+        );
         for (orig, reimp) in original.schema.iter().zip(reimported.schema.iter()) {
             assert_eq!(orig.name, reimp.name, "schema name mismatch");
-            assert_eq!(orig.physical_name, reimp.physical_name, "schema physical_name mismatch");
-            assert_eq!(orig.physical_type, reimp.physical_type, "schema physical_type mismatch");
-            assert_eq!(orig.business_name, reimp.business_name, "schema business_name mismatch");
-            assert_eq!(orig.description, reimp.description, "schema description mismatch");
+            assert_eq!(
+                orig.physical_name, reimp.physical_name,
+                "schema physical_name mismatch"
+            );
+            assert_eq!(
+                orig.physical_type, reimp.physical_type,
+                "schema physical_type mismatch"
+            );
+            assert_eq!(
+                orig.business_name, reimp.business_name,
+                "schema business_name mismatch"
+            );
+            assert_eq!(
+                orig.description, reimp.description,
+                "schema description mismatch"
+            );
             assert_eq!(orig.tags, reimp.tags, "schema tags mismatch");
-            assert_eq!(orig.custom_properties.len(), reimp.custom_properties.len(), "schema custom_properties count mismatch");
-            assert_eq!(orig.properties.len(), reimp.properties.len(), "schema properties count mismatch");
+            assert_eq!(
+                orig.custom_properties.len(),
+                reimp.custom_properties.len(),
+                "schema custom_properties count mismatch"
+            );
+            assert_eq!(
+                orig.properties.len(),
+                reimp.properties.len(),
+                "schema properties count mismatch"
+            );
 
             // Deep comparison of properties
             for (orig_prop, reimp_prop) in orig.properties.iter().zip(reimp.properties.iter()) {
                 assert_eq!(orig_prop.name, reimp_prop.name, "property name mismatch");
-                assert_eq!(orig_prop.logical_type, reimp_prop.logical_type, "property logical_type mismatch");
-                assert_eq!(orig_prop.physical_type, reimp_prop.physical_type, "property physical_type mismatch");
-                assert_eq!(orig_prop.required, reimp_prop.required, "property required mismatch");
-                assert_eq!(orig_prop.primary_key, reimp_prop.primary_key, "property primary_key mismatch");
+                assert_eq!(
+                    orig_prop.logical_type, reimp_prop.logical_type,
+                    "property logical_type mismatch"
+                );
+                assert_eq!(
+                    orig_prop.physical_type, reimp_prop.physical_type,
+                    "property physical_type mismatch"
+                );
+                assert_eq!(
+                    orig_prop.required, reimp_prop.required,
+                    "property required mismatch"
+                );
+                assert_eq!(
+                    orig_prop.primary_key, reimp_prop.primary_key,
+                    "property primary_key mismatch"
+                );
                 assert_eq!(orig_prop.tags, reimp_prop.tags, "property tags mismatch");
-                assert_eq!(orig_prop.custom_properties.len(), reimp_prop.custom_properties.len(), "property custom_properties count mismatch");
+                assert_eq!(
+                    orig_prop.custom_properties.len(),
+                    reimp_prop.custom_properties.len(),
+                    "property custom_properties count mismatch"
+                );
             }
         }
     }
@@ -1264,37 +1367,36 @@ mod builder_api_tests {
 
     #[test]
     fn test_build_and_export_contract() {
-        let contract = ODCSContract::new_with_id(
-            "test-uuid-123",
-            "builder-test-contract",
-            "1.0.0",
-        )
-        .with_status("draft")
-        .with_domain("test-domain")
-        .with_description("Built via builder API")
-        .with_tag("test")
-        .with_custom_property(CustomProperty::string("source", "builder"))
-        .with_schema(
-            SchemaObject::new("test_table")
-                .with_physical_type("table")
-                .with_description("Test table")
-                .with_tag("test-schema")
-                .with_custom_property(CustomProperty::string("schemaSource", "builder"))
-                .with_properties(vec![
-                    Property::new("id", "integer")
-                        .with_primary_key(true)
-                        .with_required(true)
-                        .with_description("Primary key"),
-                    Property::new("name", "string")
-                        .with_required(true)
-                        .with_physical_type("VARCHAR(100)")
-                        .with_custom_property(CustomProperty::string("columnSource", "builder")),
-                    Property::new("address", "object").with_nested_properties(vec![
-                        Property::new("city", "string").with_required(true),
-                        Property::new("zip", "string"),
+        let contract = ODCSContract::new_with_id("test-uuid-123", "builder-test-contract", "1.0.0")
+            .with_status("draft")
+            .with_domain("test-domain")
+            .with_description("Built via builder API")
+            .with_tag("test")
+            .with_custom_property(CustomProperty::string("source", "builder"))
+            .with_schema(
+                SchemaObject::new("test_table")
+                    .with_physical_type("table")
+                    .with_description("Test table")
+                    .with_tag("test-schema")
+                    .with_custom_property(CustomProperty::string("schemaSource", "builder"))
+                    .with_properties(vec![
+                        Property::new("id", "integer")
+                            .with_primary_key(true)
+                            .with_required(true)
+                            .with_description("Primary key"),
+                        Property::new("name", "string")
+                            .with_required(true)
+                            .with_physical_type("VARCHAR(100)")
+                            .with_custom_property(CustomProperty::string(
+                                "columnSource",
+                                "builder",
+                            )),
+                        Property::new("address", "object").with_nested_properties(vec![
+                            Property::new("city", "string").with_required(true),
+                            Property::new("zip", "string"),
+                        ]),
                     ]),
-                ]),
-        );
+            );
 
         // Export
         let yaml = ODCSExporter::export_contract(&contract);
@@ -1312,10 +1414,16 @@ mod builder_api_tests {
         assert_eq!(contract.name, reimported.name);
         assert_eq!(contract.status, reimported.status);
         assert_eq!(contract.domain, reimported.domain);
-        assert_eq!(contract.custom_properties.len(), reimported.custom_properties.len());
+        assert_eq!(
+            contract.custom_properties.len(),
+            reimported.custom_properties.len()
+        );
 
         let orig_schema = contract.get_schema("test_table").unwrap();
         let reimp_schema = reimported.get_schema("test_table").unwrap();
-        assert_eq!(orig_schema.custom_properties.len(), reimp_schema.custom_properties.len());
+        assert_eq!(
+            orig_schema.custom_properties.len(),
+            reimp_schema.custom_properties.len()
+        );
     }
 }

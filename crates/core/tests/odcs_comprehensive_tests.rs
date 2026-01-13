@@ -885,20 +885,29 @@ schema:
 
         let table = &result.tables[0];
         assert_eq!(table.status.as_deref(), Some("active"));
-        assert!(!table.custom_properties.is_empty(), "Contract-level customProperties should be preserved");
+        assert!(
+            !table.custom_properties.is_empty(),
+            "Contract-level customProperties should be preserved"
+        );
 
         // Verify specific custom properties
         let has_contract_owner = table.custom_properties.iter().any(|p| {
             p.get("property").and_then(|v| v.as_str()) == Some("contractOwner")
                 && p.get("value").and_then(|v| v.as_str()) == Some("data-team")
         });
-        assert!(has_contract_owner, "contractOwner customProperty should be present");
+        assert!(
+            has_contract_owner,
+            "contractOwner customProperty should be present"
+        );
 
         let has_cost_center = table.custom_properties.iter().any(|p| {
             p.get("property").and_then(|v| v.as_str()) == Some("costCenter")
                 && p.get("value").and_then(|v| v.as_str()) == Some("CC-1234")
         });
-        assert!(has_cost_center, "costCenter customProperty should be present");
+        assert!(
+            has_cost_center,
+            "costCenter customProperty should be present"
+        );
     }
 
     #[test]
@@ -925,19 +934,29 @@ schema:
         assert_eq!(result.tables.len(), 1);
 
         let table = &result.tables[0];
-        assert!(!table.custom_properties.is_empty(), "Schema-level customProperties should be preserved");
+        assert!(
+            !table.custom_properties.is_empty(),
+            "Schema-level customProperties should be preserved"
+        );
 
         // Verify schema-level custom properties
-        let has_display_order = table.custom_properties.iter().any(|p| {
-            p.get("property").and_then(|v| v.as_str()) == Some("displayOrder")
-        });
-        assert!(has_display_order, "displayOrder customProperty should be present at schema level");
+        let has_display_order = table
+            .custom_properties
+            .iter()
+            .any(|p| p.get("property").and_then(|v| v.as_str()) == Some("displayOrder"));
+        assert!(
+            has_display_order,
+            "displayOrder customProperty should be present at schema level"
+        );
 
         let has_table_category = table.custom_properties.iter().any(|p| {
             p.get("property").and_then(|v| v.as_str()) == Some("tableCategory")
                 && p.get("value").and_then(|v| v.as_str()) == Some("transactional")
         });
-        assert!(has_table_category, "tableCategory customProperty should be present at schema level");
+        assert!(
+            has_table_category,
+            "tableCategory customProperty should be present at schema level"
+        );
     }
 
     #[test]
@@ -967,15 +986,27 @@ schema:
         assert_eq!(table.columns.len(), 1);
 
         let column = &table.columns[0];
-        assert!(!column.custom_properties.is_empty(), "Column-level customProperties should be preserved");
+        assert!(
+            !column.custom_properties.is_empty(),
+            "Column-level customProperties should be preserved"
+        );
 
         // Verify column-level custom properties
-        assert!(column.custom_properties.contains_key("uiOrder"), "uiOrder customProperty should be present");
-        assert!(column.custom_properties.contains_key("foreignKeyRef"), "foreignKeyRef customProperty should be present");
+        assert!(
+            column.custom_properties.contains_key("uiOrder"),
+            "uiOrder customProperty should be present"
+        );
+        assert!(
+            column.custom_properties.contains_key("foreignKeyRef"),
+            "foreignKeyRef customProperty should be present"
+        );
 
         // Check values
         assert_eq!(
-            column.custom_properties.get("foreignKeyRef").and_then(|v| v.as_str()),
+            column
+                .custom_properties
+                .get("foreignKeyRef")
+                .and_then(|v| v.as_str()),
             Some("accounts.id"),
             "foreignKeyRef value should be 'accounts.id'"
         );
@@ -1024,32 +1055,64 @@ schema:
         let table = &result.tables[0];
 
         // Contract-level status
-        assert_eq!(table.status.as_deref(), Some("draft"), "Contract status should be 'draft'");
+        assert_eq!(
+            table.status.as_deref(),
+            Some("draft"),
+            "Contract status should be 'draft'"
+        );
 
         // Contract + schema level customProperties should be merged
-        assert!(table.custom_properties.len() >= 2, "Should have at least contract + schema customProperties");
+        assert!(
+            table.custom_properties.len() >= 2,
+            "Should have at least contract + schema customProperties"
+        );
 
         // Contract-level property
-        let has_contract_owner = table.custom_properties.iter().any(|p| {
-            p.get("property").and_then(|v| v.as_str()) == Some("contractOwner")
-        });
-        assert!(has_contract_owner, "Contract-level contractOwner should be present");
+        let has_contract_owner = table
+            .custom_properties
+            .iter()
+            .any(|p| p.get("property").and_then(|v| v.as_str()) == Some("contractOwner"));
+        assert!(
+            has_contract_owner,
+            "Contract-level contractOwner should be present"
+        );
 
         // Schema-level property
-        let has_schema_owner = table.custom_properties.iter().any(|p| {
-            p.get("property").and_then(|v| v.as_str()) == Some("schemaOwner")
-        });
-        assert!(has_schema_owner, "Schema-level schemaOwner should be present");
+        let has_schema_owner = table
+            .custom_properties
+            .iter()
+            .any(|p| p.get("property").and_then(|v| v.as_str()) == Some("schemaOwner"));
+        assert!(
+            has_schema_owner,
+            "Schema-level schemaOwner should be present"
+        );
 
         // Column-level properties
         assert_eq!(table.columns.len(), 2);
 
-        let txn_col = table.columns.iter().find(|c| c.name == "txn_id").expect("txn_id column should exist");
-        assert!(txn_col.custom_properties.contains_key("columnOrder"), "txn_id should have columnOrder");
-        assert!(txn_col.custom_properties.contains_key("isSensitive"), "txn_id should have isSensitive");
+        let txn_col = table
+            .columns
+            .iter()
+            .find(|c| c.name == "txn_id")
+            .expect("txn_id column should exist");
+        assert!(
+            txn_col.custom_properties.contains_key("columnOrder"),
+            "txn_id should have columnOrder"
+        );
+        assert!(
+            txn_col.custom_properties.contains_key("isSensitive"),
+            "txn_id should have isSensitive"
+        );
 
-        let amount_col = table.columns.iter().find(|c| c.name == "amount").expect("amount column should exist");
-        assert!(amount_col.custom_properties.contains_key("precision"), "amount should have precision");
+        let amount_col = table
+            .columns
+            .iter()
+            .find(|c| c.name == "amount")
+            .expect("amount column should exist");
+        assert!(
+            amount_col.custom_properties.contains_key("precision"),
+            "amount should have precision"
+        );
     }
 
     #[test]
@@ -1084,31 +1147,56 @@ schema:
         assert_eq!(result.tables.len(), 2, "Should have 2 tables");
 
         // Table A should have globalProp + tableAProp
-        let table_a = result.tables.iter().find(|t| t.name.as_deref() == Some("table_a")).expect("table_a should exist");
-        let has_global_prop_a = table_a.custom_properties.iter().any(|p| {
-            p.get("property").and_then(|v| v.as_str()) == Some("globalProp")
-        });
-        let has_table_a_prop = table_a.custom_properties.iter().any(|p| {
-            p.get("property").and_then(|v| v.as_str()) == Some("tableAProp")
-        });
-        assert!(has_global_prop_a, "table_a should have globalProp from contract level");
-        assert!(has_table_a_prop, "table_a should have tableAProp from schema level");
+        let table_a = result
+            .tables
+            .iter()
+            .find(|t| t.name.as_deref() == Some("table_a"))
+            .expect("table_a should exist");
+        let has_global_prop_a = table_a
+            .custom_properties
+            .iter()
+            .any(|p| p.get("property").and_then(|v| v.as_str()) == Some("globalProp"));
+        let has_table_a_prop = table_a
+            .custom_properties
+            .iter()
+            .any(|p| p.get("property").and_then(|v| v.as_str()) == Some("tableAProp"));
+        assert!(
+            has_global_prop_a,
+            "table_a should have globalProp from contract level"
+        );
+        assert!(
+            has_table_a_prop,
+            "table_a should have tableAProp from schema level"
+        );
 
         // Table B should have globalProp + tableBProp
-        let table_b = result.tables.iter().find(|t| t.name.as_deref() == Some("table_b")).expect("table_b should exist");
-        let has_global_prop_b = table_b.custom_properties.iter().any(|p| {
-            p.get("property").and_then(|v| v.as_str()) == Some("globalProp")
-        });
-        let has_table_b_prop = table_b.custom_properties.iter().any(|p| {
-            p.get("property").and_then(|v| v.as_str()) == Some("tableBProp")
-        });
-        assert!(has_global_prop_b, "table_b should have globalProp from contract level");
-        assert!(has_table_b_prop, "table_b should have tableBProp from schema level");
+        let table_b = result
+            .tables
+            .iter()
+            .find(|t| t.name.as_deref() == Some("table_b"))
+            .expect("table_b should exist");
+        let has_global_prop_b = table_b
+            .custom_properties
+            .iter()
+            .any(|p| p.get("property").and_then(|v| v.as_str()) == Some("globalProp"));
+        let has_table_b_prop = table_b
+            .custom_properties
+            .iter()
+            .any(|p| p.get("property").and_then(|v| v.as_str()) == Some("tableBProp"));
+        assert!(
+            has_global_prop_b,
+            "table_b should have globalProp from contract level"
+        );
+        assert!(
+            has_table_b_prop,
+            "table_b should have tableBProp from schema level"
+        );
 
         // table_a should NOT have tableBProp
-        let has_wrong_prop = table_a.custom_properties.iter().any(|p| {
-            p.get("property").and_then(|v| v.as_str()) == Some("tableBProp")
-        });
+        let has_wrong_prop = table_a
+            .custom_properties
+            .iter()
+            .any(|p| p.get("property").and_then(|v| v.as_str()) == Some("tableBProp"));
         assert!(!has_wrong_prop, "table_a should NOT have tableBProp");
     }
 }
