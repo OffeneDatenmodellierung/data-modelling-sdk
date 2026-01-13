@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-01-13
+
+### Fixed
+
+- **fix(odcs)**: Preserve customProperties at schema and column levels (#60)
+  - Added schema-level `customProperties` extraction in `parse_odcl_v3_all()`
+  - Updated `table_to_table_data()` to merge contract-level and schema-level customProperties
+  - Custom properties are now preserved at all three ODCS levels: contract, schema, and column
+
+### Added
+
+- **test(odcs)**: Comprehensive E2E round-trip tests for ODCS v3.1.0
+  - 51 tests covering all ODCS v3.1.0 specification fields
+  - Tests for contract-level, schema-level, and property-level fields
+  - Round-trip preservation tests via `import_contract`/`export_contract` v2 API
+  - Builder API tests for programmatic contract construction
+
 ## [2.0.4] - 2026-01-13
 
 ### Added

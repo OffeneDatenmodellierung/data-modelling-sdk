@@ -5,7 +5,7 @@ members = ["crates/core", "crates/odm", "crates/wasm"]
 # Root package for backward compatibility - re-exports data-modelling-core
 [package]
 name = "data-modelling-sdk"
-version = "2.0.4"
+version = "2.0.5"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"
@@ -18,7 +18,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 # Re-export core library
-data-modelling-core = { path = "crates/core", version = "2.0.4" }
+data-modelling-core = { path = "crates/core", version = "2.0.5" }
 
 [features]
 default = ["api-backend"]
