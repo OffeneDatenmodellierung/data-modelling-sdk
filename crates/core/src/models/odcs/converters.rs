@@ -84,10 +84,7 @@ fn enum_values_to_quality_rule(enum_values: &[String]) -> QualityRule {
         rule_type: Some("sql".to_string()),
         query: Some(query),
         must_be: Some(serde_json::json!(0)),
-        description: Some(format!(
-            "Value must be one of: {}",
-            enum_values.join(", ")
-        )),
+        description: Some(format!("Value must be one of: {}", enum_values.join(", "))),
         ..Default::default()
     }
 }
@@ -433,9 +430,7 @@ fn parse_struct_fields_from_data_type(data_type: &str) -> Vec<Property> {
     };
 
     // Try to parse STRUCT type to get nested columns
-    if let Ok(nested_cols) =
-        importer.parse_struct_type_from_string("", struct_type, &field_data)
-    {
+    if let Ok(nested_cols) = importer.parse_struct_type_from_string("", struct_type, &field_data) {
         nested_cols
             .iter()
             .filter_map(|col| {
@@ -975,7 +970,11 @@ impl ODCSContract {
         // Infrastructure
         if let Some(infrastructure) = table.odcl_metadata.get("infrastructure") {
             // Store as custom property since ODCSContract doesn't have infrastructure field
-            if contract.custom_properties.iter().all(|cp| cp.property != "infrastructure") {
+            if contract
+                .custom_properties
+                .iter()
+                .all(|cp| cp.property != "infrastructure")
+            {
                 contract.custom_properties.push(CustomProperty::new(
                     "infrastructure".to_string(),
                     infrastructure.clone(),
@@ -1298,7 +1297,10 @@ mod tests {
 
         // Should have a quality rule for enum validation
         assert!(!prop.quality.is_empty());
-        let enum_rule = prop.quality.iter().find(|q| q.rule_type == Some("sql".to_string()));
+        let enum_rule = prop
+            .quality
+            .iter()
+            .find(|q| q.rule_type == Some("sql".to_string()));
         assert!(enum_rule.is_some());
         let rule = enum_rule.unwrap();
         assert!(rule.query.as_ref().unwrap().contains("NOT IN"));
@@ -1424,7 +1426,10 @@ mod tests {
             "orders".to_string(),
             vec![
                 Column::new("id".to_string(), "BIGINT".to_string()),
-                Column::new("items".to_string(), "ARRAY<STRUCT<name STRING, qty INT>>".to_string()),
+                Column::new(
+                    "items".to_string(),
+                    "ARRAY<STRUCT<name STRING, qty INT>>".to_string(),
+                ),
                 Column::new("items.[].name".to_string(), "STRING".to_string()),
                 Column::new("items.[].qty".to_string(), "INT".to_string()),
             ],
@@ -1457,7 +1462,10 @@ mod tests {
             "users".to_string(),
             vec![
                 Column::new("id".to_string(), "BIGINT".to_string()),
-                Column::new("address".to_string(), "STRUCT<street STRING, city STRING>".to_string()),
+                Column::new(
+                    "address".to_string(),
+                    "STRUCT<street STRING, city STRING>".to_string(),
+                ),
                 Column::new("address.street".to_string(), "STRING".to_string()),
                 Column::new("address.city".to_string(), "STRING".to_string()),
             ],

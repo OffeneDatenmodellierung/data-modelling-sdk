@@ -91,7 +91,11 @@ pub struct ODPSInputPort {
     /// Contract ID (links to ODCS Table)
     pub contract_id: String,
     /// Tags
-    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_tags")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "deserialize_tags"
+    )]
     pub tags: Vec<Tag>,
     /// Custom properties
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -146,7 +150,11 @@ pub struct ODPSOutputPort {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_contracts: Option<Vec<ODPSInputContract>>,
     /// Tags
-    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_tags")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "deserialize_tags"
+    )]
     pub tags: Vec<Tag>,
     /// Custom properties
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -177,7 +185,11 @@ pub struct ODPSManagementPort {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// Tags
-    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_tags")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "deserialize_tags"
+    )]
     pub tags: Vec<Tag>,
     /// Custom properties
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -208,7 +220,11 @@ pub struct ODPSSupport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub invitation_url: Option<String>,
     /// Tags
-    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_tags")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "deserialize_tags"
+    )]
     pub tags: Vec<Tag>,
     /// Custom properties
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -243,7 +259,11 @@ pub struct ODPSTeamMember {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replaced_by_username: Option<String>,
     /// Tags
-    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_tags")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "deserialize_tags"
+    )]
     pub tags: Vec<Tag>,
     /// Custom properties
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -267,7 +287,11 @@ pub struct ODPSTeam {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<ODPSTeamMember>>,
     /// Tags
-    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_tags")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "deserialize_tags"
+    )]
     pub tags: Vec<Tag>,
     /// Custom properties
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -311,7 +335,11 @@ pub struct ODPSDataProduct {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_properties: Option<Vec<ODPSCustomProperty>>,
     /// Tags
-    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_tags")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "deserialize_tags"
+    )]
     pub tags: Vec<Tag>,
     /// Input ports
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -934,10 +934,8 @@ impl PdfExporter {
                 if !col.quality.is_empty() {
                     md.push_str("**Quality Rules:**\n");
                     for rule in &col.quality {
-                        let rule_parts: Vec<String> = rule
-                            .iter()
-                            .map(|(k, v)| format!("{}: {}", k, v))
-                            .collect();
+                        let rule_parts: Vec<String> =
+                            rule.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
                         md.push_str(&format!("- {}\n", rule_parts.join(", ")));
                     }
                     md.push('\n');
