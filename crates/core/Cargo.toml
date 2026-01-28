@@ -1,6 +1,6 @@
 [package]
 name = "data-modelling-core"
-version = "2.0.8"
+version = "2.0.9"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"

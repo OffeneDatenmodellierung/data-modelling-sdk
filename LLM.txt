@@ -7,7 +7,7 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/OffeneDatenmodellierung/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 2.0.4
+**Version**: 2.0.9
 
 ## Architecture
 
@@ -974,11 +974,12 @@ Domain directories may also contain:
 3. **Async/Await**: Uses async traits for storage operations to support both native and WASM
 4. **Error Handling**: Uses `anyhow::Result` for convenience, `thiserror` for structured errors
 5. **UUID Strategy**: Uses UUIDv5 (deterministic) for model/table IDs to avoid random number generation requirements
-6. **ODCS Primary Format**: ODCS v3.1.0 is the primary format, with legacy ODCL support for backward compatibility
-7. **Domain-Based Organization**: Files are organized by business domain, with each domain containing its definition and associated ODCS/ODPS/CADS files
-8. **Schema Reference**: JSON Schema definitions for all supported formats are maintained in `schemas/` directory for validation and reference
-9. **camelCase Serialization**: All models use `#[serde(rename_all = "camelCase")]` for consistent JSON/YAML serialization matching ODCS conventions
-10. **Crow's Feet Notation**: Relationships support standard crow's feet notation with EndpointCardinality (zeroOrOne, exactlyOne, zeroOrMany, oneOrMany) and FlowDirection (sourceToTarget, targetToSource, bidirectional)
+6. **Stable YAML Export Ordering**: Uses struct-based serialization with `#[serde(rename_all = "camelCase")]` instead of `serde_yaml::Mapping` to ensure consistent key ordering in YAML output, eliminating git diff noise from alphabetical key sorting
+7. **ODCS Primary Format**: ODCS v3.1.0 is the primary format, with legacy ODCL support for backward compatibility
+8. **Domain-Based Organization**: Files are organized by business domain, with each domain containing its definition and associated ODCS/ODPS/CADS files
+9. **Schema Reference**: JSON Schema definitions for all supported formats are maintained in `schemas/` directory for validation and reference
+10. **camelCase Serialization**: All models use `#[serde(rename_all = "camelCase")]` for consistent JSON/YAML serialization matching ODCS conventions
+11. **Crow's Feet Notation**: Relationships support standard crow's feet notation with EndpointCardinality (zeroOrOne, exactlyOne, zeroOrMany, oneOrMany) and FlowDirection (sourceToTarget, targetToSource, bidirectional)
 
 ## Common Patterns
 

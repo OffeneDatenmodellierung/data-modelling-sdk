@@ -8,6 +8,11 @@ use super::supporting::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Helper function to skip serializing false boolean values
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 /// Property - one column in a schema object (ODCS v3.1.0)
 ///
 /// Properties represent individual fields in a schema. They support nested
@@ -67,27 +72,27 @@ pub struct Property {
 
     // === Key Constraints ===
     /// Whether the property is required (inverse of nullable)
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub required: bool,
     /// Whether this property is part of the primary key
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub primary_key: bool,
     /// Position in composite primary key, 1-based
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primary_key_position: Option<i32>,
     /// Whether the property contains unique values
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub unique: bool,
 
     // === Partitioning & Clustering ===
     /// Whether the property is used for partitioning
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub partitioned: bool,
     /// Position in partition key, 1-based
     #[serde(skip_serializing_if = "Option::is_none")]
     pub partition_key_position: Option<i32>,
     /// Whether the property is used for clustering
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub clustered: bool,
 
     // === Data Classification & Security ===
@@ -95,7 +100,7 @@ pub struct Property {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub classification: Option<String>,
     /// Whether this is a critical data element
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub critical_data_element: bool,
     /// Name of the encrypted version of this property
     #[serde(skip_serializing_if = "Option::is_none")]

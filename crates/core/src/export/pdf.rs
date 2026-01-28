@@ -716,6 +716,22 @@ impl PdfExporter {
                     || c.partitioned
                     || c.classification.is_some()
                     || c.critical_data_element
+                    || c.logical_type_options.is_some()
+                    || !c.transform_source_objects.is_empty()
+                    || c.transform_logic.is_some()
+                    || c.transform_description.is_some()
+                    || !c.relationships.is_empty()
+                    || c.foreign_key.is_some()
+                    || !c.authoritative_definitions.is_empty()
+                    || !c.quality.is_empty()
+                    || !c.tags.is_empty()
+                    || c.secondary_key
+                    || c.composite_key.is_some()
+                    || c.primary_key_position.is_some()
+                    || c.partition_key_position.is_some()
+                    || !c.constraints.is_empty()
+                    || c.encrypted_name.is_some()
+                    || c.physical_name.is_some()
             })
             .collect();
 
@@ -739,27 +755,111 @@ impl PdfExporter {
                     md.push_str(&format!("**Physical Type:** {}\n\n", phys));
                 }
 
-                // Constraints
-                let mut constraints = Vec::new();
-                if col.unique {
-                    constraints.push("Unique");
+                // Physical name if different from column name
+                if let Some(phys_name) = &col.physical_name
+                    && phys_name != &col.name
+                {
+                    md.push_str(&format!("**Physical Name:** {}\n\n", phys_name));
                 }
+
+                // Key information
+                if col.primary_key {
+                    if let Some(pos) = col.primary_key_position {
+                        md.push_str(&format!("**Primary Key Position:** {}\n\n", pos));
+                    }
+                }
+
+                if col.secondary_key {
+                    md.push_str("**Secondary Key:** Yes\n\n");
+                }
+
+                if let Some(composite) = &col.composite_key {
+                    md.push_str(&format!("**Composite Key:** {}\n\n", composite));
+                }
+
+                // Partitioning
                 if col.partitioned {
-                    constraints.push("Partitioned");
+                    if let Some(pos) = col.partition_key_position {
+                        md.push_str(&format!("**Partition Key Position:** {}\n\n", pos));
+                    }
+                }
+
+                // Constraints
+                let mut constraint_flags = Vec::new();
+                if col.unique {
+                    constraint_flags.push("Unique");
+                }
+                if col.partitioned && col.partition_key_position.is_none() {
+                    constraint_flags.push("Partitioned");
                 }
                 if col.clustered {
-                    constraints.push("Clustered");
+                    constraint_flags.push("Clustered");
                 }
                 if col.critical_data_element {
-                    constraints.push("Critical Data Element");
+                    constraint_flags.push("Critical Data Element");
                 }
-                if !constraints.is_empty() {
-                    md.push_str(&format!("**Constraints:** {}\n\n", constraints.join(", ")));
+                if !constraint_flags.is_empty() {
+                    md.push_str(&format!(
+                        "**Constraints:** {}\n\n",
+                        constraint_flags.join(", ")
+                    ));
+                }
+
+                // Additional constraints (CHECK, etc.)
+                if !col.constraints.is_empty() {
+                    md.push_str("**Additional Constraints:**\n");
+                    for constraint in &col.constraints {
+                        md.push_str(&format!("- {}\n", constraint));
+                    }
+                    md.push('\n');
                 }
 
                 // Classification
                 if let Some(class) = &col.classification {
                     md.push_str(&format!("**Classification:** {}\n\n", class));
+                }
+
+                // Encrypted name
+                if let Some(enc_name) = &col.encrypted_name {
+                    md.push_str(&format!("**Encrypted Name:** {}\n\n", enc_name));
+                }
+
+                // Logical Type Options
+                if let Some(opts) = &col.logical_type_options
+                    && !opts.is_empty()
+                {
+                    md.push_str("**Type Options:**\n");
+                    if let Some(min_len) = opts.min_length {
+                        md.push_str(&format!("- Min Length: {}\n", min_len));
+                    }
+                    if let Some(max_len) = opts.max_length {
+                        md.push_str(&format!("- Max Length: {}\n", max_len));
+                    }
+                    if let Some(pattern) = &opts.pattern {
+                        md.push_str(&format!("- Pattern: `{}`\n", pattern));
+                    }
+                    if let Some(format) = &opts.format {
+                        md.push_str(&format!("- Format: {}\n", format));
+                    }
+                    if let Some(min) = &opts.minimum {
+                        md.push_str(&format!("- Minimum: {}\n", min));
+                    }
+                    if let Some(max) = &opts.maximum {
+                        md.push_str(&format!("- Maximum: {}\n", max));
+                    }
+                    if let Some(exc_min) = &opts.exclusive_minimum {
+                        md.push_str(&format!("- Exclusive Minimum: {}\n", exc_min));
+                    }
+                    if let Some(exc_max) = &opts.exclusive_maximum {
+                        md.push_str(&format!("- Exclusive Maximum: {}\n", exc_max));
+                    }
+                    if let Some(prec) = opts.precision {
+                        md.push_str(&format!("- Precision: {}\n", prec));
+                    }
+                    if let Some(scale) = opts.scale {
+                        md.push_str(&format!("- Scale: {}\n", scale));
+                    }
+                    md.push('\n');
                 }
 
                 // Enum values
@@ -781,6 +881,73 @@ impl PdfExporter {
                 // Default value
                 if let Some(default) = &col.default_value {
                     md.push_str(&format!("**Default:** {}\n\n", default));
+                }
+
+                // Transformation Metadata
+                if !col.transform_source_objects.is_empty()
+                    || col.transform_logic.is_some()
+                    || col.transform_description.is_some()
+                {
+                    md.push_str("**Transformation:**\n");
+                    if !col.transform_source_objects.is_empty() {
+                        md.push_str(&format!(
+                            "- Source Objects: {}\n",
+                            col.transform_source_objects.join(", ")
+                        ));
+                    }
+                    if let Some(logic) = &col.transform_logic {
+                        md.push_str(&format!("- Logic: `{}`\n", logic));
+                    }
+                    if let Some(desc) = &col.transform_description {
+                        md.push_str(&format!("- Description: {}\n", desc));
+                    }
+                    md.push('\n');
+                }
+
+                // Relationships
+                if !col.relationships.is_empty() {
+                    md.push_str("**Relationships:**\n");
+                    for rel in &col.relationships {
+                        md.push_str(&format!("- {} → {}\n", rel.relationship_type, rel.to));
+                    }
+                    md.push('\n');
+                }
+
+                // Foreign Key (legacy)
+                if let Some(fk) = &col.foreign_key {
+                    md.push_str(&format!(
+                        "**Foreign Key:** {}.{}\n\n",
+                        fk.table_id, fk.column_name
+                    ));
+                }
+
+                // Authoritative Definitions
+                if !col.authoritative_definitions.is_empty() {
+                    md.push_str("**Authoritative Definitions:**\n");
+                    for def in &col.authoritative_definitions {
+                        md.push_str(&format!("- {} - {}\n", def.definition_type, def.url));
+                    }
+                    md.push('\n');
+                }
+
+                // Column-level Quality Rules
+                if !col.quality.is_empty() {
+                    md.push_str("**Quality Rules:**\n");
+                    for rule in &col.quality {
+                        let rule_parts: Vec<String> = rule
+                            .iter()
+                            .map(|(k, v)| format!("{}: {}", k, v))
+                            .collect();
+                        md.push_str(&format!("- {}\n", rule_parts.join(", ")));
+                    }
+                    md.push('\n');
+                }
+
+                // Column-level Tags
+                if !col.tags.is_empty() {
+                    let tag_strings: Vec<String> =
+                        col.tags.iter().map(|t| format!("`{}`", t)).collect();
+                    md.push_str(&format!("**Tags:** {}\n\n", tag_strings.join(" ")));
                 }
             }
         }

@@ -9,6 +9,7 @@ use super::schema::SchemaObject;
 use super::supporting::{
     AuthoritativeDefinition as OdcsAuthDef, CustomProperty,
     LogicalTypeOptions as OdcsLogicalTypeOptions, PropertyRelationship as OdcsPropertyRelationship,
+    QualityRule,
 };
 use crate::import::{ColumnData, TableData};
 use crate::models::column::{
@@ -17,6 +18,79 @@ use crate::models::column::{
     PropertyRelationship as ColumnPropertyRelationship,
 };
 use crate::models::table::Table;
+
+// ============================================================================
+// Data Type Mapping
+// ============================================================================
+
+/// Map a SQL/physical data type to an ODCS logical type.
+///
+/// This maps database-specific types to the ODCS v3.1.0 logical types:
+/// - "string", "integer", "number", "boolean", "date", "timestamp", "time", "object", "array"
+///
+/// Returns (logical_type, is_array)
+pub fn map_data_type_to_logical_type(data_type: &str) -> (String, bool) {
+    let upper = data_type.to_uppercase();
+
+    // Check for complex types first (before checking for subtypes like INT in STRUCT<...>)
+    if upper.starts_with("ARRAY<") {
+        return ("array".to_string(), true);
+    }
+    if upper == "STRUCT" || upper == "OBJECT" || upper.starts_with("STRUCT<") {
+        return ("object".to_string(), false);
+    }
+
+    // Map to ODCS logical types
+    if upper.contains("INT") || upper == "BIGINT" || upper == "SMALLINT" || upper == "TINYINT" {
+        ("integer".to_string(), false)
+    } else if upper.contains("DECIMAL")
+        || upper.contains("DOUBLE")
+        || upper.contains("FLOAT")
+        || upper.contains("NUMERIC")
+        || upper == "NUMBER"
+    {
+        ("number".to_string(), false)
+    } else if upper == "BOOLEAN" || upper == "BOOL" {
+        ("boolean".to_string(), false)
+    } else if upper == "DATE" {
+        ("date".to_string(), false)
+    } else if upper.contains("TIMESTAMP") {
+        ("timestamp".to_string(), false)
+    } else if upper == "TIME" {
+        ("time".to_string(), false)
+    } else {
+        // Default to string for VARCHAR, CHAR, STRING, TEXT, etc.
+        ("string".to_string(), false)
+    }
+}
+
+/// Convert enum values to an ODCS quality rule.
+///
+/// ODCS v3.1.0 doesn't support an 'enum' field in properties, so we convert
+/// enum values to SQL-based quality rules.
+fn enum_values_to_quality_rule(enum_values: &[String]) -> QualityRule {
+    let enum_list: String = enum_values
+        .iter()
+        .map(|e| format!("'{}'", e.replace('\'', "''")))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let query = format!(
+        "SELECT COUNT(*) FROM ${{table}} WHERE ${{column}} NOT IN ({})",
+        enum_list
+    );
+
+    QualityRule {
+        rule_type: Some("sql".to_string()),
+        query: Some(query),
+        must_be: Some(serde_json::json!(0)),
+        description: Some(format!(
+            "Value must be one of: {}",
+            enum_values.join(", ")
+        )),
+        ..Default::default()
+    }
+}
 
 // ============================================================================
 // Property <-> Column Converters
@@ -112,7 +186,34 @@ impl From<&Column> for Property {
     ///
     /// Note: This creates a flat property. To reconstruct nested structure from
     /// dot-notation column names, use `Property::from_flat_paths()`.
+    ///
+    /// This converter:
+    /// - Maps SQL data types to ODCS logical types (e.g., BIGINT → "integer")
+    /// - Sets physical_type from data_type if not already set
+    /// - Converts enum_values to quality rules (ODCS spec requirement)
     fn from(col: &Column) -> Self {
+        // Map data type to ODCS logical type
+        let (logical_type, _is_array) = map_data_type_to_logical_type(&col.data_type);
+
+        // Use physical_type if set, otherwise use the original data_type
+        let physical_type = col
+            .physical_type
+            .clone()
+            .or_else(|| Some(col.data_type.clone()));
+
+        // Convert existing quality rules
+        let mut quality: Vec<QualityRule> = col
+            .quality
+            .iter()
+            .filter_map(|q| serde_json::to_value(q).ok())
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect();
+
+        // Convert enum_values to a quality rule (ODCS v3.1.0 doesn't support enum field)
+        if !col.enum_values.is_empty() {
+            quality.push(enum_values_to_quality_rule(&col.enum_values));
+        }
+
         Property {
             id: col.id.clone(),
             name: col.name.clone(),
@@ -122,8 +223,8 @@ impl From<&Column> for Property {
             } else {
                 Some(col.description.clone())
             },
-            logical_type: col.data_type.clone(),
-            physical_type: col.physical_type.clone(),
+            logical_type,
+            physical_type,
             physical_name: col.physical_name.clone(),
             logical_type_options: col.logical_type_options.as_ref().map(|opts| {
                 OdcsLogicalTypeOptions {
@@ -170,12 +271,7 @@ impl From<&Column> for Property {
                     url: d.url.clone(),
                 })
                 .collect(),
-            quality: col
-                .quality
-                .iter()
-                .filter_map(|q| serde_json::to_value(q).ok())
-                .filter_map(|v| serde_json::from_value(v).ok())
-                .collect(),
+            quality,
             enum_values: col.enum_values.clone(),
             tags: col.tags.clone(),
             custom_properties: col
@@ -317,10 +413,146 @@ fn flatten_properties_to_columns(properties: &[Property], prefix: &str) -> Vec<C
     columns
 }
 
+/// Parse STRUCT fields from a data_type string like "STRUCT<name STRING, status STRING>"
+/// Returns a vector of Property objects for the nested fields.
+fn parse_struct_fields_from_data_type(data_type: &str) -> Vec<Property> {
+    use crate::import::odcs::ODCSImporter;
+
+    let importer = ODCSImporter::new();
+    let field_data = serde_json::Map::new();
+
+    // Extract STRUCT definition - handle both STRUCT<...> and ARRAY<STRUCT<...>>
+    let struct_type = if data_type.to_uppercase().starts_with("ARRAY<STRUCT<") {
+        if let Some(start) = data_type.find("STRUCT<") {
+            &data_type[start..]
+        } else {
+            data_type
+        }
+    } else {
+        data_type
+    };
+
+    // Try to parse STRUCT type to get nested columns
+    if let Ok(nested_cols) =
+        importer.parse_struct_type_from_string("", struct_type, &field_data)
+    {
+        nested_cols
+            .iter()
+            .filter_map(|col| {
+                // Extract just the field name (remove any prefix like ".[].field" -> "field")
+                let field_name = col
+                    .name
+                    .strip_prefix(".[].")
+                    .or_else(|| col.name.strip_prefix("."))
+                    .unwrap_or(&col.name);
+
+                if field_name.is_empty() {
+                    return None;
+                }
+
+                let (logical_type, _) = map_data_type_to_logical_type(&col.data_type);
+                Some(Property {
+                    name: field_name.to_string(),
+                    logical_type,
+                    physical_type: Some(col.data_type.clone()),
+                    ..Default::default()
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Fix logical types for parent properties based on their original column data types.
+///
+/// When columns with ARRAY<STRUCT<...>> or STRUCT<...> types are flattened to dot-notation,
+/// the parent property may lose its original type information. This function restores it
+/// by looking up the original column's data_type.
+///
+/// It also expands STRUCT definitions from data_type strings when there are no existing
+/// nested properties (i.e., when the STRUCT definition is embedded in the data_type).
+fn fix_parent_logical_types(properties: &mut [Property], table: &Table) {
+    for prop in properties.iter_mut() {
+        // Find the original column for this property
+        if let Some(col) = table.columns.iter().find(|c| c.name == prop.name) {
+            let data_type_upper = col.data_type.to_uppercase();
+
+            // Check if this is an ARRAY type
+            if data_type_upper.starts_with("ARRAY<") {
+                prop.logical_type = "array".to_string();
+
+                // If it has nested properties but no items, wrap them in items
+                if !prop.properties.is_empty() && prop.items.is_none() {
+                    let items_prop = Property {
+                        name: String::new(),
+                        logical_type: "object".to_string(),
+                        properties: std::mem::take(&mut prop.properties),
+                        ..Default::default()
+                    };
+                    prop.items = Some(Box::new(items_prop));
+                }
+                // If no nested properties but ARRAY<STRUCT<...>>, parse from data_type
+                else if prop.properties.is_empty()
+                    && prop.items.is_none()
+                    && data_type_upper.contains("STRUCT<")
+                {
+                    let nested_props = parse_struct_fields_from_data_type(&col.data_type);
+                    if !nested_props.is_empty() {
+                        let items_prop = Property {
+                            name: String::new(),
+                            logical_type: "object".to_string(),
+                            properties: nested_props,
+                            ..Default::default()
+                        };
+                        prop.items = Some(Box::new(items_prop));
+                    }
+                }
+            }
+            // Check if this is a STRUCT/OBJECT type
+            else if data_type_upper.starts_with("STRUCT<")
+                || data_type_upper == "STRUCT"
+                || data_type_upper == "OBJECT"
+            {
+                prop.logical_type = "object".to_string();
+
+                // If no nested properties, parse from data_type string
+                if prop.properties.is_empty() && data_type_upper.starts_with("STRUCT<") {
+                    prop.properties = parse_struct_fields_from_data_type(&col.data_type);
+                }
+            }
+        }
+
+        // Recursively fix nested properties
+        if !prop.properties.is_empty() {
+            fix_parent_logical_types(&mut prop.properties, table);
+        }
+
+        // Also fix items if present
+        if let Some(ref mut items) = prop.items {
+            if !items.properties.is_empty() {
+                // For array items, we need to check columns with the .[] suffix
+                let items_prefix = format!("{}.[]", prop.name);
+                if let Some(items_col) = table.columns.iter().find(|c| c.name == items_prefix) {
+                    let items_type_upper = items_col.data_type.to_uppercase();
+                    if items_type_upper.starts_with("STRUCT<")
+                        || items_type_upper == "STRUCT"
+                        || items_type_upper == "OBJECT"
+                    {
+                        items.logical_type = "object".to_string();
+                    }
+                }
+                fix_parent_logical_types(&mut items.properties, table);
+            }
+        }
+    }
+}
+
 impl From<&Table> for SchemaObject {
     /// Convert a Table to a SchemaObject
     ///
     /// This reconstructs nested property structure from dot-notation column names.
+    /// It also properly handles ARRAY and STRUCT types based on the column's data_type.
     fn from(table: &Table) -> Self {
         // Build flat property list first
         let flat_props: Vec<(String, Property)> = table
@@ -330,7 +562,10 @@ impl From<&Table> for SchemaObject {
             .collect();
 
         // Reconstruct nested structure
-        let properties = Property::from_flat_paths(&flat_props);
+        let mut properties = Property::from_flat_paths(&flat_props);
+
+        // Post-process to fix logical types for parent properties that have nested children
+        fix_parent_logical_types(&mut properties, table);
 
         let mut schema = SchemaObject::new(table.name.clone()).with_properties(properties);
 
@@ -683,6 +918,99 @@ impl ODCSContract {
         contract
     }
 
+    /// Create a contract from a single Table with full metadata preservation.
+    ///
+    /// This is the preferred method for exporting a Table to ODCS format.
+    /// It extracts all contract-level metadata from the table's odcl_metadata
+    /// and creates a properly structured ODCSContract.
+    ///
+    /// Key behaviors:
+    /// - Uses table.id as the contract id
+    /// - Uses table.name as the contract name (if not in metadata)
+    /// - Extracts version, status, domain, etc. from odcl_metadata
+    /// - Handles additional fields like infrastructure, servicelevels, pricing
+    /// - Preserves table tags at the contract level
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use data_modelling_core::models::table::Table;
+    /// use data_modelling_core::models::column::Column;
+    /// use data_modelling_core::models::odcs::ODCSContract;
+    ///
+    /// let mut table = Table::new(
+    ///     "users".to_string(),
+    ///     vec![Column::new("id".to_string(), "BIGINT".to_string())],
+    /// );
+    /// table.odcl_metadata.insert("version".to_string(), serde_json::json!("1.0.0"));
+    /// table.odcl_metadata.insert("status".to_string(), serde_json::json!("active"));
+    ///
+    /// let contract = ODCSContract::from_table(&table);
+    /// assert_eq!(contract.name, "users");
+    /// assert_eq!(contract.version, "1.0.0");
+    /// ```
+    pub fn from_table(table: &Table) -> Self {
+        // Start with from_tables which handles most metadata extraction
+        let mut contract = Self::from_tables(&[table.clone()]);
+
+        // Use table.id as contract id (matches existing export behavior)
+        contract.id = table.id.to_string();
+
+        // Use table.name as contract name if not set from metadata
+        if contract.name.is_empty() {
+            contract.name = table.name.clone();
+        }
+
+        // Set default version if not present
+        if contract.version.is_empty() {
+            contract.version = "1.0.0".to_string();
+        }
+
+        // Set default status if not present (required in ODCS v3.1.0)
+        if contract.status.is_none() {
+            contract.status = Some("draft".to_string());
+        }
+
+        // Extract additional fields that from_tables might not handle
+        // Infrastructure
+        if let Some(infrastructure) = table.odcl_metadata.get("infrastructure") {
+            // Store as custom property since ODCSContract doesn't have infrastructure field
+            if contract.custom_properties.iter().all(|cp| cp.property != "infrastructure") {
+                contract.custom_properties.push(CustomProperty::new(
+                    "infrastructure".to_string(),
+                    infrastructure.clone(),
+                ));
+            }
+        }
+
+        // Servicelevels (note: ODCS uses "servicelevels" key in YAML but "service_levels" in struct)
+        if let Some(servicelevels) = table.odcl_metadata.get("servicelevels") {
+            if contract.service_levels.is_empty() {
+                contract.service_levels =
+                    serde_json::from_value(servicelevels.clone()).unwrap_or_default();
+            }
+        }
+
+        // Pricing -> price (ODCS uses "price" field)
+        if let Some(pricing) = table.odcl_metadata.get("pricing") {
+            if contract.price.is_none() {
+                contract.price = serde_json::from_value(pricing.clone()).ok();
+            }
+        }
+
+        // Use table tags if contract tags are empty
+        if contract.tags.is_empty() && !table.tags.is_empty() {
+            contract.tags = table.tags.iter().map(|t| t.to_string()).collect();
+        }
+
+        // Set contract created timestamp if not present
+        if contract.contract_created_ts.is_none() {
+            contract.contract_created_ts = Some(table.created_at.to_rfc3339());
+        }
+
+        contract
+    }
+
     /// Convert contract to TableData for API responses
     pub fn to_table_data(&self) -> Vec<TableData> {
         self.schema
@@ -888,6 +1216,96 @@ mod tests {
     }
 
     #[test]
+    fn test_data_type_mapping() {
+        // Test integer types
+        assert_eq!(
+            map_data_type_to_logical_type("BIGINT"),
+            ("integer".to_string(), false)
+        );
+        assert_eq!(
+            map_data_type_to_logical_type("INT"),
+            ("integer".to_string(), false)
+        );
+
+        // Test number types
+        assert_eq!(
+            map_data_type_to_logical_type("DECIMAL(10,2)"),
+            ("number".to_string(), false)
+        );
+        assert_eq!(
+            map_data_type_to_logical_type("DOUBLE"),
+            ("number".to_string(), false)
+        );
+
+        // Test boolean
+        assert_eq!(
+            map_data_type_to_logical_type("BOOLEAN"),
+            ("boolean".to_string(), false)
+        );
+
+        // Test date/time types
+        assert_eq!(
+            map_data_type_to_logical_type("DATE"),
+            ("date".to_string(), false)
+        );
+        assert_eq!(
+            map_data_type_to_logical_type("TIMESTAMP"),
+            ("timestamp".to_string(), false)
+        );
+
+        // Test array types
+        assert_eq!(
+            map_data_type_to_logical_type("ARRAY<STRING>"),
+            ("array".to_string(), true)
+        );
+
+        // Test object types
+        assert_eq!(
+            map_data_type_to_logical_type("STRUCT<name STRING, age INT>"),
+            ("object".to_string(), false)
+        );
+
+        // Test string default
+        assert_eq!(
+            map_data_type_to_logical_type("VARCHAR(255)"),
+            ("string".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn test_column_to_property_with_data_type_mapping() {
+        let mut col = Column::new("age".to_string(), "BIGINT".to_string());
+        col.nullable = false;
+
+        let prop = Property::from(&col);
+        assert_eq!(prop.name, "age");
+        assert_eq!(prop.logical_type, "integer"); // Mapped from BIGINT
+        assert_eq!(prop.physical_type, Some("BIGINT".to_string())); // Original type preserved
+        assert!(prop.required);
+    }
+
+    #[test]
+    fn test_enum_values_to_quality_rule() {
+        let mut col = Column::new("status".to_string(), "VARCHAR(20)".to_string());
+        col.enum_values = vec![
+            "active".to_string(),
+            "inactive".to_string(),
+            "pending".to_string(),
+        ];
+
+        let prop = Property::from(&col);
+        assert_eq!(prop.logical_type, "string");
+
+        // Should have a quality rule for enum validation
+        assert!(!prop.quality.is_empty());
+        let enum_rule = prop.quality.iter().find(|q| q.rule_type == Some("sql".to_string()));
+        assert!(enum_rule.is_some());
+        let rule = enum_rule.unwrap();
+        assert!(rule.query.as_ref().unwrap().contains("NOT IN"));
+        assert!(rule.query.as_ref().unwrap().contains("'active'"));
+    }
+
+    #[test]
     fn test_schema_to_table_roundtrip() {
         let schema = SchemaObject::new("users")
             .with_physical_name("tbl_users")
@@ -997,5 +1415,129 @@ mod tests {
         // TableData.description is contract-level description
         assert_eq!(table_data[0].domain, Some("test-domain".to_string()));
         assert_eq!(table_data[0].columns.len(), 2);
+    }
+
+    #[test]
+    fn test_array_struct_type_handling() {
+        // Create a table with ARRAY<STRUCT<...>> column and nested children
+        let mut table = Table::new(
+            "orders".to_string(),
+            vec![
+                Column::new("id".to_string(), "BIGINT".to_string()),
+                Column::new("items".to_string(), "ARRAY<STRUCT<name STRING, qty INT>>".to_string()),
+                Column::new("items.[].name".to_string(), "STRING".to_string()),
+                Column::new("items.[].qty".to_string(), "INT".to_string()),
+            ],
+        );
+        table.columns[0].nullable = false;
+
+        let schema = SchemaObject::from(&table);
+        assert_eq!(schema.properties.len(), 2); // id and items
+
+        // Check the id property
+        let id_prop = schema.get_property("id").unwrap();
+        assert_eq!(id_prop.logical_type, "integer");
+        assert!(id_prop.required);
+
+        // Check the items property is correctly typed as array
+        let items_prop = schema.get_property("items").unwrap();
+        assert_eq!(items_prop.logical_type, "array");
+        assert!(items_prop.items.is_some());
+
+        // Check the items contain nested properties
+        let items_inner = items_prop.items.as_ref().unwrap();
+        assert_eq!(items_inner.logical_type, "object");
+        assert_eq!(items_inner.properties.len(), 2);
+    }
+
+    #[test]
+    fn test_struct_type_handling() {
+        // Create a table with STRUCT column and nested children
+        let table = Table::new(
+            "users".to_string(),
+            vec![
+                Column::new("id".to_string(), "BIGINT".to_string()),
+                Column::new("address".to_string(), "STRUCT<street STRING, city STRING>".to_string()),
+                Column::new("address.street".to_string(), "STRING".to_string()),
+                Column::new("address.city".to_string(), "STRING".to_string()),
+            ],
+        );
+
+        let schema = SchemaObject::from(&table);
+        assert_eq!(schema.properties.len(), 2); // id and address
+
+        // Check the address property is correctly typed as object
+        let address_prop = schema.get_property("address").unwrap();
+        assert_eq!(address_prop.logical_type, "object");
+        assert_eq!(address_prop.properties.len(), 2);
+
+        // Check nested properties
+        let street = address_prop.properties.iter().find(|p| p.name == "street");
+        assert!(street.is_some());
+        assert_eq!(street.unwrap().logical_type, "string");
+    }
+
+    #[test]
+    fn test_from_table() {
+        use crate::models::tag::Tag;
+
+        let mut table = Table::new(
+            "orders".to_string(),
+            vec![
+                Column::new("id".to_string(), "BIGINT".to_string()),
+                Column::new("total".to_string(), "DECIMAL(10,2)".to_string()),
+            ],
+        );
+
+        // Set metadata
+        table
+            .odcl_metadata
+            .insert("version".to_string(), serde_json::json!("2.0.0"));
+        table
+            .odcl_metadata
+            .insert("status".to_string(), serde_json::json!("active"));
+        table
+            .odcl_metadata
+            .insert("domain".to_string(), serde_json::json!("sales"));
+        table.tags = vec![Tag::Simple("important".to_string())];
+
+        let contract = ODCSContract::from_table(&table);
+
+        // Check contract fields
+        assert_eq!(contract.id, table.id.to_string());
+        assert_eq!(contract.name, "orders");
+        assert_eq!(contract.version, "2.0.0");
+        assert_eq!(contract.status, Some("active".to_string()));
+        assert_eq!(contract.domain, Some("sales".to_string()));
+        assert_eq!(contract.tags, vec!["important".to_string()]);
+
+        // Check schema
+        assert_eq!(contract.schema.len(), 1);
+        let schema = &contract.schema[0];
+        assert_eq!(schema.name, "orders");
+        assert_eq!(schema.properties.len(), 2);
+
+        // Check properties have correct logical types
+        let id_prop = schema.get_property("id").unwrap();
+        assert_eq!(id_prop.logical_type, "integer");
+
+        let total_prop = schema.get_property("total").unwrap();
+        assert_eq!(total_prop.logical_type, "number");
+    }
+
+    #[test]
+    fn test_from_table_defaults() {
+        // Test that from_table sets sensible defaults
+        let table = Table::new(
+            "simple".to_string(),
+            vec![Column::new("id".to_string(), "INT".to_string())],
+        );
+
+        let contract = ODCSContract::from_table(&table);
+
+        assert_eq!(contract.name, "simple");
+        assert_eq!(contract.version, "1.0.0"); // Default version
+        assert_eq!(contract.status, Some("draft".to_string())); // Default status
+        assert!(contract.contract_created_ts.is_some()); // Should have timestamp
     }
 }

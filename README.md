@@ -519,3 +519,4 @@ The SDK provides comprehensive support for multiple data modeling formats:
 - ✅ Databricks Unity Catalog Volumes ingestion
 - ✅ Real-time progress reporting with indicatif
 - ✅ Secure credential handling with automatic redaction
+- ✅ Stable YAML export key ordering (eliminates git diff noise)

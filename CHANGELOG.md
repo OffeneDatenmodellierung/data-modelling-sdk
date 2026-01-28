@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.9] - 2026-01-28
+
+### Fixed
+
+- **fix(export)**: Stable YAML key ordering for all exporters
+  - Replaced manual `serde_yaml::Mapping` construction with struct-based serialization
+  - ODCS, ODPS, and CADS exporters now produce consistent key ordering matching struct field definitions
+  - Eliminates git diff noise from alphabetical key sorting (BTreeMap behavior)
+  - Re-exporting the same data produces identical YAML output
+
+### Changed
+
+- **refactor(odcs)**: Simplified `ODCSExporter::export_table()` to use `ODCSContract::from_table()` converter
+  - Removed ~1500 lines of manual Mapping construction code
+  - All exports now use the same struct-based serialization path
+
+- **refactor(odps)**: Migrated to struct-based serialization
+  - Added `#[serde(rename_all = "camelCase")]` to all ODPS structs
+  - Added `skip_serializing_if` for optional fields to produce clean YAML
+  - Removed ~764 lines of manual Mapping construction
+
+- **refactor(cads)**: Migrated to struct-based serialization
+  - Added `skip_serializing_if` for optional fields
+  - Removed ~771 lines of manual Mapping construction
+
+### Added
+
+- **feat(odcs)**: Enhanced Column to Property converter
+  - `map_data_type_to_logical_type()` function for SQL to ODCS type mapping
+  - `parse_struct_fields_from_data_type()` for expanding STRUCT type definitions
+  - Proper handling of ARRAY<STRUCT<...>> nested types
+
+- **feat(pdf)**: Comprehensive column details in PDF/Markdown export
+  - Added logical type options (min/max length, pattern, format, precision, scale)
+  - Added transformation metadata (source objects, logic, description)
+  - Added relationships and authoritative definitions
+  - Added column-level quality rules and tags
+  - Added composite/secondary key information
+  - Added partition key position and additional constraints
+
+- **feat(workspace)**: Added `description` field to Workspace struct (GitHub #66)
+  - Optional description field for workspace metadata
+  - Displayed in UI and README generation
+
 ## [2.0.8] - 2026-01-14
 
 ### Fixed

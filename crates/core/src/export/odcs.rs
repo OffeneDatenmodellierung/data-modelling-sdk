@@ -2,8 +2,12 @@
 //!
 //! This module exports data models to ODCS (Open Data Contract Standard) v3.1.0 format only.
 //! Legacy ODCL formats are no longer supported for export.
+//!
+//! The exporter uses struct-based serialization via `ODCSContract` to ensure consistent
+//! key ordering in the YAML output, which produces stable git diffs.
 
 use super::{ExportError, ExportResult};
+use crate::models::odcs::ODCSContract;
 use crate::models::{Column, DataModel, Table};
 use serde_yaml;
 use std::collections::HashMap;
@@ -50,8 +54,10 @@ impl ODCSExporter {
     /// assert!(yaml.contains("kind: DataContract"));
     /// ```
     pub fn export_table(table: &Table, _format: &str) -> String {
-        // All exports use ODCS v3.1.0 format
-        Self::export_odcs_v3_1_0_format(table)
+        // Convert Table to ODCSContract using struct-based converter
+        // This ensures consistent key ordering in the YAML output
+        let contract = ODCSContract::from_table(table);
+        Self::export_contract(&contract)
     }
 
     /// Export an ODCSContract directly to YAML format.

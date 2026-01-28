@@ -238,6 +238,9 @@ pub struct Workspace {
     /// Last modification timestamp
     #[serde(alias = "last_modified_at")]
     pub last_modified_at: DateTime<Utc>,
+    /// Optional workspace description (displayed in UI and README)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// Domain references with their systems
     #[serde(default)]
     pub domains: Vec<DomainReference>,
@@ -259,6 +262,7 @@ impl Workspace {
             owner_id,
             created_at: now,
             last_modified_at: now,
+            description: None,
             domains: Vec::new(),
             assets: Vec::new(),
             relationships: Vec::new(),
@@ -274,6 +278,7 @@ impl Workspace {
             owner_id,
             created_at: now,
             last_modified_at: now,
+            description: None,
             domains: Vec::new(),
             assets: Vec::new(),
             relationships: Vec::new(),

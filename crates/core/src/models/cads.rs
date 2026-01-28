@@ -417,7 +417,7 @@ pub struct CADSAsset {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
     /// Tags
-    #[serde(default, deserialize_with = "deserialize_tags")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_tags")]
     pub tags: Vec<Tag>,
     /// Description
     #[serde(skip_serializing_if = "Option::is_none")]
