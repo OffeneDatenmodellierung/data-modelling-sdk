@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-02-01
+
+### Added
+
+- **feat(sketch)**: Excalidraw sketch support (GitHub #68)
+  - New `Sketch` model for storing Excalidraw diagrams with metadata
+  - `SketchType` enum: Architecture, DataFlow, EntityRelationship, Sequence, Flowchart, Wireframe, Concept, Infrastructure, Other
+  - `SketchStatus` enum: Draft, Review, Published, Archived
+  - `SketchIndex` and `SketchIndexEntry` for tracking sketches with sequential or timestamp-based numbering
+  - Thumbnail support via `thumbnail_path` field stored in `thumbnails/` subdirectory
+  - Cross-references: `linked_sketches` field added to `KnowledgeArticle` and `Decision` models
+  - `SketchImporter` for parsing `.sketch.yaml` files and `sketches.yaml` index
+  - `SketchExporter` for exporting sketches to YAML format
+  - JSON schemas: `sketch-schema.json` and `sketch-index-schema.json`
+  - `AssetType::Sketch` and `AssetType::SketchIndex` added to workspace schema
+
+- **feat(wasm)**: WASM bindings for sketch operations
+  - `parse_sketch_yaml()` - Parse sketch YAML to JSON
+  - `parse_sketch_index_yaml()` - Parse sketch index to JSON
+  - `export_sketch_to_yaml()` - Export sketch to YAML
+  - `export_sketch_index_to_yaml()` - Export sketch index to YAML
+  - `create_sketch()` - Create new sketch with number, title, type, and Excalidraw data
+  - `create_sketch_index()` - Create empty sketch index
+  - `add_sketch_to_index()` - Add sketch to index
+  - `search_sketches()` - Search sketches by title, description, or tags
+
+### Changed
+
+- **feat(wasm)**: BPMN, DMN, and OpenAPI features now enabled by default in WASM crate
+  - Added `bpmn` and `dmn` feature flags to WASM Cargo.toml
+  - Default features now include: `bpmn`, `dmn`, `openapi`
+  - All WASM bindings for BPMN/DMN are now compiled into the default WASM bundle
+
 ## [2.0.9] - 2026-01-28
 
 ### Fixed

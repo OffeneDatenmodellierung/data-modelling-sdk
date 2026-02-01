@@ -21,6 +21,7 @@ pub mod odps;
 #[cfg(feature = "openapi")]
 pub mod openapi;
 pub mod relationship;
+pub mod sketch;
 pub mod table;
 pub mod tag;
 pub mod workspace;
@@ -73,6 +74,7 @@ pub use knowledge::{
     ArticleRelationship, KnowledgeArticle, KnowledgeIndex, KnowledgeIndexEntry, KnowledgeStatus,
     KnowledgeType, RelatedArticle, ReviewFrequency, SkillLevel,
 };
+pub use sketch::{Sketch, SketchIndex, SketchIndexEntry, SketchStatus, SketchType};
 
 use serde::{Deserialize, Serialize};
 

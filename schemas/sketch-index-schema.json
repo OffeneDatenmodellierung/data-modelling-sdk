@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk/schemas/sketch-index-schema.json",
+  "title": "Sketch Index",
+  "description": "Schema for the sketches.yaml index file",
+  "type": "object",
+  "required": ["schemaVersion", "sketches", "nextNumber"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Schema version (e.g., '1.0')"
+    },
+    "lastUpdated": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Last update timestamp"
+    },
+    "sketches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["number", "id", "title", "sketchType", "status", "file"],
+        "properties": {
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Sketch number - can be sequential or timestamp-based (YYMMDDHHmm format)"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Sketch UUID"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Sketch title"
+          },
+          "sketchType": {
+            "type": "string",
+            "enum": [
+              "architecture",
+              "dataflow",
+              "entityrelationship",
+              "sequence",
+              "flowchart",
+              "wireframe",
+              "concept",
+              "infrastructure",
+              "other"
+            ],
+            "description": "Type of sketch"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["draft", "review", "published", "archived"],
+            "description": "Publication status"
+          },
+          "domain": {
+            "type": ["string", "null"],
+            "description": "Domain the sketch belongs to"
+          },
+          "file": {
+            "type": "string",
+            "pattern": ".*\\.sketch\\.yaml$",
+            "description": "Filename of the sketch YAML file"
+          },
+          "thumbnailPath": {
+            "type": ["string", "null"],
+            "description": "Relative path to PNG thumbnail"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "List of sketch entries"
+    },
+    "nextNumber": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Next available sketch number"
+    },
+    "useTimestampNumbering": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to use timestamp-based numbering (YYMMDDHHmm format)"
+    }
+  },
+  "additionalProperties": false
+}

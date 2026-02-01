@@ -7,7 +7,7 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/OffeneDatenmodellierung/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 2.0.9
+**Version**: 2.1.0
 
 ## Architecture
 
@@ -22,11 +22,12 @@ The SDK is designed with a modular architecture centered around:
 7. **Sync Engine**: Bidirectional YAML ↔ Database synchronization
 8. **Decision Records (DDL)**: Architecture Decision Records with MADR format support
 9. **Knowledge Base (KB)**: Domain documentation and knowledge articles
-10. **Staging**: JSON data ingestion with DuckDB and Apache Iceberg support
-11. **Inference**: Automatic schema inference from JSON data with format detection
-12. **Mapping**: Schema-to-schema mapping with fuzzy matching and transformation generation
-13. **Pipeline**: End-to-end data pipeline orchestration with checkpointing
-14. **LLM**: LLM-enhanced schema refinement and matching (Ollama, llama.cpp)
+10. **Sketches**: Excalidraw diagram support with thumbnail generation
+11. **Staging**: JSON data ingestion with DuckDB and Apache Iceberg support
+12. **Inference**: Automatic schema inference from JSON data with format detection
+13. **Mapping**: Schema-to-schema mapping with fuzzy matching and transformation generation
+14. **Pipeline**: End-to-end data pipeline orchestration with checkpointing
+15. **LLM**: LLM-enhanced schema refinement and matching (Ollama, llama.cpp)
 
 ## Directory Structure
 
@@ -43,6 +44,7 @@ data-modelling-sdk/
 │   │   ├── cads.rs            # CADS format exporter
 │   │   ├── decision.rs        # Decision Markdown exporter
 │   │   ├── dmn.rs             # DMN 1.3 exporter (feature-gated)
+│   │   ├── sketch.rs          # Sketch YAML exporter
 │   │   ├── json_schema.rs     # JSON Schema exporter
 │   │   ├── knowledge.rs       # Knowledge article Markdown exporter
 │   │   ├── odcl.rs            # ODCL format exporter
@@ -67,6 +69,7 @@ data-modelling-sdk/
 │   │   ├── cads.rs            # CADS format importer
 │   │   ├── decision.rs        # Decision YAML importer
 │   │   ├── dmn.rs             # DMN 1.3 importer (feature-gated)
+│   │   ├── sketch.rs          # Sketch YAML importer
 │   │   ├── json_schema.rs     # JSON Schema importer
 │   │   ├── knowledge.rs       # Knowledge article YAML importer
 │   │   ├── odcs.rs            # ODCS v3.1.0 format importer (primary, also handles ODCL)
@@ -91,6 +94,7 @@ data-modelling-sdk/
 │   │   ├── domain.rs          # Business Domain schema models (Domain, System, CADSNode, ODCSNode, etc.)
 │   │   ├── enums.rs           # Enums (DatabaseType, MedallionLayer, InfrastructureType, etc.)
 │   │   ├── knowledge.rs       # Knowledge model structs (KnowledgeArticle, ArticleType, ArticleStatus)
+│   │   ├── sketch.rs          # Sketch model structs (Sketch, SketchIndex, SketchType, SketchStatus)
 │   │   ├── odcs/              # ODCS native data structures (v2 API)
 │   │   │   ├── mod.rs         # Module exports
 │   │   │   ├── contract.rs    # ODCSContract - root contract document
@@ -258,6 +262,11 @@ Core data structures:
 - **`ArticleType`**: Article types (Guide, Reference, Concept, Tutorial, Troubleshooting, Runbook)
 - **`ArticleStatus`**: Article lifecycle states (Draft, Review, Published, Archived, Deprecated)
 - **`KnowledgeIndex`**: Index tracking article metadata and numbering
+- **`Sketch`**: Excalidraw diagram with metadata, linked assets, and thumbnail support
+- **`SketchType`**: Sketch categories (Architecture, DataFlow, EntityRelationship, Sequence, Flowchart, Wireframe, Concept, Infrastructure, Other)
+- **`SketchStatus`**: Sketch lifecycle states (Draft, Review, Published, Archived)
+- **`SketchIndex`**: Index tracking sketch metadata and numbering (sequential or timestamp-based)
+- **`SketchIndexEntry`**: Index entry for a sketch with file and thumbnail paths
 - **`OpenAPIModel`**: OpenAPI 3.1.1 specification stored in native YAML or JSON format (requires `openapi` feature)
 - **`CADSBPMNModel`**: CADS reference to BPMN model (name, reference, format, description)
 - **`CADSDMNModel`**: CADS reference to DMN model (name, reference, format, description)
@@ -304,6 +313,7 @@ Importers convert various formats to SDK models:
 - **`OpenAPIImporter`**: Importer for OpenAPI 3.1.1 YAML/JSON format - for API specifications (requires `openapi` feature)
 - **`DecisionImporter`**: Importer for Decision YAML files - for architecture decision records
 - **`KnowledgeImporter`**: Importer for Knowledge article YAML files - for domain documentation
+- **`SketchImporter`**: Importer for Sketch YAML files - for Excalidraw diagrams with metadata
 - **`SQLImporter`**: SQL DDL parser (CREATE TABLE, CREATE VIEW, CREATE MATERIALIZED VIEW statements)
   - Supported SQL dialects: PostgreSQL, MySQL, SQLite, Generic (default), and Databricks
   - Databricks dialect supports: `IDENTIFIER()` function calls, variable references (`:variable_name`) in types/columns/metadata, `STRUCT`/`ARRAY` complex types, and views/materialized views
@@ -327,6 +337,7 @@ Exporters convert SDK models to various formats:
 - **`OpenAPIExporter`**: Exports OpenAPI specs with YAML ↔ JSON conversion support (requires `openapi` feature)
 - **`DecisionExporter`**: Exports decisions to MADR-compliant Markdown format
 - **`KnowledgeExporter`**: Exports knowledge articles to Markdown format
+- **`SketchExporter`**: Exports sketches to YAML format
 - **`SQLExporter`**: Generates SQL DDL (CREATE TABLE statements)
   - Supports multiple SQL dialects: PostgreSQL, MySQL, SQLite, Generic, and Databricks
 - **`JSONSchemaExporter`**: Exports to JSON Schema format
@@ -912,9 +923,17 @@ base_directory/
 │   ├── index.yaml             # Knowledge index with metadata
 │   ├── 0001-article-title.yaml # Individual article files
 │   └── ...
-└── knowledge-md/               # Markdown exports (auto-generated)
-    ├── 0001-article-title.md
-    └── ...
+├── knowledge-md/               # Markdown exports (auto-generated)
+│   ├── 0001-article-title.md
+│   └── ...
+├── sketches/                   # Excalidraw sketches
+│   ├── sketches.yaml          # Sketch index with metadata
+│   ├── {workspace}_{domain}_sketch-0001.sketch.yaml # Individual sketch files
+│   ├── thumbnails/            # Sketch thumbnail images
+│   │   ├── sketch-0001.png
+│   │   └── ...
+│   └── ...
+└── ...
 ```
 
 ### Flat File Naming Convention
@@ -1033,6 +1052,8 @@ The SDK maintains JSON Schema definitions for all supported formats in the `sche
 - **BPMN 2.0**: `schemas/bpmn-2.0.xsd` - Business Process Model and Notation (process models in native XML)
 - **DMN 1.3**: `schemas/dmn-1.3.xsd` - Decision Model and Notation (decision models in native XML)
 - **OpenAPI 3.1.1**: `schemas/openapi-3.1.1.json` - API specifications (stored in native YAML or JSON)
+- **Sketch**: `schemas/sketch-schema.json` - Excalidraw sketch with metadata
+- **Sketch Index**: `schemas/sketch-index-schema.json` - Sketch index for tracking sketches
 
 These schemas serve as authoritative references for:
 - **Validation**: Validating imported YAML/JSON files against official specifications

@@ -3314,3 +3314,200 @@ pub fn odcs_contract_to_table_data(contract_json: &str) -> Result<String, JsValu
     let table_data = contract.to_table_data();
     serde_json::to_string(&table_data).map_err(serialization_error)
 }
+
+// ============================================================================
+// Sketch (Excalidraw) Operations
+// ============================================================================
+
+/// Parse a sketch YAML file and return a structured representation.
+///
+/// # Arguments
+///
+/// * `yaml_content` - Sketch YAML content as a string (.sketch.yaml)
+///
+/// # Returns
+///
+/// JSON string containing Sketch, or JsValue error
+#[wasm_bindgen]
+pub fn parse_sketch_yaml(yaml_content: &str) -> Result<String, JsValue> {
+    use data_modelling_core::import::sketch::SketchImporter;
+
+    let importer = SketchImporter::new();
+    match importer.import(yaml_content) {
+        Ok(sketch) => serde_json::to_string(&sketch).map_err(serialization_error),
+        Err(e) => Err(import_error_to_js(e)),
+    }
+}
+
+/// Parse a sketches index YAML file and return a structured representation.
+///
+/// # Arguments
+///
+/// * `yaml_content` - Sketches index YAML content as a string (sketches.yaml)
+///
+/// # Returns
+///
+/// JSON string containing SketchIndex, or JsValue error
+#[wasm_bindgen]
+pub fn parse_sketch_index_yaml(yaml_content: &str) -> Result<String, JsValue> {
+    use data_modelling_core::import::sketch::SketchImporter;
+
+    let importer = SketchImporter::new();
+    match importer.import_index(yaml_content) {
+        Ok(index) => serde_json::to_string(&index).map_err(serialization_error),
+        Err(e) => Err(import_error_to_js(e)),
+    }
+}
+
+/// Export a sketch to YAML format.
+///
+/// # Arguments
+///
+/// * `sketch_json` - JSON string containing Sketch
+///
+/// # Returns
+///
+/// Sketch YAML format string, or JsValue error
+#[wasm_bindgen]
+pub fn export_sketch_to_yaml(sketch_json: &str) -> Result<String, JsValue> {
+    use data_modelling_core::export::sketch::SketchExporter;
+    use data_modelling_core::models::sketch::Sketch;
+
+    let sketch: Sketch = serde_json::from_str(sketch_json).map_err(deserialization_error)?;
+    let exporter = SketchExporter::new();
+    exporter
+        .export_without_validation(&sketch)
+        .map_err(export_error_to_js)
+}
+
+/// Export a sketches index to YAML format.
+///
+/// # Arguments
+///
+/// * `index_json` - JSON string containing SketchIndex
+///
+/// # Returns
+///
+/// SketchIndex YAML format string, or JsValue error
+#[wasm_bindgen]
+pub fn export_sketch_index_to_yaml(index_json: &str) -> Result<String, JsValue> {
+    use data_modelling_core::export::sketch::SketchExporter;
+    use data_modelling_core::models::sketch::SketchIndex;
+
+    let index: SketchIndex = serde_json::from_str(index_json).map_err(deserialization_error)?;
+    let exporter = SketchExporter::new();
+    exporter.export_index(&index).map_err(export_error_to_js)
+}
+
+/// Create a new sketch with required fields.
+///
+/// # Arguments
+///
+/// * `number` - Sketch number (1, 2, 3, etc. - will be formatted as SKETCH-0001)
+/// * `title` - Sketch title
+/// * `sketch_type` - Sketch type (architecture, dataFlow, entityRelationship, sequence, flowchart, wireframe, concept, infrastructure, other)
+/// * `excalidraw_data` - JSON string of Excalidraw scene data
+///
+/// # Returns
+///
+/// JSON string containing Sketch, or JsValue error
+#[wasm_bindgen]
+pub fn create_sketch(
+    number: u64,
+    title: &str,
+    sketch_type: &str,
+    excalidraw_data: &str,
+) -> Result<String, JsValue> {
+    use data_modelling_core::models::sketch::{Sketch, SketchType};
+
+    let stype = match sketch_type.to_lowercase().as_str() {
+        "architecture" => SketchType::Architecture,
+        "dataflow" | "data_flow" => SketchType::DataFlow,
+        "entityrelationship" | "entity_relationship" | "er" => SketchType::EntityRelationship,
+        "sequence" => SketchType::Sequence,
+        "flowchart" => SketchType::Flowchart,
+        "wireframe" => SketchType::Wireframe,
+        "concept" => SketchType::Concept,
+        "infrastructure" => SketchType::Infrastructure,
+        _ => SketchType::Other,
+    };
+
+    let sketch = Sketch::new(number, title, excalidraw_data).with_type(stype);
+    serde_json::to_string(&sketch).map_err(serialization_error)
+}
+
+/// Create a new empty sketch index.
+///
+/// # Returns
+///
+/// JSON string containing SketchIndex, or JsValue error
+#[wasm_bindgen]
+pub fn create_sketch_index() -> Result<String, JsValue> {
+    use data_modelling_core::models::sketch::SketchIndex;
+
+    let index = SketchIndex::new();
+    serde_json::to_string(&index).map_err(serialization_error)
+}
+
+/// Add a sketch to an index.
+///
+/// # Arguments
+///
+/// * `index_json` - JSON string containing SketchIndex
+/// * `sketch_json` - JSON string containing Sketch
+/// * `filename` - Filename for the sketch YAML file
+///
+/// # Returns
+///
+/// JSON string containing updated SketchIndex, or JsValue error
+#[wasm_bindgen]
+pub fn add_sketch_to_index(
+    index_json: &str,
+    sketch_json: &str,
+    filename: &str,
+) -> Result<String, JsValue> {
+    use data_modelling_core::models::sketch::{Sketch, SketchIndex};
+
+    let mut index: SketchIndex = serde_json::from_str(index_json).map_err(deserialization_error)?;
+    let sketch: Sketch = serde_json::from_str(sketch_json).map_err(deserialization_error)?;
+
+    index.add_sketch(&sketch, filename.to_string());
+    serde_json::to_string(&index).map_err(serialization_error)
+}
+
+/// Search sketches by title, description, or tags.
+///
+/// # Arguments
+///
+/// * `sketches_json` - JSON string containing array of Sketch
+/// * `query` - Search query string (case-insensitive)
+///
+/// # Returns
+///
+/// JSON string containing array of matching Sketch, or JsValue error
+#[wasm_bindgen]
+pub fn search_sketches(sketches_json: &str, query: &str) -> Result<String, JsValue> {
+    use data_modelling_core::models::sketch::Sketch;
+
+    let sketches: Vec<Sketch> =
+        serde_json::from_str(sketches_json).map_err(deserialization_error)?;
+
+    let query_lower = query.to_lowercase();
+    let matches: Vec<&Sketch> = sketches
+        .iter()
+        .filter(|sketch| {
+            sketch.title.to_lowercase().contains(&query_lower)
+                || sketch
+                    .description
+                    .as_ref()
+                    .map(|d| d.to_lowercase().contains(&query_lower))
+                    .unwrap_or(false)
+                || sketch
+                    .tags
+                    .iter()
+                    .any(|tag| tag.to_string().to_lowercase().contains(&query_lower))
+        })
+        .collect();
+
+    serde_json::to_string(&matches).map_err(serialization_error)
+}

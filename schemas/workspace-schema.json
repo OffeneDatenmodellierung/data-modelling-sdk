@@ -157,7 +157,7 @@
         },
         "assetType": {
           "type": "string",
-          "enum": ["odcs", "odps", "cads", "bpmn", "dmn", "openapi"],
+          "enum": ["odcs", "odps", "cads", "bpmn", "dmn", "openapi", "sketch"],
           "description": "Type of asset"
         },
         "filePath": {

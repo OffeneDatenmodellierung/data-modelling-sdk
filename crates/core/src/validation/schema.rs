@@ -510,3 +510,78 @@ pub fn validate_knowledge_index_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
+
+/// Internal sketch validation function that returns a string error (used by import/export modules)
+#[cfg(feature = "schema-validation")]
+pub fn validate_sketch_internal(content: &str) -> Result<(), String> {
+    use jsonschema::Validator;
+    use serde_json::Value;
+
+    // Load Sketch JSON Schema
+    let schema_content = include_str!("../../../../schemas/sketch-schema.json");
+    let schema: Value = serde_json::from_str(schema_content)
+        .map_err(|e| format!("Failed to load sketch schema: {}", e))?;
+
+    let validator =
+        Validator::new(&schema).map_err(|e| format!("Failed to compile sketch schema: {}", e))?;
+
+    // Parse YAML content
+    let data: Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
+
+    // Validate
+    if let Err(error) = validator.validate(&data) {
+        let instance_path = error.instance_path();
+        let path_str = instance_path.to_string();
+        let path_str = if path_str == "/" || path_str.is_empty() {
+            "root".to_string()
+        } else {
+            path_str
+        };
+        return Err(format!(
+            "Sketch validation failed at path '{}': {}",
+            path_str, error
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "schema-validation"))]
+pub fn validate_sketch_internal(_content: &str) -> Result<(), String> {
+    // Validation disabled - feature not enabled
+    Ok(())
+}
+
+/// Validate a sketch index (sketches.yaml) file against the sketch-index JSON Schema
+#[cfg(feature = "schema-validation")]
+pub fn validate_sketch_index_internal(content: &str) -> Result<(), String> {
+    use jsonschema::Validator;
+    use serde_json::Value;
+
+    // Load Sketch Index JSON Schema
+    let schema_content = include_str!("../../../../schemas/sketch-index-schema.json");
+    let schema: Value = serde_json::from_str(schema_content)
+        .map_err(|e| format!("Failed to load sketch-index schema: {}", e))?;
+
+    let validator = Validator::new(&schema)
+        .map_err(|e| format!("Failed to compile sketch-index schema: {}", e))?;
+
+    // Parse YAML content
+    let data: Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
+
+    // Validate
+    if let Err(error) = validator.validate(&data) {
+        let error_msg = format_validation_error(&error, "Sketch Index");
+        return Err(error_msg);
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "schema-validation"))]
+pub fn validate_sketch_index_internal(_content: &str) -> Result<(), String> {
+    // Validation disabled - feature not enabled
+    Ok(())
+}

@@ -209,6 +209,14 @@
       },
       "description": "IDs of related knowledge articles"
     },
+    "linkedSketches": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "UUIDs of related sketches"
+    },
     "compliance": {
       "type": ["object", "null"],
       "properties": {

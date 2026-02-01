@@ -365,6 +365,13 @@ pub struct KnowledgeArticle {
     /// IDs of 'See Also' articles for further reading
     #[serde(default, skip_serializing_if = "Vec::is_empty", alias = "see_also")]
     pub see_also: Vec<Uuid>,
+    /// UUIDs of related sketches
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "linked_sketches"
+    )]
+    pub linked_sketches: Vec<Uuid>,
 
     // Standard metadata
     /// Tags for categorization
@@ -418,6 +425,7 @@ impl KnowledgeArticle {
             related_articles: Vec::new(),
             prerequisites: Vec::new(),
             see_also: Vec::new(),
+            linked_sketches: Vec::new(),
             tags: Vec::new(),
             notes: None,
             created_at: now,
@@ -582,6 +590,15 @@ impl KnowledgeArticle {
     pub fn add_see_also(mut self, article_id: Uuid) -> Self {
         if !self.see_also.contains(&article_id) {
             self.see_also.push(article_id);
+            self.updated_at = Utc::now();
+        }
+        self
+    }
+
+    /// Link to a sketch
+    pub fn link_sketch(mut self, sketch_id: Uuid) -> Self {
+        if !self.linked_sketches.contains(&sketch_id) {
+            self.linked_sketches.push(sketch_id);
             self.updated_at = Utc::now();
         }
         self

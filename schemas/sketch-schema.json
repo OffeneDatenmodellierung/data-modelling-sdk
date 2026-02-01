@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk/schemas/sketch-schema.json",
+  "title": "Excalidraw Sketch",
+  "description": "Schema for Excalidraw sketch files (.sketch.yaml)",
+  "type": "object",
+  "required": [
+    "id",
+    "number",
+    "title",
+    "sketchType",
+    "status",
+    "excalidrawData",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the sketch"
+    },
+    "number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Sketch number - can be sequential (1, 2, 3) or timestamp-based (YYMMDDHHmm format). Timestamp format prevents merge conflicts in distributed Git workflows."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Sketch title"
+    },
+    "sketchType": {
+      "type": "string",
+      "enum": [
+        "architecture",
+        "dataflow",
+        "entityrelationship",
+        "sequence",
+        "flowchart",
+        "wireframe",
+        "concept",
+        "infrastructure",
+        "other"
+      ],
+      "description": "Type of sketch"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "review", "published", "archived"],
+      "description": "Publication status"
+    },
+    "domain": {
+      "type": ["string", "null"],
+      "description": "Domain this sketch belongs to"
+    },
+    "domainId": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "UUID of the domain this sketch is associated with"
+    },
+    "workspaceId": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "UUID of the workspace this sketch belongs to"
+    },
+    "description": {
+      "type": ["string", "null"],
+      "maxLength": 1000,
+      "description": "Brief description of the sketch"
+    },
+    "excalidrawData": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Excalidraw scene data as JSON string"
+    },
+    "thumbnailPath": {
+      "type": ["string", "null"],
+      "description": "Relative path to PNG thumbnail (e.g., 'thumbnails/sketch-0001.png')"
+    },
+    "authors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of sketch authors (email or name)"
+    },
+    "linkedAssets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["assetType", "assetId", "assetName"],
+        "properties": {
+          "assetType": {
+            "type": "string",
+            "enum": ["odcs", "odps", "cads", "relationship"]
+          },
+          "assetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assetName": {
+            "type": "string"
+          },
+          "relationship": {
+            "type": "string",
+            "enum": ["affects", "implements", "deprecates"]
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Assets referenced by this sketch"
+    },
+    "linkedDecisions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "UUIDs of related decisions"
+    },
+    "linkedKnowledge": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "UUIDs of related knowledge articles"
+    },
+    "relatedSketches": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "UUIDs of related sketches"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for categorization"
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Additional notes"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Creation timestamp"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last modification timestamp"
+    }
+  },
+  "additionalProperties": false
+}
