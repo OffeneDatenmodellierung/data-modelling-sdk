@@ -39,6 +39,7 @@ cargo run --bin test-odps --features odps-validation,cli -- product.odps.yaml --
 - **Import/Export**: Import from SQL (PostgreSQL, MySQL, SQLite, Generic, Databricks), ODCS, ODCL, JSON Schema, AVRO, Protobuf (proto2/proto3), CADS, ODPS, BPMN, DMN, OpenAPI; Export to various formats
 - **Decision Records (DDL)**: MADR-compliant Architecture Decision Records with full lifecycle management
 - **Knowledge Base (KB)**: Domain-partitioned knowledge articles with Markdown content support
+- **Sketches**: Excalidraw diagram storage with metadata, thumbnails, and cross-references
 - **Business Domain Schema**: Organize systems, CADS nodes, and ODCS nodes within business domains
 - **Universal Converter**: Convert any format to ODCS v3.1.0 format
 - **OpenAPI to ODCS Converter**: Convert OpenAPI schema components to ODCS table definitions
@@ -177,7 +178,12 @@ workspace/
 ├── myworkspace_platform_api.cads.yaml           # CADS asset file
 ├── myworkspace_platform_api.openapi.yaml        # OpenAPI specification file
 ├── myworkspace_ops_approval.bpmn.xml            # BPMN process model file
-└── myworkspace_ops_routing.dmn.xml              # DMN decision model file
+├── myworkspace_ops_routing.dmn.xml              # DMN decision model file
+└── sketches/                                    # Excalidraw sketches
+    ├── sketches.yaml                            # Sketch index
+    ├── myworkspace_sales_sketch-0001.sketch.yaml # Individual sketch files
+    └── thumbnails/                              # Sketch thumbnails
+        └── sketch-0001.png
 ```
 
 ### File Naming Convention
@@ -203,6 +209,7 @@ Files follow the pattern: `{workspace}_{domain}_{system}_{resource}.{type}.{ext}
 - `*.openapi.yaml` / `*.openapi.json`: OpenAPI specification files
 - `*.bpmn.xml`: BPMN 2.0 process model files
 - `*.dmn.xml`: DMN 1.3 decision model files
+- `*.sketch.yaml`: Excalidraw sketch files with metadata
 
 ## Usage
 
@@ -311,6 +318,16 @@ console.log('Exported YAML:', exportedYaml);
 - `convertOpenapiToOdcs(openapiContent: string, componentName: string, tableName?: string): string` - Convert OpenAPI schema component to ODCS table
 - `analyzeOpenapiConversion(openapiContent: string, componentName: string): string` - Analyze OpenAPI component conversion feasibility
 - `migrateDataflowToDomain(dataflowYaml: string, domainName?: string): string` - Migrate DataFlow YAML to Domain schema format
+
+**Sketch Operations**:
+- `parseSketchYaml(yamlContent: string): string` - Parse sketch YAML to JSON
+- `parseSketchIndexYaml(yamlContent: string): string` - Parse sketch index YAML to JSON
+- `exportSketchToYaml(sketchJson: string): string` - Export sketch to YAML format
+- `exportSketchIndexToYaml(indexJson: string): string` - Export sketch index to YAML format
+- `createSketch(number: number, title: string, sketchType: string, excalidrawData: string): string` - Create new sketch
+- `createSketchIndex(): string` - Create empty sketch index
+- `addSketchToIndex(indexJson: string, sketchJson: string, filename: string): string` - Add sketch to index
+- `searchSketches(sketchesJson: string, query: string): string` - Search sketches by title, description, or tags
 
 **Domain Operations**:
 - `createDomain(name: string): string` - Create a new business domain
@@ -520,3 +537,4 @@ The SDK provides comprehensive support for multiple data modeling formats:
 - ✅ Real-time progress reporting with indicatif
 - ✅ Secure credential handling with automatic redaction
 - ✅ Stable YAML export key ordering (eliminates git diff noise)
+- ✅ Excalidraw sketch support with thumbnails and cross-references

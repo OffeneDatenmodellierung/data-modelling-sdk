@@ -72,6 +72,10 @@ pub enum AssetType {
     DecisionIndex,
     /// Knowledge base index file
     KnowledgeIndex,
+    /// Excalidraw sketch
+    Sketch,
+    /// Sketch index file
+    SketchIndex,
 }
 
 impl AssetType {
@@ -90,6 +94,8 @@ impl AssetType {
             AssetType::Knowledge => "kb.yaml",
             AssetType::DecisionIndex => "yaml",
             AssetType::KnowledgeIndex => "yaml",
+            AssetType::Sketch => "sketch.yaml",
+            AssetType::SketchIndex => "yaml",
         }
     }
 
@@ -100,6 +106,7 @@ impl AssetType {
             AssetType::Relationships => Some("relationships.yaml"),
             AssetType::DecisionIndex => Some("decisions.yaml"),
             AssetType::KnowledgeIndex => Some("knowledge.yaml"),
+            AssetType::SketchIndex => Some("sketches.yaml"),
             _ => None,
         }
     }
@@ -112,6 +119,7 @@ impl AssetType {
                 | AssetType::Relationships
                 | AssetType::DecisionIndex
                 | AssetType::KnowledgeIndex
+                | AssetType::SketchIndex
         )
     }
 
@@ -125,6 +133,8 @@ impl AssetType {
             Some(AssetType::DecisionIndex)
         } else if filename == "knowledge.yaml" {
             Some(AssetType::KnowledgeIndex)
+        } else if filename == "sketches.yaml" {
+            Some(AssetType::SketchIndex)
         } else if filename.ends_with(".odcs.yaml") {
             Some(AssetType::Odcs)
         } else if filename.ends_with(".odps.yaml") {
@@ -135,6 +145,8 @@ impl AssetType {
             Some(AssetType::Decision)
         } else if filename.ends_with(".kb.yaml") {
             Some(AssetType::Knowledge)
+        } else if filename.ends_with(".sketch.yaml") {
+            Some(AssetType::Sketch)
         } else if filename.ends_with(".bpmn.xml") {
             Some(AssetType::Bpmn)
         } else if filename.ends_with(".dmn.xml") {
@@ -153,11 +165,13 @@ impl AssetType {
             "relationships.yaml",
             "decisions.yaml",
             "knowledge.yaml",
+            "sketches.yaml",
             ".odcs.yaml",
             ".odps.yaml",
             ".cads.yaml",
             ".madr.yaml",
             ".kb.yaml",
+            ".sketch.yaml",
             ".bpmn.xml",
             ".dmn.xml",
             ".openapi.yaml",

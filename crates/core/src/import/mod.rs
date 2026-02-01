@@ -25,6 +25,7 @@ pub mod odps;
 #[cfg(feature = "openapi")]
 pub mod openapi;
 pub mod protobuf;
+pub mod sketch;
 pub mod sql;
 
 // anyhow::Result not currently used in this module
@@ -353,6 +354,7 @@ pub use odcs::ODCSImporter;
 pub use odcs_shared::ParserError;
 pub use odps::ODPSImporter;
 pub use protobuf::ProtobufImporter;
+pub use sketch::SketchImporter;
 pub use sql::SQLImporter;
 
 /// Table requiring name input (for SQL imports)

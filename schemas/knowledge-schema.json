@@ -198,6 +198,14 @@
       },
       "description": "IDs of 'See Also' articles for further reading"
     },
+    "linkedSketches": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "description": "UUIDs of related sketches"
+    },
     "tags": {
       "type": "array",
       "items": {

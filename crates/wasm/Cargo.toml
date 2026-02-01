@@ -1,6 +1,6 @@
 [package]
 name = "data-modelling-wasm"
-version = "2.0.9"
+version = "2.1.0"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"
@@ -42,7 +42,9 @@ optional = true
 default-features = false
 
 [features]
-default = []
+default = ["bpmn", "dmn", "openapi"]
 openapi = ["data-modelling-core/openapi"]
 odps-validation = ["data-modelling-core/odps-validation", "jsonschema"]
 png-export = ["data-modelling-core/png-export"]
+bpmn = ["data-modelling-core/bpmn"]
+dmn = ["data-modelling-core/dmn"]

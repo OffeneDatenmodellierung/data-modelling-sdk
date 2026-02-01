@@ -31,6 +31,7 @@ pub mod pdf;
 #[cfg(feature = "png-export")]
 pub mod png;
 pub mod protobuf;
+pub mod sketch;
 pub mod sql;
 
 // anyhow::Result not currently used in this module
@@ -96,4 +97,5 @@ pub use pdf::{BrandingConfig, PageSize, PdfExportResult, PdfExporter};
 #[cfg(feature = "png-export")]
 pub use png::PNGExporter;
 pub use protobuf::ProtobufExporter;
+pub use sketch::SketchExporter;
 pub use sql::SQLExporter;

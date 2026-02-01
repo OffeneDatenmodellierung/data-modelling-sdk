@@ -430,6 +430,13 @@ pub struct Decision {
         alias = "related_knowledge"
     )]
     pub related_knowledge: Vec<Uuid>,
+    /// UUIDs of related sketches
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "linked_sketches"
+    )]
+    pub linked_sketches: Vec<Uuid>,
 
     // Compliance (from feature request)
     /// Compliance assessment
@@ -494,6 +501,7 @@ impl Decision {
             superseded_by: None,
             related_decisions: Vec::new(),
             related_knowledge: Vec::new(),
+            linked_sketches: Vec::new(),
             compliance: None,
             confirmation_date: None,
             confirmation_notes: None,
@@ -562,6 +570,15 @@ impl Decision {
     pub fn add_related_knowledge(mut self, article_id: Uuid) -> Self {
         self.related_knowledge.push(article_id);
         self.updated_at = Utc::now();
+        self
+    }
+
+    /// Link to a sketch
+    pub fn link_sketch(mut self, sketch_id: Uuid) -> Self {
+        if !self.linked_sketches.contains(&sketch_id) {
+            self.linked_sketches.push(sketch_id);
+            self.updated_at = Utc::now();
+        }
         self
     }
 

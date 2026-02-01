@@ -62,6 +62,13 @@ pub use validation::{
 pub use models::enums::*;
 pub use models::{Column, ContactDetails, DataModel, ForeignKey, Relationship, SlaProperty, Table};
 
+// Re-export sketch types
+pub use models::{Sketch, SketchIndex, SketchIndexEntry, SketchStatus, SketchType};
+
+// Re-export sketch importer/exporter
+pub use export::SketchExporter;
+pub use import::SketchImporter;
+
 // Re-export auth types
 pub use auth::{
     AuthMode, AuthState, GitHubEmail, InitiateOAuthRequest, InitiateOAuthResponse,
