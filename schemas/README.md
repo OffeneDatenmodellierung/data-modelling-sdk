@@ -112,6 +112,16 @@ Workspace schema defines top-level containers that organize domains, systems, as
 - Relationship definitions between assets
 - Flat file naming convention: `{workspace}_{domain}_{system}_{resource}.{type}.yaml`
 
+**Related Sub-schemas** (modular organization):
+- `common-types-schema.json`: Shared types (ContactDetails, SlaProperty, ViewPosition, ConnectionPoint)
+- `domain-schema.json`: DomainReference definition
+- `system-schema.json`: SystemReference with environments and connection details
+
+**System Features**:
+- `systemType`: Infrastructure type (68 types covering databases, cloud services, message queues, etc.)
+- `environments`: Multi-environment connection details (production, staging, development)
+- Environment connection details include: owner, contactDetails, sla, authMethod, supportTeam, connectionString, secretLink, endpoint, port, region, status, notes
+
 ### MADR Decision Records
 
 **File**: `decision-schema.json`
@@ -229,6 +239,9 @@ schemas/
 ├── dmn-1.3.xsd                    # DMN 1.3 XSD schema
 ├── openapi-3.1.1.json             # OpenAPI 3.1.1 JSON Schema
 ├── workspace-schema.json          # Workspace configuration schema (includes domains, assets, relationships)
+├── common-types-schema.json       # Shared types (ContactDetails, SlaProperty, ViewPosition)
+├── domain-schema.json             # Domain reference schema
+├── system-schema.json             # System reference with environments schema
 ├── decision-schema.json           # MADR Decision Record schema
 ├── knowledge-schema.json          # Knowledge Base Article schema
 ├── decisions-index-schema.json    # Decision index (decisions.yaml) schema

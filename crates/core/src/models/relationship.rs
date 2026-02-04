@@ -159,6 +159,15 @@ pub struct Relationship {
     /// ID of the target table
     #[serde(alias = "target_table_id")]
     pub target_table_id: Uuid,
+    /// Human-readable label for the relationship (displayed on the edge in UI)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Key/column name on the source side of the relationship
+    #[serde(skip_serializing_if = "Option::is_none", alias = "source_key")]
+    pub source_key: Option<String>,
+    /// Key/column name on the target side of the relationship
+    #[serde(skip_serializing_if = "Option::is_none", alias = "target_key")]
+    pub target_key: Option<String>,
     /// Legacy cardinality (OneToOne, OneToMany, ManyToMany) - for backward compatibility
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cardinality: Option<Cardinality>,
@@ -252,6 +261,9 @@ impl Relationship {
             id,
             source_table_id,
             target_table_id,
+            label: None,
+            source_key: None,
+            target_key: None,
             cardinality: None,
             source_optional: None,
             target_optional: None,
@@ -281,5 +293,83 @@ impl Relationship {
     /// Note: params are retained for backward-compatibility with previous deterministic-v5 API.
     pub fn generate_id(_source_table_id: Uuid, _target_table_id: Uuid) -> Uuid {
         Uuid::new_v4()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_relationship_new() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let rel = Relationship::new(source_id, target_id);
+
+        assert_eq!(rel.source_table_id, source_id);
+        assert_eq!(rel.target_table_id, target_id);
+        assert!(rel.label.is_none());
+        assert!(rel.source_key.is_none());
+        assert!(rel.target_key.is_none());
+    }
+
+    #[test]
+    fn test_relationship_with_label_and_keys() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let mut rel = Relationship::new(source_id, target_id);
+        rel.label = Some("references".to_string());
+        rel.source_key = Some("customer_id".to_string());
+        rel.target_key = Some("id".to_string());
+
+        let json = serde_json::to_string(&rel).unwrap();
+        let parsed: Relationship = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.label, Some("references".to_string()));
+        assert_eq!(parsed.source_key, Some("customer_id".to_string()));
+        assert_eq!(parsed.target_key, Some("id".to_string()));
+    }
+
+    #[test]
+    fn test_relationship_yaml_roundtrip() {
+        let source_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let mut rel = Relationship::new(source_id, target_id);
+        rel.label = Some("has many".to_string());
+        rel.source_key = Some("order_id".to_string());
+        rel.target_key = Some("id".to_string());
+        rel.source_cardinality = Some(EndpointCardinality::ExactlyOne);
+        rel.target_cardinality = Some(EndpointCardinality::ZeroOrMany);
+
+        let yaml = serde_yaml::to_string(&rel).unwrap();
+        let parsed: Relationship = serde_yaml::from_str(&yaml).unwrap();
+
+        assert_eq!(parsed.label, Some("has many".to_string()));
+        assert_eq!(parsed.source_key, Some("order_id".to_string()));
+        assert_eq!(parsed.target_key, Some("id".to_string()));
+        assert_eq!(
+            parsed.source_cardinality,
+            Some(EndpointCardinality::ExactlyOne)
+        );
+        assert_eq!(
+            parsed.target_cardinality,
+            Some(EndpointCardinality::ZeroOrMany)
+        );
+    }
+
+    #[test]
+    fn test_relationship_backward_compatibility() {
+        // Ensure old YAML without label, source_key, target_key still parses
+        let yaml = r#"
+id: 550e8400-e29b-41d4-a716-446655440000
+sourceTableId: 660e8400-e29b-41d4-a716-446655440001
+targetTableId: 770e8400-e29b-41d4-a716-446655440002
+createdAt: 2025-01-01T09:00:00Z
+updatedAt: 2025-01-01T09:00:00Z
+"#;
+        let parsed: Relationship = serde_yaml::from_str(yaml).unwrap();
+        assert!(parsed.label.is_none());
+        assert!(parsed.source_key.is_none());
+        assert!(parsed.target_key.is_none());
     }
 }

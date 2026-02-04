@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
+use uuid::Uuid;
 
 use super::tag::Tag;
 
@@ -413,9 +414,12 @@ pub struct CADSAsset {
     pub version: String,
     /// Status
     pub status: CADSStatus,
-    /// Domain
+    /// Domain name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
+    /// Domain UUID reference
+    #[serde(skip_serializing_if = "Option::is_none", alias = "domain_id")]
+    pub domain_id: Option<Uuid>,
     /// Tags
     #[serde(
         default,

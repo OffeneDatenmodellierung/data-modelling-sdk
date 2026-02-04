@@ -138,6 +138,13 @@ impl CADSImporter {
         let openapi_specs = self.parse_openapi_specs(&json_value)?;
         let custom_properties = self.parse_custom_properties(&json_value)?;
 
+        // Parse domain_id if present
+        let domain_id = json_value
+            .get("domainId")
+            .or_else(|| json_value.get("domain_id"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
         Ok(CADSAsset {
             api_version,
             kind,
@@ -146,6 +153,7 @@ impl CADSImporter {
             version,
             status,
             domain,
+            domain_id,
             tags,
             description,
             runtime,

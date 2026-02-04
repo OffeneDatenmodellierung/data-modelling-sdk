@@ -46,7 +46,16 @@
       "enum": ["draft", "validated", "production", "deprecated"]
     },
 
-    "domain": { "type": "string" },
+    "domain": {
+      "type": "string",
+      "description": "Domain name"
+    },
+
+    "domainId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Domain UUID reference"
+    },
 
     "tags": {
       "type": "array",
@@ -316,6 +325,18 @@
     "customProperties": {
       "type": "object",
       "additionalProperties": true
+    },
+
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the asset was created"
+    },
+
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the asset was last updated"
     }
   }
 }

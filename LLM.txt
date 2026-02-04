@@ -7,7 +7,7 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/OffeneDatenmodellierung/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 2.1.0
+**Version**: 2.3.0
 
 ## Architecture
 
@@ -243,22 +243,22 @@ Core data structures:
 - **`ColumnData`**: Import-format mirror of Column struct, preserving all ODCS v3.1.0 fields through WASM layer
 - **`LogicalTypeOptions`**: Type constraint options (minLength, maxLength, pattern, format, minimum, maximum, precision, scale)
 - **`AuthoritativeDefinition`**: Authoritative definition reference (type, url)
-- **`Relationship`**: Relationship between tables with crow's feet notation support. Fields: sourceTableId, targetTableId, sourceCardinality, targetCardinality, flowDirection, relationshipType, color, sourceHandle, targetHandle, drawioEdgeId, foreignKeyDetails, etlJobMetadata, sla, contactDetails, infrastructureType, visualMetadata, notes, owner
+- **`Relationship`**: Relationship between tables with crow's feet notation support. Fields: sourceTableId, targetTableId, label, sourceKey, targetKey, sourceCardinality, targetCardinality, flowDirection, relationshipType, color, sourceHandle, targetHandle, drawioEdgeId, foreignKeyDetails, etlJobMetadata, sla, contactDetails, infrastructureType, visualMetadata, notes, owner
 - **`DataModel`**: Container for tables, relationships, and domains. Includes filter methods and domain operations (`add_domain`, `add_system_to_domain`, etc.)
 - **`Domain`**: Business domain container with systems, CADS nodes, ODCS nodes, and connections
 - **`System`**: Physical infrastructure entity (Kafka, Cassandra, EKS, etc.) with DataFlow metadata (owner, SLA, contact_details, infrastructure_type, notes, version)
 - **`CADSNode`**: Reference to CADS asset (AI/ML model, application, pipeline) with shared reference support
 - **`ODCSNode`**: Reference to ODCS Table with shared reference support
-- **`CADSAsset`**: CADS asset model (AIModel, MLPipeline, Application, etc.) with full CADS v1.0 support. Includes `bpmn_models`, `dmn_models`, and `openapi_specs` fields for referencing process/decision/API models.
+- **`CADSAsset`**: CADS asset model (AIModel, MLPipeline, Application, etc.) with full CADS v1.0 support. Includes `bpmn_models`, `dmn_models`, `openapi_specs` fields for referencing process/decision/API models, and `domain_id` for linking to domains.
 - **`ODPSDataProduct`**: ODPS data product model with input/output ports, support, team, and custom properties
 - **`BPMNModel`**: BPMN 2.0 process model stored in native XML format (requires `bpmn` feature)
 - **`DMNModel`**: DMN 1.3 decision model stored in native XML format (requires `dmn` feature)
-- **`Decision`**: Architecture Decision Record following MADR format with full lifecycle support
+- **`Decision`**: Architecture Decision Record following MADR format with full lifecycle support. Includes `custom_properties` for extensibility. `Decision::new()` requires author as mandatory 5th parameter.
 - **`DecisionStatus`**: Decision lifecycle states (Draft, Proposed, Accepted, Deprecated, Superseded, Rejected)
 - **`DecisionCategory`**: Decision categories (Architecture, Technology, Process, Security, Data, Integration)
 - **`DecisionOption`**: Decision option with title, description, pros/cons
 - **`DecisionIndex`**: Index tracking decision metadata and numbering
-- **`KnowledgeArticle`**: Knowledge base article with structured content and metadata
+- **`KnowledgeArticle`**: Knowledge base article with structured content and metadata. Includes `custom_properties` for extensibility.
 - **`ArticleType`**: Article types (Guide, Reference, Concept, Tutorial, Troubleshooting, Runbook)
 - **`ArticleStatus`**: Article lifecycle states (Draft, Review, Published, Archived, Deprecated)
 - **`KnowledgeIndex`**: Index tracking article metadata and numbering
@@ -273,6 +273,10 @@ Core data structures:
 - **`CADSOpenAPISpec`**: CADS reference to OpenAPI spec (name, reference, format, description)
 - **`Tag`**: Enhanced tag enum supporting Simple, Pair, and List formats
 - **`Workspace`**: Workspace configuration containing domains, systems, assets, and embedded relationships. Helper methods: `add_relationship()`, `remove_relationship()`, `get_relationships_for_source()`, `get_relationships_for_target()`
+- **`DomainReference`**: Domain reference within a workspace. Includes `shared_resources`, `transformation_links`, and `table_visibility` fields for resource management.
+- **`SharedResource`**: Shared resource within a domain (id, name, resource_type, url, description)
+- **`TransformationLink`**: Data transformation link within a domain (id, name, transformation_type, url, description)
+- **`TableVisibility`**: Visibility setting for tables in a domain (public, domainOnly, hidden)
 - **`ForeignKey`**: Foreign key relationship details
 - **`SlaProperty`**: SLA property structure (property, value, unit, element, driver, description, scheduler, schedule)
 - **`ContactDetails`**: Contact details structure (email, phone, name, role, other)

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/offenedatenmodellierung/data-modelling-sdk/schemas/workspace-schema.json",
   "title": "Workspace Schema",
-  "description": "Schema for a Workspace entity in the data modelling application. Workspaces are top-level containers that organize domains, systems, their associated assets, and relationships. All files use a flat naming convention: {workspace}_{domain}_{system}_{resource}.xxx.yaml",
+  "description": "Schema for a Workspace entity in the data modelling application. Workspaces are top-level containers that organize domains, systems, their associated assets, and relationships. All files use a flat naming convention: {workspace}_{domain}_{system}_{resource}.xxx.yaml. Related sub-schemas: common-types-schema.json, domain-schema.json, system-schema.json",
   "type": "object",
   "required": ["id", "name", "ownerId", "createdAt", "lastModifiedAt"],
   "properties": {
@@ -58,6 +58,7 @@
   "definitions": {
     "DomainReference": {
       "type": "object",
+      "description": "Domain reference within a workspace. Also defined in domain-schema.json.",
       "required": ["id", "name"],
       "properties": {
         "id": {
@@ -82,6 +83,23 @@
             "$ref": "#/definitions/SystemReference"
           }
         },
+        "sharedResources": {
+          "type": "array",
+          "description": "Shared resources available across the domain (schemas, libraries, utilities)",
+          "items": {
+            "$ref": "#/definitions/SharedResource"
+          }
+        },
+        "transformationLinks": {
+          "type": "array",
+          "description": "Links to transformations and data pipelines associated with this domain",
+          "items": {
+            "$ref": "#/definitions/TransformationLink"
+          }
+        },
+        "tableVisibility": {
+          "$ref": "#/definitions/TableVisibility"
+        },
         "viewPositions": {
           "type": "object",
           "description": "Per-view node positions for canvas rendering. Keys are view types (operational, analytical, process, systems), values are objects mapping entity IDs to x/y coordinates.",
@@ -95,8 +113,250 @@
       },
       "additionalProperties": false
     },
+    "TableVisibility": {
+      "type": "string",
+      "description": "Default visibility setting for tables within a domain",
+      "enum": ["public", "domainOnly", "hidden"],
+      "default": "public"
+    },
+    "SharedResource": {
+      "type": "object",
+      "description": "Shared resource within a domain (e.g., shared schemas, libraries, utilities)",
+      "required": ["id", "name", "resourceType"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for the resource"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the shared resource"
+        },
+        "resourceType": {
+          "type": "string",
+          "description": "Type of resource (e.g., 'schema', 'library', 'utility', 'template')"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL or path to the resource"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TransformationLink": {
+      "type": "object",
+      "description": "Link to a transformation or data pipeline",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for the transformation"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the transformation"
+        },
+        "transformationType": {
+          "type": "string",
+          "description": "Type of transformation (e.g., 'dbt', 'spark', 'airflow')"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL or path to the transformation definition"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SystemType": {
+      "type": "string",
+      "description": "Type of system infrastructure. Also defined in system-schema.json.",
+      "enum": [
+        "PostgreSQL",
+        "MySQL",
+        "Mssql",
+        "Oracle",
+        "Sqlite",
+        "MariaDB",
+        "DynamoDB",
+        "Cassandra",
+        "MongoDB",
+        "Redis",
+        "ElasticSearch",
+        "CouchDB",
+        "Neo4j",
+        "RdsPostgreSQL",
+        "RdsMySQL",
+        "RdsMariaDB",
+        "RdsOracle",
+        "RdsSqlServer",
+        "Redshift",
+        "Aurora",
+        "DocumentDB",
+        "Neptune",
+        "ElastiCache",
+        "S3",
+        "Eks",
+        "Ecs",
+        "Lambda",
+        "Kinesis",
+        "Sqs",
+        "Sns",
+        "Glue",
+        "Athena",
+        "QuickSight",
+        "AzureSqlDatabase",
+        "CosmosDB",
+        "AzureSynapseAnalytics",
+        "AzureDataLakeStorage",
+        "AzureBlobStorage",
+        "Aks",
+        "Aci",
+        "AzureFunctions",
+        "EventHubs",
+        "ServiceBus",
+        "AzureDataFactory",
+        "PowerBI",
+        "CloudSqlPostgreSQL",
+        "CloudSqlMySQL",
+        "CloudSqlSqlServer",
+        "BigQuery",
+        "CloudSpanner",
+        "Firestore",
+        "CloudStorage",
+        "Gke",
+        "CloudRun",
+        "CloudFunctions",
+        "PubSub",
+        "Dataflow",
+        "Looker",
+        "Kafka",
+        "Pulsar",
+        "RabbitMQ",
+        "ActiveMQ",
+        "Kubernetes",
+        "Docker",
+        "Snowflake",
+        "Databricks",
+        "Teradata",
+        "Vertica",
+        "Tableau",
+        "Qlik",
+        "Metabase",
+        "ApacheSuperset",
+        "Grafana",
+        "Hdfs",
+        "MinIO"
+      ]
+    },
+    "AuthMethod": {
+      "type": "string",
+      "description": "Authentication method for connecting to a system. Also defined in system-schema.json.",
+      "enum": [
+        "oauth2",
+        "apiKey",
+        "iamRole",
+        "certificate",
+        "basicAuth",
+        "saml",
+        "oidc",
+        "kerberos",
+        "awsSignatureV4",
+        "gcpServiceAccount",
+        "azureActiveDirectory",
+        "mtls",
+        "none",
+        "custom"
+      ]
+    },
+    "EnvironmentStatus": {
+      "type": "string",
+      "description": "Current status of an environment. Also defined in system-schema.json.",
+      "enum": ["active", "deprecated", "maintenance", "inactive"],
+      "default": "active"
+    },
+    "EnvironmentConnection": {
+      "type": "object",
+      "description": "Environment-specific connection details for a system. Systems may have multiple environments (production, staging, etc.) each with different connection details, SLAs, and ownership. Also defined in system-schema.json.",
+      "required": ["environment"],
+      "properties": {
+        "environment": {
+          "type": "string",
+          "description": "Environment name (e.g., 'production', 'staging', 'development')"
+        },
+        "owner": {
+          "type": "string",
+          "description": "Owner/team responsible for this environment"
+        },
+        "contactDetails": {
+          "$ref": "#/definitions/ContactDetails"
+        },
+        "sla": {
+          "type": "array",
+          "description": "SLA properties for this environment",
+          "items": {
+            "$ref": "#/definitions/SlaProperty"
+          }
+        },
+        "authMethod": {
+          "$ref": "#/definitions/AuthMethod"
+        },
+        "supportTeam": {
+          "type": "string",
+          "description": "Support team or on-call rotation name"
+        },
+        "connectionString": {
+          "type": "string",
+          "description": "Connection string (sensitive - may be placeholder or reference)"
+        },
+        "secretLink": {
+          "type": "string",
+          "format": "uri",
+          "description": "Link to secrets manager entry (e.g., AWS Secrets Manager, HashiCorp Vault)"
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Primary endpoint URL or hostname"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Port number for the connection"
+        },
+        "region": {
+          "type": "string",
+          "description": "Cloud region or data center location"
+        },
+        "status": {
+          "$ref": "#/definitions/EnvironmentStatus"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes about this environment"
+        },
+        "customProperties": {
+          "type": "object",
+          "description": "Additional custom properties for extensibility",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
     "SystemReference": {
       "type": "object",
+      "description": "System reference within a domain. Systems represent infrastructure components like databases, message queues, or cloud services. Also defined in system-schema.json.",
       "required": ["id", "name"],
       "properties": {
         "id": {
@@ -114,6 +374,9 @@
           "type": "string",
           "description": "Optional description of the system"
         },
+        "systemType": {
+          "$ref": "#/definitions/SystemType"
+        },
         "tableIds": {
           "type": "array",
           "description": "Optional array of table UUIDs that belong to this system. When present, provides explicit table-to-system mapping without requiring parsing of individual ODCS files.",
@@ -128,6 +391,13 @@
           "items": {
             "type": "string",
             "format": "uuid"
+          }
+        },
+        "environments": {
+          "type": "array",
+          "description": "List of environment-specific connection details (production, staging, development, etc.)",
+          "items": {
+            "$ref": "#/definitions/EnvironmentConnection"
           }
         }
       },
@@ -191,6 +461,18 @@
           "type": "string",
           "format": "uuid",
           "description": "ID of the target table/asset"
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable label for the relationship (displayed on the edge in UI)"
+        },
+        "sourceKey": {
+          "type": "string",
+          "description": "Key/column name on the source side of the relationship"
+        },
+        "targetKey": {
+          "type": "string",
+          "description": "Key/column name on the target side of the relationship"
         },
         "cardinality": {
           "type": "string",
@@ -326,7 +608,7 @@
     },
     "ViewPosition": {
       "type": "object",
-      "description": "X/Y coordinates for node positioning on canvas",
+      "description": "X/Y coordinates for node positioning on canvas. Also defined in common-types-schema.json.",
       "required": ["x", "y"],
       "properties": {
         "x": {
@@ -378,7 +660,7 @@
     },
     "SlaProperty": {
       "type": "object",
-      "description": "SLA (Service Level Agreement) property",
+      "description": "SLA (Service Level Agreement) property. Also defined in common-types-schema.json.",
       "required": ["property", "value", "unit"],
       "properties": {
         "property": {
@@ -417,7 +699,7 @@
     },
     "ContactDetails": {
       "type": "object",
-      "description": "Contact information for responsible parties",
+      "description": "Contact information for responsible parties. Also defined in common-types-schema.json.",
       "properties": {
         "email": {
           "type": "string",
@@ -470,7 +752,7 @@
     },
     "ConnectionPoint": {
       "type": "object",
-      "description": "X/Y coordinates for connection point or waypoint",
+      "description": "X/Y coordinates for connection point or waypoint. Also defined in common-types-schema.json.",
       "required": ["x", "y"],
       "properties": {
         "x": {
@@ -501,12 +783,52 @@
             {
               "id": "660e8400-e29b-41d4-a716-446655440001",
               "name": "kafka",
-              "description": "Kafka streaming platform"
+              "description": "Kafka streaming platform",
+              "systemType": "Kafka",
+              "environments": [
+                {
+                  "environment": "production",
+                  "owner": "Platform Team",
+                  "supportTeam": "platform-oncall",
+                  "authMethod": "saml",
+                  "endpoint": "kafka-prod.example.com",
+                  "port": 9092,
+                  "region": "us-east-1",
+                  "status": "active",
+                  "sla": [
+                    {
+                      "property": "availability",
+                      "value": 99.9,
+                      "unit": "percent"
+                    }
+                  ]
+                },
+                {
+                  "environment": "staging",
+                  "owner": "Platform Team",
+                  "endpoint": "kafka-staging.example.com",
+                  "port": 9092,
+                  "status": "active"
+                }
+              ]
             },
             {
               "id": "770e8400-e29b-41d4-a716-446655440002",
               "name": "postgres",
-              "description": "PostgreSQL database"
+              "description": "PostgreSQL database",
+              "systemType": "PostgreSQL",
+              "environments": [
+                {
+                  "environment": "production",
+                  "owner": "Database Team",
+                  "authMethod": "iamRole",
+                  "secretLink": "https://vault.example.com/secrets/postgres-prod",
+                  "endpoint": "postgres-prod.example.com",
+                  "port": 5432,
+                  "region": "us-east-1",
+                  "status": "active"
+                }
+              ]
             }
           ]
         },

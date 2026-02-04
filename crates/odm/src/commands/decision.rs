@@ -112,6 +112,7 @@ pub fn handle_decision_new(args: &DecisionNewArgs) -> Result<(), CliError> {
         &args.title,
         "[Describe the context and problem statement here]",
         "[Describe the decision that was made]",
+        "[Add author email or name]",
     );
 
     // Apply category and domain

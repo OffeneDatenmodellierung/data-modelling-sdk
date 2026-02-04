@@ -63,7 +63,10 @@ pub use relationship::{
 };
 pub use table::{ContactDetails, Position, SlaProperty, Table};
 pub use tag::Tag;
-pub use workspace::{DomainReference, Workspace};
+pub use workspace::{
+    DomainReference, EnvironmentConnection, SharedResource, SystemReference, TableVisibility,
+    TransformationLink, Workspace,
+};
 
 // Decision and Knowledge models
 pub use decision::{

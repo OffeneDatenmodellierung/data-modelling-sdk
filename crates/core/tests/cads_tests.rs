@@ -66,6 +66,7 @@ fn test_cads_export_basic() {
         version: "1.0.0".to_string(),
         status: CADSStatus::Production,
         domain: Some("ai-ml".to_string()),
+        domain_id: None,
         tags: vec![
             Tag::Simple("ai".to_string()),
             Tag::Simple("nlp".to_string()),

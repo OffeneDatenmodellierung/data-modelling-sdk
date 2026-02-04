@@ -27,6 +27,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::Tag;
@@ -380,6 +381,13 @@ pub struct KnowledgeArticle {
     /// Additional notes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Custom properties for extensibility
+    #[serde(
+        default,
+        skip_serializing_if = "HashMap::is_empty",
+        alias = "custom_properties"
+    )]
+    pub custom_properties: HashMap<String, serde_json::Value>,
 
     /// Creation timestamp
     #[serde(alias = "created_at")]
@@ -428,6 +436,7 @@ impl KnowledgeArticle {
             linked_sketches: Vec::new(),
             tags: Vec::new(),
             notes: None,
+            custom_properties: HashMap::new(),
             created_at: now,
             updated_at: now,
         }

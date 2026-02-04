@@ -13,6 +13,7 @@
     "date",
     "context",
     "decision",
+    "authors",
     "createdAt",
     "updatedAt"
   ],
@@ -94,7 +95,8 @@
       "items": {
         "type": "string"
       },
-      "description": "List of authors who contributed to the decision"
+      "minItems": 1,
+      "description": "List of authors who contributed to the decision (at least one required)"
     },
     "deciders": {
       "type": "array",
@@ -258,6 +260,11 @@
     "notes": {
       "type": ["string", "null"],
       "description": "Additional notes"
+    },
+    "customProperties": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Custom properties for extensibility"
     },
     "createdAt": {
       "type": "string",

@@ -1640,6 +1640,9 @@ pub fn add_domain_to_workspace(
         name: domain_name.to_string(),
         description: None,
         systems: Vec::new(),
+        shared_resources: Vec::new(),
+        transformation_links: Vec::new(),
+        table_visibility: None,
         view_positions: std::collections::HashMap::new(),
     });
     workspace.last_modified_at = Utc::now();
@@ -2182,10 +2185,11 @@ pub fn create_decision(
     title: &str,
     context: &str,
     decision: &str,
+    author: &str,
 ) -> Result<String, JsValue> {
     use data_modelling_core::models::decision::Decision;
 
-    let dec = Decision::new(number.into(), title, context, decision);
+    let dec = Decision::new(number.into(), title, context, decision, author);
     serde_json::to_string(&dec).map_err(serialization_error)
 }
 
