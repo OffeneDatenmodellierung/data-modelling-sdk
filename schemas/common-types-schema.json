@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/offenedatenmodellierung/data-modelling-sdk/schemas/common-types-schema.json",
+  "title": "Common Types Schema",
+  "description": "Shared type definitions used across workspace sub-schemas including contact details, SLA properties, and visual positioning types.",
+  "definitions": {
+    "ContactDetails": {
+      "type": "object",
+      "description": "Contact information for responsible parties",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Contact email address"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number"
+        },
+        "name": {
+          "type": "string",
+          "description": "Contact name"
+        },
+        "role": {
+          "type": "string",
+          "description": "Contact role"
+        },
+        "other": {
+          "type": "string",
+          "description": "Other contact information"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SlaProperty": {
+      "type": "object",
+      "description": "SLA (Service Level Agreement) property",
+      "required": ["property", "value", "unit"],
+      "properties": {
+        "property": {
+          "type": "string",
+          "description": "Name of the SLA property (e.g., 'latency', 'availability')"
+        },
+        "value": {
+          "description": "Value of the SLA property"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement (e.g., 'hours', 'percent')"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the SLA property"
+        },
+        "element": {
+          "type": "string",
+          "description": "Element this SLA applies to"
+        },
+        "driver": {
+          "type": "string",
+          "description": "Driver or reason for the SLA"
+        },
+        "scheduler": {
+          "type": "string",
+          "description": "Scheduler for SLA enforcement"
+        },
+        "schedule": {
+          "type": "string",
+          "description": "Schedule for SLA checks"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ViewPosition": {
+      "type": "object",
+      "description": "X/Y coordinates for node positioning on canvas",
+      "required": ["x", "y"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X coordinate on canvas"
+        },
+        "y": {
+          "type": "number",
+          "description": "Y coordinate on canvas"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectionPoint": {
+      "type": "object",
+      "description": "X/Y coordinates for connection point or waypoint",
+      "required": ["x", "y"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X coordinate"
+        },
+        "y": {
+          "type": "number",
+          "description": "Y coordinate"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

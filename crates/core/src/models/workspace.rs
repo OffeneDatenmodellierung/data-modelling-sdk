@@ -20,6 +20,8 @@ use uuid::Uuid;
 
 use super::Relationship;
 use super::domain_config::ViewPosition;
+use super::enums::{AuthMethod, EnvironmentStatus, InfrastructureType};
+use super::table::{ContactDetails, SlaProperty};
 
 /// Asset reference within a workspace
 ///
@@ -185,6 +187,57 @@ impl AssetType {
     }
 }
 
+/// Visibility setting for tables within a domain
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum TableVisibility {
+    /// Tables are visible to all users
+    #[default]
+    Public,
+    /// Tables are visible only within the domain
+    DomainOnly,
+    /// Tables are hidden by default
+    Hidden,
+}
+
+/// Link to a transformation or data pipeline
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TransformationLink {
+    /// Unique identifier for the transformation
+    pub id: Uuid,
+    /// Name of the transformation
+    pub name: String,
+    /// Type of transformation (e.g., "dbt", "spark", "airflow")
+    #[serde(skip_serializing_if = "Option::is_none", alias = "transformation_type")]
+    pub transformation_type: Option<String>,
+    /// URL or path to the transformation definition
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Optional description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Shared resource within a domain (e.g., shared schemas, libraries, utilities)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedResource {
+    /// Unique identifier for the resource
+    pub id: Uuid,
+    /// Name of the shared resource
+    pub name: String,
+    /// Type of resource (e.g., "schema", "library", "utility", "template")
+    #[serde(alias = "resource_type")]
+    pub resource_type: String,
+    /// URL or path to the resource
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Optional description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// Domain reference within a workspace
 ///
 /// Contains information about a domain and its systems.
@@ -201,6 +254,27 @@ pub struct DomainReference {
     /// Systems within this domain
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub systems: Vec<SystemReference>,
+    /// Shared resources available across the domain (schemas, libraries, utilities)
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "shared_resources"
+    )]
+    pub shared_resources: Vec<SharedResource>,
+    /// Links to transformations and data pipelines associated with this domain
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "transformation_links"
+    )]
+    pub transformation_links: Vec<TransformationLink>,
+    /// Default visibility setting for tables within this domain
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "table_visibility"
+    )]
+    pub table_visibility: Option<TableVisibility>,
     /// View positions for different view modes (operational, analytical, process, systems)
     /// Key: view mode name, Value: Map of entity ID to position
     #[serde(
@@ -211,7 +285,80 @@ pub struct DomainReference {
     pub view_positions: HashMap<String, HashMap<String, ViewPosition>>,
 }
 
+/// Environment-specific connection details for a system
+///
+/// Systems may have multiple environments (production, staging, development, etc.)
+/// each with different connection details, SLAs, ownership, and authentication methods.
+/// This allows tracking environment-specific configuration while keeping the system
+/// definition unified.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentConnection {
+    /// Environment name (e.g., "production", "staging", "development")
+    pub environment: String,
+
+    /// Owner/team responsible for this environment
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+
+    /// Contact details for this environment
+    #[serde(skip_serializing_if = "Option::is_none", alias = "contact_details")]
+    pub contact_details: Option<ContactDetails>,
+
+    /// SLA properties for this environment
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sla: Option<Vec<SlaProperty>>,
+
+    /// Authentication method for connecting to this environment
+    #[serde(skip_serializing_if = "Option::is_none", alias = "auth_method")]
+    pub auth_method: Option<AuthMethod>,
+
+    /// Support team or on-call rotation name
+    #[serde(skip_serializing_if = "Option::is_none", alias = "support_team")]
+    pub support_team: Option<String>,
+
+    /// Connection string (sensitive - may be placeholder or reference to secrets manager)
+    #[serde(skip_serializing_if = "Option::is_none", alias = "connection_string")]
+    pub connection_string: Option<String>,
+
+    /// Link to secrets manager entry (e.g., AWS Secrets Manager, HashiCorp Vault)
+    #[serde(skip_serializing_if = "Option::is_none", alias = "secret_link")]
+    pub secret_link: Option<String>,
+
+    /// Primary endpoint URL or hostname
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+
+    /// Port number for the connection
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+
+    /// Cloud region or data center location
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+
+    /// Current status of this environment
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<EnvironmentStatus>,
+
+    /// Additional notes about this environment
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+
+    /// Additional custom properties for extensibility
+    #[serde(
+        default,
+        skip_serializing_if = "HashMap::is_empty",
+        alias = "custom_properties"
+    )]
+    pub custom_properties: HashMap<String, serde_json::Value>,
+}
+
 /// System reference within a domain
+///
+/// Systems represent infrastructure components like databases, message queues,
+/// or cloud services that contain tables and assets. Systems can have multiple
+/// environment-specific connection details for production, staging, etc.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemReference {
@@ -222,6 +369,9 @@ pub struct SystemReference {
     /// Optional description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// System type (infrastructure type) - optional for backward compatibility
+    #[serde(skip_serializing_if = "Option::is_none", alias = "system_type")]
+    pub system_type: Option<InfrastructureType>,
     /// Optional array of table UUIDs that belong to this system.
     /// When present, provides explicit table-to-system mapping without requiring parsing of individual ODCS files.
     #[serde(default, skip_serializing_if = "Vec::is_empty", alias = "table_ids")]
@@ -230,6 +380,9 @@ pub struct SystemReference {
     /// When present, provides explicit asset-to-system mapping.
     #[serde(default, skip_serializing_if = "Vec::is_empty", alias = "asset_ids")]
     pub asset_ids: Vec<Uuid>,
+    /// Environment-specific connection details (production, staging, development, etc.)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environments: Vec<EnvironmentConnection>,
 }
 
 /// Workspace - Top-level container for domains, assets, and relationships
@@ -347,6 +500,9 @@ impl Workspace {
             name: domain_name,
             description: None,
             systems: Vec::new(),
+            shared_resources: Vec::new(),
+            transformation_links: Vec::new(),
+            table_visibility: None,
             view_positions: HashMap::new(),
         });
         self.last_modified_at = Utc::now();
@@ -367,6 +523,9 @@ impl Workspace {
             name: domain_name,
             description,
             systems: Vec::new(),
+            shared_resources: Vec::new(),
+            transformation_links: Vec::new(),
+            table_visibility: None,
             view_positions: HashMap::new(),
         });
         self.last_modified_at = Utc::now();
@@ -387,8 +546,10 @@ impl Workspace {
                 id: system_id,
                 name: system_name,
                 description,
+                system_type: None,
                 table_ids: Vec::new(),
                 asset_ids: Vec::new(),
+                environments: Vec::new(),
             });
             self.last_modified_at = Utc::now();
             return true;
@@ -844,5 +1005,314 @@ mod tests {
         assert_eq!(sanitize_name("Hello World"), "hello-world");
         assert_eq!(sanitize_name("Test/Path"), "test-path");
         assert_eq!(sanitize_name("Normal"), "normal");
+    }
+
+    #[test]
+    fn test_environment_connection_serialization() {
+        let env = EnvironmentConnection {
+            environment: "production".to_string(),
+            owner: Some("Platform Team".to_string()),
+            contact_details: Some(ContactDetails {
+                email: Some("platform@example.com".to_string()),
+                phone: None,
+                name: Some("Platform Team".to_string()),
+                role: Some("Data Owner".to_string()),
+                other: None,
+            }),
+            sla: Some(vec![SlaProperty {
+                property: "availability".to_string(),
+                value: serde_json::json!(99.9),
+                unit: "percent".to_string(),
+                element: None,
+                driver: Some("operational".to_string()),
+                description: Some("99.9% uptime SLA".to_string()),
+                scheduler: None,
+                schedule: None,
+            }]),
+            auth_method: Some(AuthMethod::IamRole),
+            support_team: Some("platform-oncall".to_string()),
+            connection_string: None,
+            secret_link: Some("https://vault.example.com/secrets/db-prod".to_string()),
+            endpoint: Some("db-prod.example.com".to_string()),
+            port: Some(5432),
+            region: Some("us-east-1".to_string()),
+            status: Some(EnvironmentStatus::Active),
+            notes: Some("Primary production database".to_string()),
+            custom_properties: HashMap::new(),
+        };
+
+        let json = serde_json::to_string(&env).unwrap();
+        let parsed: EnvironmentConnection = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(env.environment, parsed.environment);
+        assert_eq!(env.owner, parsed.owner);
+        assert_eq!(env.auth_method, parsed.auth_method);
+        assert_eq!(env.endpoint, parsed.endpoint);
+        assert_eq!(env.port, parsed.port);
+        assert_eq!(env.status, parsed.status);
+    }
+
+    #[test]
+    fn test_system_reference_with_environments() {
+        let system = SystemReference {
+            id: Uuid::new_v4(),
+            name: "postgres-main".to_string(),
+            description: Some("Main PostgreSQL cluster".to_string()),
+            system_type: Some(InfrastructureType::PostgreSQL),
+            table_ids: vec![],
+            asset_ids: vec![],
+            environments: vec![
+                EnvironmentConnection {
+                    environment: "production".to_string(),
+                    owner: Some("Database Team".to_string()),
+                    contact_details: None,
+                    sla: None,
+                    auth_method: Some(AuthMethod::IamRole),
+                    support_team: Some("dba-oncall".to_string()),
+                    connection_string: None,
+                    secret_link: Some("https://vault.example.com/secrets/pg-prod".to_string()),
+                    endpoint: Some("postgres-prod.example.com".to_string()),
+                    port: Some(5432),
+                    region: Some("us-east-1".to_string()),
+                    status: Some(EnvironmentStatus::Active),
+                    notes: None,
+                    custom_properties: HashMap::new(),
+                },
+                EnvironmentConnection {
+                    environment: "staging".to_string(),
+                    owner: Some("Database Team".to_string()),
+                    contact_details: None,
+                    sla: None,
+                    auth_method: Some(AuthMethod::BasicAuth),
+                    support_team: None,
+                    connection_string: None,
+                    secret_link: None,
+                    endpoint: Some("postgres-staging.example.com".to_string()),
+                    port: Some(5432),
+                    region: Some("us-east-1".to_string()),
+                    status: Some(EnvironmentStatus::Active),
+                    notes: None,
+                    custom_properties: HashMap::new(),
+                },
+            ],
+        };
+
+        // Test JSON serialization roundtrip
+        let json = serde_json::to_string(&system).unwrap();
+        let parsed: SystemReference = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(system.id, parsed.id);
+        assert_eq!(system.name, parsed.name);
+        assert_eq!(system.system_type, parsed.system_type);
+        assert_eq!(system.environments.len(), 2);
+        assert_eq!(parsed.environments[0].environment, "production");
+        assert_eq!(parsed.environments[1].environment, "staging");
+
+        // Test YAML serialization roundtrip
+        let yaml = serde_yaml::to_string(&system).unwrap();
+        let parsed_yaml: SystemReference = serde_yaml::from_str(&yaml).unwrap();
+
+        assert_eq!(system.id, parsed_yaml.id);
+        assert_eq!(system.environments.len(), parsed_yaml.environments.len());
+    }
+
+    #[test]
+    fn test_backward_compatibility_no_environments() {
+        // Ensure old YAML without environments field still parses
+        let yaml = r#"
+id: 550e8400-e29b-41d4-a716-446655440000
+name: legacy-system
+description: A legacy system without environments
+"#;
+        let parsed: SystemReference = serde_yaml::from_str(yaml).unwrap();
+        assert!(parsed.environments.is_empty());
+        assert!(parsed.system_type.is_none());
+        assert_eq!(parsed.name, "legacy-system");
+    }
+
+    #[test]
+    fn test_backward_compatibility_no_system_type() {
+        // Ensure old JSON without system_type field still parses
+        let json = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "old-system",
+            "tableIds": ["660e8400-e29b-41d4-a716-446655440001"]
+        }"#;
+        let parsed: SystemReference = serde_json::from_str(json).unwrap();
+        assert!(parsed.system_type.is_none());
+        assert!(parsed.environments.is_empty());
+        assert_eq!(parsed.table_ids.len(), 1);
+    }
+
+    #[test]
+    fn test_auth_method_serialization() {
+        // Test that auth methods serialize to camelCase
+        let env = EnvironmentConnection {
+            environment: "test".to_string(),
+            owner: None,
+            contact_details: None,
+            sla: None,
+            auth_method: Some(AuthMethod::AwsSignatureV4),
+            support_team: None,
+            connection_string: None,
+            secret_link: None,
+            endpoint: None,
+            port: None,
+            region: None,
+            status: None,
+            notes: None,
+            custom_properties: HashMap::new(),
+        };
+
+        let json = serde_json::to_string(&env).unwrap();
+        assert!(json.contains("awsSignatureV4"));
+
+        // Test parsing back
+        let parsed: EnvironmentConnection = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.auth_method, Some(AuthMethod::AwsSignatureV4));
+    }
+
+    #[test]
+    fn test_environment_status_default() {
+        // Test that EnvironmentStatus defaults to Active
+        let status: EnvironmentStatus = Default::default();
+        assert_eq!(status, EnvironmentStatus::Active);
+    }
+
+    #[test]
+    fn test_system_type_serialization() {
+        let system = SystemReference {
+            id: Uuid::new_v4(),
+            name: "kafka-cluster".to_string(),
+            description: None,
+            system_type: Some(InfrastructureType::Kafka),
+            table_ids: vec![],
+            asset_ids: vec![],
+            environments: vec![],
+        };
+
+        let json = serde_json::to_string(&system).unwrap();
+        assert!(json.contains("\"systemType\":\"Kafka\""));
+
+        let parsed: SystemReference = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.system_type, Some(InfrastructureType::Kafka));
+    }
+
+    #[test]
+    fn test_domain_with_shared_resources() {
+        let domain = DomainReference {
+            id: Uuid::new_v4(),
+            name: "sales".to_string(),
+            description: Some("Sales domain".to_string()),
+            systems: vec![],
+            shared_resources: vec![
+                SharedResource {
+                    id: Uuid::new_v4(),
+                    name: "common-schema".to_string(),
+                    resource_type: "schema".to_string(),
+                    url: Some("https://github.com/org/schemas/common".to_string()),
+                    description: Some("Common schema definitions".to_string()),
+                },
+                SharedResource {
+                    id: Uuid::new_v4(),
+                    name: "validation-library".to_string(),
+                    resource_type: "library".to_string(),
+                    url: None,
+                    description: None,
+                },
+            ],
+            transformation_links: vec![],
+            table_visibility: None,
+            view_positions: HashMap::new(),
+        };
+
+        let json = serde_json::to_string(&domain).unwrap();
+        let parsed: DomainReference = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.shared_resources.len(), 2);
+        assert_eq!(parsed.shared_resources[0].name, "common-schema");
+        assert_eq!(parsed.shared_resources[0].resource_type, "schema");
+    }
+
+    #[test]
+    fn test_domain_with_transformation_links() {
+        let domain = DomainReference {
+            id: Uuid::new_v4(),
+            name: "analytics".to_string(),
+            description: None,
+            systems: vec![],
+            shared_resources: vec![],
+            transformation_links: vec![
+                TransformationLink {
+                    id: Uuid::new_v4(),
+                    name: "sales-etl".to_string(),
+                    transformation_type: Some("dbt".to_string()),
+                    url: Some("https://github.com/org/dbt-models/sales".to_string()),
+                    description: Some("Sales data transformation".to_string()),
+                },
+                TransformationLink {
+                    id: Uuid::new_v4(),
+                    name: "aggregation-pipeline".to_string(),
+                    transformation_type: Some("spark".to_string()),
+                    url: None,
+                    description: None,
+                },
+            ],
+            table_visibility: Some(TableVisibility::DomainOnly),
+            view_positions: HashMap::new(),
+        };
+
+        let yaml = serde_yaml::to_string(&domain).unwrap();
+        let parsed: DomainReference = serde_yaml::from_str(&yaml).unwrap();
+
+        assert_eq!(parsed.transformation_links.len(), 2);
+        assert_eq!(parsed.transformation_links[0].name, "sales-etl");
+        assert_eq!(
+            parsed.transformation_links[0].transformation_type,
+            Some("dbt".to_string())
+        );
+        assert_eq!(parsed.table_visibility, Some(TableVisibility::DomainOnly));
+    }
+
+    #[test]
+    fn test_table_visibility_default() {
+        let visibility: TableVisibility = Default::default();
+        assert_eq!(visibility, TableVisibility::Public);
+    }
+
+    #[test]
+    fn test_table_visibility_serialization() {
+        let domain = DomainReference {
+            id: Uuid::new_v4(),
+            name: "private-domain".to_string(),
+            description: None,
+            systems: vec![],
+            shared_resources: vec![],
+            transformation_links: vec![],
+            table_visibility: Some(TableVisibility::Hidden),
+            view_positions: HashMap::new(),
+        };
+
+        let json = serde_json::to_string(&domain).unwrap();
+        assert!(json.contains("\"tableVisibility\":\"hidden\""));
+
+        let parsed: DomainReference = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.table_visibility, Some(TableVisibility::Hidden));
+    }
+
+    #[test]
+    fn test_domain_backward_compatibility_no_new_fields() {
+        // Ensure old YAML without shared_resources, transformation_links, table_visibility still parses
+        let yaml = r#"
+id: 550e8400-e29b-41d4-a716-446655440000
+name: legacy-domain
+description: A legacy domain
+systems: []
+"#;
+        let parsed: DomainReference = serde_yaml::from_str(yaml).unwrap();
+        assert!(parsed.shared_resources.is_empty());
+        assert!(parsed.transformation_links.is_empty());
+        assert!(parsed.table_visibility.is_none());
+        assert_eq!(parsed.name, "legacy-domain");
     }
 }

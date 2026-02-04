@@ -118,11 +118,68 @@ pub enum RelationshipType {
     EtlTransformation,
 }
 
+/// Authentication method for system connections
+///
+/// Defines the authentication method used to connect to a system.
+/// Used in EnvironmentConnection to specify how to authenticate
+/// with different environments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AuthMethod {
+    /// OAuth 2.0 authentication
+    OAuth2,
+    /// API key authentication
+    ApiKey,
+    /// AWS IAM role authentication
+    IamRole,
+    /// Certificate-based authentication
+    Certificate,
+    /// Basic username/password authentication
+    BasicAuth,
+    /// SAML authentication
+    Saml,
+    /// OpenID Connect authentication
+    Oidc,
+    /// Kerberos authentication
+    Kerberos,
+    /// AWS Signature Version 4
+    AwsSignatureV4,
+    /// GCP Service Account authentication
+    GcpServiceAccount,
+    /// Azure Active Directory authentication
+    AzureActiveDirectory,
+    /// Mutual TLS authentication
+    Mtls,
+    /// No authentication required
+    None,
+    /// Custom authentication method
+    Custom,
+}
+
+/// Status of an environment
+///
+/// Defines the current operational status of a system environment.
+/// Used in EnvironmentConnection to indicate whether an environment
+/// is active, being deprecated, under maintenance, or inactive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum EnvironmentStatus {
+    /// Environment is active and available for use
+    #[default]
+    Active,
+    /// Environment is deprecated and will be removed
+    Deprecated,
+    /// Environment is under maintenance
+    Maintenance,
+    /// Environment is inactive and not available
+    Inactive,
+}
+
 /// Infrastructure type for Data Flow nodes and relationships
 ///
 /// Comprehensive enumeration covering major cloud databases, container platforms,
 /// data warehouses, message queues, BI/analytics tools, and storage systems
-/// from AWS, Azure, and GCP.
+/// from AWS, Azure, and GCP. Also used as SystemType for SystemReference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum InfrastructureType {

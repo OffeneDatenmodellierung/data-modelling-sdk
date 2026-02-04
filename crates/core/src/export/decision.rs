@@ -119,6 +119,7 @@ mod tests {
             "Use ODCS Format",
             "We need a standard format.",
             "Use ODCS v3.1.0.",
+            "author@example.com",
         )
         .with_status(DecisionStatus::Accepted)
         .with_category(DecisionCategory::DataDesign);

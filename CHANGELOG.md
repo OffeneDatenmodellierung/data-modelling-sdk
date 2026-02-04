@@ -5,6 +5,94 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-02-04
+
+### Added
+
+- **feat(relationship)**: Extended Relationship model with new fields (GitHub #70)
+  - `label`: Human-readable label for the relationship (displayed on edge in UI)
+  - `source_key`: Key/column name on the source side of the relationship
+  - `target_key`: Key/column name on the target side of the relationship
+
+- **feat(workspace)**: Extended DomainReference with resource management fields (GitHub #70)
+  - `SharedResource` struct for shared domain resources (URLs, documentation, etc.)
+  - `TransformationLink` struct for data transformation links (ETL, dbt, etc.)
+  - `TableVisibility` enum: public, domainOnly, hidden (defaults to public)
+  - `shared_resources`: Array of shared resources for the domain
+  - `transformation_links`: Array of transformation links for the domain
+  - `table_visibility`: Default visibility for tables in the domain
+
+- **feat(knowledge)**: Added `custom_properties` field to KnowledgeArticle
+  - Extensible HashMap for custom metadata on knowledge articles
+
+- **feat(decision)**: Extended Decision model (GitHub #70)
+  - Added `custom_properties` field for extensible custom metadata
+  - **BREAKING**: `Decision::new()` now requires `author` as 5th parameter
+  - Authors field is now mandatory (at least one author required)
+  - Reviewers and approvers remain optional
+
+- **feat(cads)**: Added `domain_id` field to CADSAsset
+  - Optional UUID reference to link CADS assets to domains
+
+### Changed
+
+- **schema(decision)**: Updated decision-schema.json
+  - `authors` array now required with minItems: 1
+  - Added `customProperties` object field
+
+- **schema(knowledge)**: Updated knowledge-schema.json
+  - Added `customProperties` object field
+
+- **schema(workspace)**: Updated workspace-schema.json
+  - Added `SharedResource`, `TransformationLink`, `TableVisibility` definitions
+  - Added `label`, `sourceKey`, `targetKey` to Relationship
+  - Added `sharedResources`, `transformationLinks`, `tableVisibility` to DomainReference
+
+- **schema(domain)**: Updated domain-schema.json
+  - Added `SharedResource`, `TransformationLink`, `TableVisibility` definitions
+  - Updated DomainReference with new fields
+
+- **schema(cads)**: Updated cads.schema.json
+  - Added `domainId` field (UUID format)
+
+## [2.2.0] - 2026-02-04
+
+### Added
+
+- **feat(workspace)**: Extended SystemReference with systemType and environments (GitHub #70)
+  - Added `systemType` field to SystemReference using existing InfrastructureType enum (68 infrastructure types)
+  - Added `environments` array for multi-environment connection details (production, staging, development)
+  - New `EnvironmentConnection` struct with comprehensive connection details:
+    - `environment` (required): Environment name
+    - `owner`: Environment owner/team
+    - `contactDetails`: Contact information (reuses existing ContactDetails type)
+    - `sla`: SLA properties (reuses existing SlaProperty type)
+    - `authMethod`: Authentication method (OAuth2, API Key, IAM Role, Certificate, etc.)
+    - `supportTeam`: Support team or on-call rotation name
+    - `connectionString`: Connection string (sensitive, may be placeholder)
+    - `secretLink`: Link to secrets manager entry (AWS Secrets Manager, HashiCorp Vault)
+    - `endpoint`: Primary endpoint URL or hostname
+    - `port`: Port number for connection
+    - `region`: Cloud region or data center location
+    - `status`: Environment status (active, deprecated, maintenance, inactive)
+    - `notes`: Additional notes
+    - `customProperties`: Extensible custom properties
+
+- **feat(enums)**: New authentication and environment status enums
+  - `AuthMethod` enum: oauth2, apiKey, iamRole, certificate, basicAuth, saml, oidc, kerberos, awsSignatureV4, gcpServiceAccount, azureActiveDirectory, mtls, none, custom
+  - `EnvironmentStatus` enum: active, deprecated, maintenance, inactive (defaults to active)
+
+- **feat(schema)**: Refactored workspace schema into modular sub-schemas
+  - `common-types-schema.json`: Shared types (ContactDetails, SlaProperty, ViewPosition, ConnectionPoint)
+  - `domain-schema.json`: DomainReference definition
+  - `system-schema.json`: SystemReference, EnvironmentConnection, SystemType, AuthMethod, EnvironmentStatus
+  - Updated `workspace-schema.json` with new fields and references to sub-schemas
+
+### Changed
+
+- All new SystemReference fields are optional for backward compatibility
+- Existing workspace.yaml files will continue to work without modification
+
 ## [2.1.0] - 2026-02-01
 
 ### Added

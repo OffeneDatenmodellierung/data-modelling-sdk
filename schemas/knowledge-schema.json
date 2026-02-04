@@ -177,10 +177,9 @@
     "relatedArticles": {
       "type": "array",
       "items": {
-        "type": "string",
-        "format": "uuid"
+        "$ref": "#/$defs/RelatedArticle"
       },
-      "description": "IDs of related knowledge articles"
+      "description": "Related knowledge articles with relationship metadata"
     },
     "prerequisites": {
       "type": "array",
@@ -217,6 +216,11 @@
       "type": ["string", "null"],
       "description": "Additional notes"
     },
+    "customProperties": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Custom properties for extensibility"
+    },
     "createdAt": {
       "type": "string",
       "format": "date-time",
@@ -228,5 +232,34 @@
       "description": "Last modification timestamp"
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+
+  "$defs": {
+    "RelatedArticle": {
+      "type": "object",
+      "description": "Reference to a related knowledge article with relationship metadata",
+      "required": ["articleId", "articleNumber", "title", "relationship"],
+      "properties": {
+        "articleId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "UUID of the related article"
+        },
+        "articleNumber": {
+          "type": "string",
+          "description": "Article number (e.g., 'KB-0001')"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the related article"
+        },
+        "relationship": {
+          "type": "string",
+          "enum": ["related", "prerequisite", "supersedes"],
+          "description": "Type of relationship to this article"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }

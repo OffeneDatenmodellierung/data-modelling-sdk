@@ -959,6 +959,7 @@ mod tests {
             "Use ODCS Format for Data Contracts",
             "We need a standard format for defining data contracts across teams.",
             "Use ODCS v3.1.0 as our data contract format.",
+            "author@example.com",
         )
         .with_status(DecisionStatus::Accepted)
         .with_category(DecisionCategory::DataDesign)
@@ -1016,10 +1017,22 @@ mod tests {
     #[test]
     fn test_generate_decisions_index() {
         let decisions = vec![
-            Decision::new(1, "First Decision", "Context", "Decision")
-                .with_status(DecisionStatus::Accepted),
-            Decision::new(2, "Second Decision", "Context", "Decision")
-                .with_status(DecisionStatus::Proposed),
+            Decision::new(
+                1,
+                "First Decision",
+                "Context",
+                "Decision",
+                "author@example.com",
+            )
+            .with_status(DecisionStatus::Accepted),
+            Decision::new(
+                2,
+                "Second Decision",
+                "Context",
+                "Decision",
+                "author@example.com",
+            )
+            .with_status(DecisionStatus::Proposed),
         ];
 
         let exporter = MarkdownExporter::new();

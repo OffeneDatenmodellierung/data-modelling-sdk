@@ -2437,6 +2437,7 @@ mod tests {
             "Use Rust for SDK",
             "We need to choose a language for the SDK implementation.",
             "Use Rust for type safety and performance.",
+            "author@example.com",
         );
 
         let exporter = PdfExporter::new();
@@ -2564,6 +2565,7 @@ mod tests {
             version: "1.0.0".to_string(),
             status: CADSStatus::Production,
             domain: Some("NLP".to_string()),
+            domain_id: None,
             tags: vec![],
             description: Some(CADSDescription {
                 purpose: Some("Analyze sentiment in customer feedback".to_string()),
@@ -2756,6 +2758,7 @@ mod tests {
             "Use Rust for SDK Implementation",
             "We need to choose a programming language for the SDK implementation.\n\nKey requirements:\n- Type safety\n- Performance\n- Cross-platform compilation\n- WASM support\n\nThe decision will impact the entire development team and future maintenance of the codebase. We need to carefully consider all options before making a final choice.",
             "We will use Rust as the primary programming language.\n\nRust provides:\n1. Strong type safety through its ownership system\n2. Excellent performance comparable to C/C++\n3. Cross-platform compilation via LLVM\n4. First-class WASM support\n\nThis decision was made after careful evaluation of all alternatives and considering the long-term maintainability of the project.",
+            "architect@example.com",
         );
 
         // Add options with pros and cons
@@ -2848,6 +2851,7 @@ fn main() {
         "Use microservices",
         "Context here",
         "Decision here",
+        "author@example.com",
     );
     println!("Created: {}", decision.title);
 }
@@ -3143,6 +3147,7 @@ For more information, see the documentation."#,
             version: "2.3.1".to_string(),
             status: CADSStatus::Production,
             domain: Some("Natural Language Processing".to_string()),
+            domain_id: None,
             tags: vec![],
             description: Some(CADSDescription {
                 purpose: Some("Analyzes customer feedback, reviews, and support tickets to determine sentiment polarity (positive, negative, neutral) and emotion categories.".to_string()),

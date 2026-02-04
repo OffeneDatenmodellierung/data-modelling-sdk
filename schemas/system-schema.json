@@ -1,0 +1,232 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/offenedatenmodellierung/data-modelling-sdk/schemas/system-schema.json",
+  "title": "System Schema",
+  "description": "System-related type definitions including SystemReference, EnvironmentConnection, and associated enums for infrastructure types, authentication methods, and environment status.",
+  "definitions": {
+    "SystemType": {
+      "type": "string",
+      "description": "Type of system infrastructure. Comprehensive enumeration covering databases, cloud services, message queues, and more.",
+      "enum": [
+        "PostgreSQL",
+        "MySQL",
+        "Mssql",
+        "Oracle",
+        "Sqlite",
+        "MariaDB",
+        "DynamoDB",
+        "Cassandra",
+        "MongoDB",
+        "Redis",
+        "ElasticSearch",
+        "CouchDB",
+        "Neo4j",
+        "RdsPostgreSQL",
+        "RdsMySQL",
+        "RdsMariaDB",
+        "RdsOracle",
+        "RdsSqlServer",
+        "Redshift",
+        "Aurora",
+        "DocumentDB",
+        "Neptune",
+        "ElastiCache",
+        "S3",
+        "Eks",
+        "Ecs",
+        "Lambda",
+        "Kinesis",
+        "Sqs",
+        "Sns",
+        "Glue",
+        "Athena",
+        "QuickSight",
+        "AzureSqlDatabase",
+        "CosmosDB",
+        "AzureSynapseAnalytics",
+        "AzureDataLakeStorage",
+        "AzureBlobStorage",
+        "Aks",
+        "Aci",
+        "AzureFunctions",
+        "EventHubs",
+        "ServiceBus",
+        "AzureDataFactory",
+        "PowerBI",
+        "CloudSqlPostgreSQL",
+        "CloudSqlMySQL",
+        "CloudSqlSqlServer",
+        "BigQuery",
+        "CloudSpanner",
+        "Firestore",
+        "CloudStorage",
+        "Gke",
+        "CloudRun",
+        "CloudFunctions",
+        "PubSub",
+        "Dataflow",
+        "Looker",
+        "Kafka",
+        "Pulsar",
+        "RabbitMQ",
+        "ActiveMQ",
+        "Kubernetes",
+        "Docker",
+        "Snowflake",
+        "Databricks",
+        "Teradata",
+        "Vertica",
+        "Tableau",
+        "Qlik",
+        "Metabase",
+        "ApacheSuperset",
+        "Grafana",
+        "Hdfs",
+        "MinIO"
+      ]
+    },
+    "AuthMethod": {
+      "type": "string",
+      "description": "Authentication method for connecting to the system",
+      "enum": [
+        "oauth2",
+        "apiKey",
+        "iamRole",
+        "certificate",
+        "basicAuth",
+        "saml",
+        "oidc",
+        "kerberos",
+        "awsSignatureV4",
+        "gcpServiceAccount",
+        "azureActiveDirectory",
+        "mtls",
+        "none",
+        "custom"
+      ]
+    },
+    "EnvironmentStatus": {
+      "type": "string",
+      "description": "Current status of an environment",
+      "enum": ["active", "deprecated", "maintenance", "inactive"],
+      "default": "active"
+    },
+    "EnvironmentConnection": {
+      "type": "object",
+      "description": "Environment-specific connection details for a system. Systems may have multiple environments (production, staging, etc.) each with different connection details, SLAs, and ownership.",
+      "required": ["environment"],
+      "properties": {
+        "environment": {
+          "type": "string",
+          "description": "Environment name (e.g., 'production', 'staging', 'development')"
+        },
+        "owner": {
+          "type": "string",
+          "description": "Owner/team responsible for this environment"
+        },
+        "contactDetails": {
+          "$ref": "common-types-schema.json#/definitions/ContactDetails"
+        },
+        "sla": {
+          "type": "array",
+          "description": "SLA properties for this environment",
+          "items": {
+            "$ref": "common-types-schema.json#/definitions/SlaProperty"
+          }
+        },
+        "authMethod": {
+          "$ref": "#/definitions/AuthMethod"
+        },
+        "supportTeam": {
+          "type": "string",
+          "description": "Support team or on-call rotation name"
+        },
+        "connectionString": {
+          "type": "string",
+          "description": "Connection string (sensitive - may be placeholder or reference)"
+        },
+        "secretLink": {
+          "type": "string",
+          "format": "uri",
+          "description": "Link to secrets manager entry (e.g., AWS Secrets Manager, HashiCorp Vault)"
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Primary endpoint URL or hostname"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Port number for the connection"
+        },
+        "region": {
+          "type": "string",
+          "description": "Cloud region or data center location"
+        },
+        "status": {
+          "$ref": "#/definitions/EnvironmentStatus"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes about this environment"
+        },
+        "customProperties": {
+          "type": "object",
+          "description": "Additional custom properties for extensibility",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "SystemReference": {
+      "type": "object",
+      "description": "System reference within a domain. Systems represent infrastructure components like databases, message queues, or cloud services that contain tables and assets.",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "System identifier"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
+          "description": "System name (used in file naming)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the system"
+        },
+        "systemType": {
+          "$ref": "#/definitions/SystemType"
+        },
+        "tableIds": {
+          "type": "array",
+          "description": "Optional array of table UUIDs that belong to this system. When present, provides explicit table-to-system mapping without requiring parsing of individual ODCS files.",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "assetIds": {
+          "type": "array",
+          "description": "Optional array of compute asset (CADS) UUIDs that belong to this system. When present, provides explicit asset-to-system mapping.",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "environments": {
+          "type": "array",
+          "description": "List of environment-specific connection details (production, staging, development, etc.)",
+          "items": {
+            "$ref": "#/definitions/EnvironmentConnection"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

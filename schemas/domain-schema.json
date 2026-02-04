@@ -1,0 +1,131 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/offenedatenmodellierung/data-modelling-sdk/schemas/domain-schema.json",
+  "title": "Domain Schema",
+  "description": "Domain-related type definitions. Domains are organizational units within a workspace that group related systems and assets.",
+  "definitions": {
+    "DomainReference": {
+      "type": "object",
+      "description": "Domain reference within a workspace. Contains information about a domain and its systems.",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Domain identifier"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
+          "description": "Domain name (used in file naming)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the domain"
+        },
+        "systems": {
+          "type": "array",
+          "description": "Systems within this domain",
+          "items": {
+            "$ref": "system-schema.json#/definitions/SystemReference"
+          }
+        },
+        "sharedResources": {
+          "type": "array",
+          "description": "Shared resources available across the domain (schemas, libraries, utilities)",
+          "items": {
+            "$ref": "#/definitions/SharedResource"
+          }
+        },
+        "transformationLinks": {
+          "type": "array",
+          "description": "Links to transformations and data pipelines associated with this domain",
+          "items": {
+            "$ref": "#/definitions/TransformationLink"
+          }
+        },
+        "tableVisibility": {
+          "$ref": "#/definitions/TableVisibility"
+        },
+        "viewPositions": {
+          "type": "object",
+          "description": "Per-view node positions for canvas rendering. Keys are view types (operational, analytical, process, systems), values are objects mapping entity IDs to x/y coordinates.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "common-types-schema.json#/definitions/ViewPosition"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "TableVisibility": {
+      "type": "string",
+      "description": "Default visibility setting for tables within a domain",
+      "enum": ["public", "domainOnly", "hidden"],
+      "default": "public"
+    },
+    "SharedResource": {
+      "type": "object",
+      "description": "Shared resource within a domain (e.g., shared schemas, libraries, utilities)",
+      "required": ["id", "name", "resourceType"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for the resource"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the shared resource"
+        },
+        "resourceType": {
+          "type": "string",
+          "description": "Type of resource (e.g., 'schema', 'library', 'utility', 'template')"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL or path to the resource"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TransformationLink": {
+      "type": "object",
+      "description": "Link to a transformation or data pipeline",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for the transformation"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the transformation"
+        },
+        "transformationType": {
+          "type": "string",
+          "description": "Type of transformation (e.g., 'dbt', 'spark', 'airflow')"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL or path to the transformation definition"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

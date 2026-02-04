@@ -31,6 +31,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::Tag;
@@ -458,6 +459,13 @@ pub struct Decision {
     /// Additional notes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Custom properties for extensibility
+    #[serde(
+        default,
+        skip_serializing_if = "HashMap::is_empty",
+        alias = "custom_properties"
+    )]
+    pub custom_properties: HashMap<String, serde_json::Value>,
 
     /// Creation timestamp
     #[serde(alias = "created_at")]
@@ -469,11 +477,14 @@ pub struct Decision {
 
 impl Decision {
     /// Create a new decision with required fields
+    ///
+    /// Note: At least one author is required for new decisions.
     pub fn new(
         number: u64,
         title: impl Into<String>,
         context: impl Into<String>,
         decision: impl Into<String>,
+        author: impl Into<String>,
     ) -> Self {
         let now = Utc::now();
         Self {
@@ -487,7 +498,7 @@ impl Decision {
             workspace_id: None,
             date: now,
             decided_at: None,
-            authors: Vec::new(),
+            authors: vec![author.into()],
             deciders: Vec::new(),
             consulted: Vec::new(),
             informed: Vec::new(),
@@ -507,6 +518,7 @@ impl Decision {
             confirmation_notes: None,
             tags: Vec::new(),
             notes: None,
+            custom_properties: HashMap::new(),
             created_at: now,
             updated_at: now,
         }
@@ -514,14 +526,17 @@ impl Decision {
 
     /// Create a new decision with a timestamp-based number (YYMMDDHHmm format)
     /// This format prevents merge conflicts in distributed Git workflows
+    ///
+    /// Note: At least one author is required for new decisions.
     pub fn new_with_timestamp(
         title: impl Into<String>,
         context: impl Into<String>,
         decision: impl Into<String>,
+        author: impl Into<String>,
     ) -> Self {
         let now = Utc::now();
         let number = Self::generate_timestamp_number(&now);
-        Self::new(number, title, context, decision)
+        Self::new(number, title, context, decision, author)
     }
 
     /// Generate a timestamp-based decision number in YYMMDDHHmm format
@@ -920,17 +935,20 @@ mod tests {
             "Use ODCS v3.1.0",
             "We need a standard format",
             "We will use ODCS v3.1.0",
+            "author@example.com",
         );
 
         assert_eq!(decision.number, 1);
         assert_eq!(decision.title, "Use ODCS v3.1.0");
         assert_eq!(decision.status, DecisionStatus::Proposed);
         assert_eq!(decision.category, DecisionCategory::Architecture);
+        assert_eq!(decision.authors.len(), 1);
+        assert_eq!(decision.authors[0], "author@example.com");
     }
 
     #[test]
     fn test_decision_builder_pattern() {
-        let decision = Decision::new(1, "Test", "Context", "Decision")
+        let decision = Decision::new(1, "Test", "Context", "Decision", "author@example.com")
             .with_status(DecisionStatus::Accepted)
             .with_category(DecisionCategory::DataDesign)
             .with_domain("sales")
@@ -963,7 +981,7 @@ mod tests {
 
     #[test]
     fn test_decision_filename() {
-        let decision = Decision::new(1, "Test", "Context", "Decision");
+        let decision = Decision::new(1, "Test", "Context", "Decision", "author@example.com");
         assert_eq!(
             decision.filename("enterprise"),
             "enterprise_adr-0001.madr.yaml"
@@ -983,6 +1001,7 @@ mod tests {
             "Use ODCS v3.1.0 for all data contracts",
             "Context",
             "Decision",
+            "author@example.com",
         );
         let filename = decision.markdown_filename();
         assert!(filename.starts_with("ADR-0001-"));
@@ -991,9 +1010,15 @@ mod tests {
 
     #[test]
     fn test_decision_yaml_roundtrip() {
-        let decision = Decision::new(1, "Test Decision", "Some context", "The decision")
-            .with_status(DecisionStatus::Accepted)
-            .with_domain("test");
+        let decision = Decision::new(
+            1,
+            "Test Decision",
+            "Some context",
+            "The decision",
+            "author@example.com",
+        )
+        .with_status(DecisionStatus::Accepted)
+        .with_domain("test");
 
         let yaml = decision.to_yaml().unwrap();
         let parsed = Decision::from_yaml(&yaml).unwrap();
@@ -1009,13 +1034,13 @@ mod tests {
         let mut index = DecisionIndex::new();
         assert_eq!(index.get_next_number(), 1);
 
-        let decision1 = Decision::new(1, "First", "Context", "Decision");
+        let decision1 = Decision::new(1, "First", "Context", "Decision", "author@example.com");
         index.add_decision(&decision1, "test_adr-0001.madr.yaml".to_string());
 
         assert_eq!(index.decisions.len(), 1);
         assert_eq!(index.get_next_number(), 2);
 
-        let decision2 = Decision::new(2, "Second", "Context", "Decision");
+        let decision2 = Decision::new(2, "Second", "Context", "Decision", "author@example.com");
         index.add_decision(&decision2, "test_adr-0002.madr.yaml".to_string());
 
         assert_eq!(index.decisions.len(), 2);
@@ -1062,16 +1087,29 @@ mod tests {
 
     #[test]
     fn test_is_timestamp_number() {
-        let sequential_decision = Decision::new(1, "Test", "Context", "Decision");
+        let sequential_decision =
+            Decision::new(1, "Test", "Context", "Decision", "author@example.com");
         assert!(!sequential_decision.is_timestamp_number());
 
-        let timestamp_decision = Decision::new(2601101430, "Test", "Context", "Decision");
+        let timestamp_decision = Decision::new(
+            2601101430,
+            "Test",
+            "Context",
+            "Decision",
+            "author@example.com",
+        );
         assert!(timestamp_decision.is_timestamp_number());
     }
 
     #[test]
     fn test_timestamp_decision_filename() {
-        let decision = Decision::new(2601101430, "Test", "Context", "Decision");
+        let decision = Decision::new(
+            2601101430,
+            "Test",
+            "Context",
+            "Decision",
+            "author@example.com",
+        );
         assert_eq!(
             decision.filename("enterprise"),
             "enterprise_adr-2601101430.madr.yaml"
@@ -1080,7 +1118,13 @@ mod tests {
 
     #[test]
     fn test_timestamp_decision_markdown_filename() {
-        let decision = Decision::new(2601101430, "Test Decision", "Context", "Decision");
+        let decision = Decision::new(
+            2601101430,
+            "Test Decision",
+            "Context",
+            "Decision",
+            "author@example.com",
+        );
         let filename = decision.markdown_filename();
         assert!(filename.starts_with("ADR-2601101430-"));
         assert!(filename.ends_with(".md"));
@@ -1088,7 +1132,7 @@ mod tests {
 
     #[test]
     fn test_decision_with_consulted_informed() {
-        let decision = Decision::new(1, "Test", "Context", "Decision")
+        let decision = Decision::new(1, "Test", "Context", "Decision", "author@example.com")
             .add_consulted("security@example.com")
             .add_informed("stakeholders@example.com");
 
@@ -1100,11 +1144,11 @@ mod tests {
 
     #[test]
     fn test_decision_with_authors() {
-        let decision = Decision::new(1, "Test", "Context", "Decision")
-            .add_author("author1@example.com")
-            .add_author("author2@example.com");
+        let decision = Decision::new(1, "Test", "Context", "Decision", "author1@example.com")
+            .add_author("author2@example.com")
+            .add_author("author3@example.com");
 
-        assert_eq!(decision.authors.len(), 2);
+        assert_eq!(decision.authors.len(), 3);
     }
 
     #[test]
@@ -1128,7 +1172,7 @@ mod tests {
         let related_decision_id = Uuid::new_v4();
         let related_knowledge_id = Uuid::new_v4();
 
-        let decision = Decision::new(1, "Test", "Context", "Decision")
+        let decision = Decision::new(1, "Test", "Context", "Decision", "author@example.com")
             .add_related_decision(related_decision_id)
             .add_related_knowledge(related_knowledge_id);
 
@@ -1140,8 +1184,8 @@ mod tests {
 
     #[test]
     fn test_decision_status_draft() {
-        let decision =
-            Decision::new(1, "Test", "Context", "Decision").with_status(DecisionStatus::Draft);
+        let decision = Decision::new(1, "Test", "Context", "Decision", "author@example.com")
+            .with_status(DecisionStatus::Draft);
         assert_eq!(decision.status, DecisionStatus::Draft);
         assert_eq!(format!("{}", DecisionStatus::Draft), "Draft");
     }
