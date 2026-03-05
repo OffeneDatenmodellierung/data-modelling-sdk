@@ -78,6 +78,8 @@ pub enum AssetType {
     Sketch,
     /// Sketch index file
     SketchIndex,
+    /// Databricks Metric Views
+    Dbmv,
 }
 
 impl AssetType {
@@ -98,6 +100,7 @@ impl AssetType {
             AssetType::KnowledgeIndex => "yaml",
             AssetType::Sketch => "sketch.yaml",
             AssetType::SketchIndex => "yaml",
+            AssetType::Dbmv => "dbmv.yaml",
         }
     }
 
@@ -149,6 +152,8 @@ impl AssetType {
             Some(AssetType::Knowledge)
         } else if filename.ends_with(".sketch.yaml") {
             Some(AssetType::Sketch)
+        } else if filename.ends_with(".dbmv.yaml") {
+            Some(AssetType::Dbmv)
         } else if filename.ends_with(".bpmn.xml") {
             Some(AssetType::Bpmn)
         } else if filename.ends_with(".dmn.xml") {
@@ -174,6 +179,7 @@ impl AssetType {
             ".madr.yaml",
             ".kb.yaml",
             ".sketch.yaml",
+            ".dbmv.yaml",
             ".bpmn.xml",
             ".dmn.xml",
             ".openapi.yaml",
@@ -659,6 +665,8 @@ impl Workspace {
             (filename.strip_suffix(".dmn.xml")?, AssetType::Dmn)
         } else if filename.ends_with(".openapi.yaml") {
             (filename.strip_suffix(".openapi.yaml")?, AssetType::Openapi)
+        } else if filename.ends_with(".dbmv.yaml") {
+            (filename.strip_suffix(".dbmv.yaml")?, AssetType::Dbmv)
         } else {
             return None;
         };
@@ -881,6 +889,16 @@ mod tests {
         assert!(result.is_some());
         let (_, _, _, asset_type) = result.unwrap();
         assert_eq!(asset_type, AssetType::Odps);
+
+        // DBMV type
+        let result =
+            Workspace::parse_asset_filename("enterprise_sales_databricks_metrics.dbmv.yaml");
+        assert!(result.is_some());
+        let (domain, system, name, asset_type) = result.unwrap();
+        assert_eq!(domain, "sales");
+        assert_eq!(system, Some("databricks".to_string()));
+        assert_eq!(name, "metrics");
+        assert_eq!(asset_type, AssetType::Dbmv);
     }
 
     #[test]
@@ -927,6 +945,9 @@ mod tests {
         assert_eq!(AssetType::Bpmn.extension(), "bpmn.xml");
         assert_eq!(AssetType::Dmn.extension(), "dmn.xml");
         assert_eq!(AssetType::Openapi.extension(), "openapi.yaml");
+        assert_eq!(AssetType::Sketch.extension(), "sketch.yaml");
+        assert_eq!(AssetType::SketchIndex.extension(), "yaml");
+        assert_eq!(AssetType::Dbmv.extension(), "dbmv.yaml");
     }
 
     #[test]
@@ -937,6 +958,9 @@ mod tests {
             Some("relationships.yaml")
         );
         assert_eq!(AssetType::Odcs.filename(), None);
+        assert_eq!(AssetType::Dbmv.filename(), None);
+        assert_eq!(AssetType::Sketch.filename(), None);
+        assert_eq!(AssetType::SketchIndex.filename(), Some("sketches.yaml"));
     }
 
     #[test]
@@ -977,6 +1001,18 @@ mod tests {
             AssetType::from_filename("test.openapi.json"),
             Some(AssetType::Openapi)
         );
+        assert_eq!(
+            AssetType::from_filename("test.sketch.yaml"),
+            Some(AssetType::Sketch)
+        );
+        assert_eq!(
+            AssetType::from_filename("sketches.yaml"),
+            Some(AssetType::SketchIndex)
+        );
+        assert_eq!(
+            AssetType::from_filename("test.dbmv.yaml"),
+            Some(AssetType::Dbmv)
+        );
         assert_eq!(AssetType::from_filename("random.txt"), None);
         assert_eq!(AssetType::from_filename("test.yaml"), None);
     }
@@ -988,6 +1024,11 @@ mod tests {
         assert!(AssetType::is_supported_file(
             "enterprise_sales_orders.odcs.yaml"
         ));
+        assert!(AssetType::is_supported_file(
+            "enterprise_sales_metrics.dbmv.yaml"
+        ));
+        assert!(AssetType::is_supported_file("test.sketch.yaml"));
+        assert!(AssetType::is_supported_file("sketches.yaml"));
         assert!(!AssetType::is_supported_file("readme.md"));
         assert!(!AssetType::is_supported_file("config.json"));
     }
@@ -998,6 +1039,8 @@ mod tests {
         assert!(AssetType::Relationships.is_workspace_level());
         assert!(!AssetType::Odcs.is_workspace_level());
         assert!(!AssetType::Odps.is_workspace_level());
+        assert!(!AssetType::Dbmv.is_workspace_level());
+        assert!(!AssetType::Sketch.is_workspace_level());
     }
 
     #[test]

@@ -12,9 +12,10 @@ This guide provides an overview of the different schemas supported by the Data M
 6. [BPMN (Business Process Model and Notation)](#bpmn-business-process-model-and-notation)
 7. [DMN (Decision Model and Notation)](#dmn-decision-model-and-notation)
 8. [OpenAPI](#openapi)
-9. [Other Formats](#other-formats)
-10. [Universal Converter](#universal-converter)
-11. [OpenAPI to ODCS Converter](#openapi-to-odcs-converter)
+9. [DBMV (Databricks Metric Views)](#dbmv-databricks-metric-views)
+10. [Other Formats](#other-formats)
+11. [Universal Converter](#universal-converter)
+12. [OpenAPI to ODCS Converter](#openapi-to-odcs-converter)
 
 ---
 
@@ -260,6 +261,48 @@ let domain2 = Domain::from_yaml(&yaml)?;
 - Mapping data flow across systems
 - Cross-domain data sharing
 - Enterprise architecture documentation
+
+---
+
+## DBMV (Databricks Metric Views)
+
+**Version**: v1.0
+**Purpose**: Semantic layer metric definitions for Databricks
+**Schema**: `schemas/dbmv.schema.json`
+
+### Overview
+
+DBMV provides a wrapper format for Databricks Metric Views, allowing one YAML file per system containing multiple metric view definitions. The envelope uses camelCase (`apiVersion`, `kind`, `metricViews`) while inner content uses snake_case (Databricks-native format).
+
+### Key Features
+
+- **Multi-view documents**: Multiple metric views per file, organized by system
+- **Dimensions and measures**: Full support for Databricks dimension/measure definitions
+- **Window functions**: Time-based windowing with semiadditive support
+- **Recursive joins**: Snowflake schema modeling with nested join definitions
+- **Materialization**: Schedule, mode, and materialized view configuration
+- **Format specification**: Measure formatting (currency, percentage, etc.)
+
+### Usage
+
+```rust
+use data_modelling_sdk::import::DBMVImporter;
+use data_modelling_sdk::export::DBMVExporter;
+
+// Import DBMV document
+let importer = DBMVImporter::new();
+let doc = importer.import(yaml_content)?;
+
+// Export DBMV document
+let yaml = DBMVExporter::export_document(&doc);
+
+// Import standalone Databricks metric view
+let view = importer.import_single_view(yaml_content)?;
+```
+
+### File Extension
+
+`.dbmv.yaml` (e.g., `sales-metrics.dbmv.yaml`)
 
 ---
 

@@ -1,0 +1,97 @@
+apiVersion: v1.0.0
+kind: MetricViews
+system: sales-databricks
+description: Sales domain metrics for revenue analytics and customer insights
+metricViews:
+  - name: orders_metrics
+    version: '1.1'
+    source: sales_catalog.core.orders
+    filter: "status = 'completed'"
+    comment: Core order metrics for revenue tracking
+    dimensions:
+      - name: order_date
+        expr: order_date
+        display_name: Order Date
+        comment: Date the order was placed
+      - name: region
+        expr: region
+        display_name: Region
+      - name: product_category
+        expr: product_category
+        display_name: Product Category
+    measures:
+      - name: total_revenue
+        expr: SUM(revenue)
+        display_name: Total Revenue
+        format:
+          type: currency
+      - name: order_count
+        expr: COUNT(*)
+        display_name: Order Count
+        format:
+          type: number
+      - name: avg_order_value
+        expr: AVG(revenue)
+        display_name: Average Order Value
+        format:
+          type: currency
+      - name: ytd_revenue
+        expr: SUM(revenue)
+        display_name: Year-to-Date Revenue
+        window:
+          - order: order_date
+            range: cumulative
+            semiadditive: last
+    joins:
+      - name: customers
+        source: sales_catalog.core.customers
+        on: "source.customer_id = customers.id"
+        joins:
+          - name: nation
+            source: sales_catalog.reference.nations
+            on: "customers.nation_id = nation.id"
+    materialization:
+      schedule: every 6 hours
+      mode: relaxed
+      materialized_views:
+        - name: baseline
+          type: unaggregated
+        - name: revenue_by_date
+          type: aggregated
+          dimensions:
+            - order_date
+          measures:
+            - total_revenue
+            - order_count
+        - name: revenue_by_region
+          type: aggregated
+          dimensions:
+            - region
+          measures:
+            - total_revenue
+
+  - name: customer_metrics
+    version: '1.1'
+    source: sales_catalog.core.customers
+    comment: Customer lifetime value and engagement metrics
+    dimensions:
+      - name: signup_date
+        expr: signup_date
+        display_name: Signup Date
+      - name: customer_tier
+        expr: customer_tier
+        display_name: Customer Tier
+    measures:
+      - name: customer_count
+        expr: COUNT(*)
+        display_name: Customer Count
+      - name: total_lifetime_value
+        expr: SUM(lifetime_value)
+        display_name: Total Lifetime Value
+        format:
+          type: currency
+      - name: avg_lifetime_value
+        expr: AVG(lifetime_value)
+        display_name: Average Lifetime Value
+        format:
+          type: currency

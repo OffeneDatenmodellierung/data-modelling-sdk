@@ -13,6 +13,7 @@ pub mod avro;
 #[cfg(feature = "bpmn")]
 pub mod bpmn;
 pub mod cads;
+pub mod dbmv;
 pub mod decision;
 #[cfg(feature = "dmn")]
 pub mod dmn;
@@ -346,6 +347,7 @@ impl Default for ColumnData {
 // Re-export for convenience
 pub use avro::AvroImporter;
 pub use cads::CADSImporter;
+pub use dbmv::DBMVImporter;
 pub use decision::DecisionImporter;
 pub use json_schema::JSONSchemaImporter;
 pub use knowledge::KnowledgeImporter;

@@ -9,6 +9,7 @@ pub mod cads;
 pub mod column;
 pub mod cross_domain;
 pub mod data_model;
+pub mod dbmv;
 pub mod decision;
 #[cfg(feature = "dmn")]
 pub mod dmn;
@@ -69,6 +70,10 @@ pub use workspace::{
 };
 
 // Decision and Knowledge models
+pub use dbmv::{
+    DBMVDimension, DBMVDocument, DBMVJoin, DBMVMaterialization, DBMVMaterializedView, DBMVMeasure,
+    DBMVMeasureFormat, DBMVMetricView, DBMVWindow,
+};
 pub use decision::{
     AssetLink, AssetRelationship, ComplianceAssessment, Decision, DecisionCategory, DecisionDriver,
     DecisionIndex, DecisionIndexEntry, DecisionOption, DecisionStatus, DriverPriority,

@@ -2,8 +2,8 @@
 
 use crate::error::CliError;
 use data_modelling_core::validation::schema::{
-    validate_avro_internal, validate_cads_internal, validate_decision_internal,
-    validate_decisions_index_internal, validate_json_schema_internal,
+    validate_avro_internal, validate_cads_internal, validate_dbmv_internal,
+    validate_decision_internal, validate_decisions_index_internal, validate_json_schema_internal,
     validate_knowledge_index_internal, validate_knowledge_internal, validate_odcl_internal,
     validate_odcs_internal, validate_odps_internal, validate_openapi_internal,
     validate_protobuf_internal, validate_sql_internal,
@@ -45,6 +45,7 @@ pub fn handle_validate(format: &str, input: &str) -> Result<(), CliError> {
         "knowledge" => validate_knowledge_internal(&content),
         "decisions-index" => validate_decisions_index_internal(&content),
         "knowledge-index" => validate_knowledge_index_internal(&content),
+        "dbmv" => validate_dbmv_internal(&content),
         _ => {
             return Err(CliError::InvalidArgument(format!(
                 "Unknown format: {}",

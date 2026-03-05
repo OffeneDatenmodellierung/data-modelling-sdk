@@ -313,10 +313,10 @@ impl Property {
     /// - "tags.[]" -> array items
     /// - "items.[].name" -> array of objects
     pub fn from_flat_paths(paths: &[(String, Property)]) -> Vec<Property> {
-        use std::collections::HashMap;
+        use indexmap::IndexMap;
 
-        // Group by top-level name
-        let mut top_level: HashMap<String, Vec<(String, &Property)>> = HashMap::new();
+        // Group by top-level name (IndexMap preserves insertion order for stable output)
+        let mut top_level: IndexMap<String, Vec<(String, &Property)>> = IndexMap::new();
 
         for (path, prop) in paths {
             let parts: Vec<&str> = path.split('.').collect();

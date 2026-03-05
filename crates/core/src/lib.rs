@@ -69,6 +69,14 @@ pub use models::{Sketch, SketchIndex, SketchIndexEntry, SketchStatus, SketchType
 pub use export::SketchExporter;
 pub use import::SketchImporter;
 
+// Re-export DBMV types
+pub use export::DBMVExporter;
+pub use import::DBMVImporter;
+pub use models::{
+    DBMVDimension, DBMVDocument, DBMVJoin, DBMVMaterialization, DBMVMaterializedView, DBMVMeasure,
+    DBMVMeasureFormat, DBMVMetricView, DBMVWindow,
+};
+
 // Re-export auth types
 pub use auth::{
     AuthMode, AuthState, GitHubEmail, InitiateOAuthRequest, InitiateOAuthResponse,

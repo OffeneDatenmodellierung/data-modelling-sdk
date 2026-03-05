@@ -13,16 +13,18 @@ use commands::db::{
 };
 use commands::export::{
     ExportArgs, ExportFormat, handle_export_avro, handle_export_branded_markdown,
-    handle_export_json_schema, handle_export_markdown, handle_export_odcs, handle_export_odps,
-    handle_export_pdf, handle_export_protobuf, handle_export_protobuf_descriptor,
+    handle_export_dbmv, handle_export_json_schema, handle_export_markdown, handle_export_odcs,
+    handle_export_odps, handle_export_pdf, handle_export_protobuf,
+    handle_export_protobuf_descriptor,
 };
 #[cfg(feature = "odps-validation")]
 use commands::import::handle_import_odps;
 #[cfg(feature = "openapi")]
 use commands::import::handle_import_openapi;
 use commands::import::{
-    ImportArgs, ImportFormat, InputSource, handle_import_avro, handle_import_json_schema,
-    handle_import_odcl, handle_import_odcs, handle_import_protobuf, handle_import_sql,
+    ImportArgs, ImportFormat, InputSource, handle_import_avro, handle_import_dbmv,
+    handle_import_json_schema, handle_import_odcl, handle_import_odcs, handle_import_protobuf,
+    handle_import_sql,
 };
 #[cfg(all(feature = "inference", feature = "staging"))]
 use commands::inference::{
@@ -600,6 +602,8 @@ enum ImportFormatArg {
     Odcs,
     Odcl,
     Odps,
+    /// Databricks Metric Views (.dbmv.yaml)
+    Dbmv,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -616,6 +620,8 @@ enum ExportFormatArg {
     Markdown,
     /// Branded Markdown export with logo, header, footer
     BrandedMarkdown,
+    /// Databricks Metric Views (.dbmv.yaml)
+    Dbmv,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -646,6 +652,8 @@ enum ValidateFormatArg {
     DecisionsIndex,
     /// Knowledge Index (knowledge.yaml)
     KnowledgeIndex,
+    /// Databricks Metric Views (.dbmv.yaml)
+    Dbmv,
 }
 
 fn convert_import_format(format: ImportFormatArg) -> ImportFormat {
@@ -658,6 +666,7 @@ fn convert_import_format(format: ImportFormatArg) -> ImportFormat {
         ImportFormatArg::Odcs => ImportFormat::Odcs,
         ImportFormatArg::Odcl => ImportFormat::Odcl,
         ImportFormatArg::Odps => ImportFormat::Odps,
+        ImportFormatArg::Dbmv => ImportFormat::Dbmv,
     }
 }
 
@@ -672,6 +681,7 @@ fn convert_export_format(format: ExportFormatArg) -> ExportFormat {
         ExportFormatArg::Pdf => ExportFormat::Pdf,
         ExportFormatArg::Markdown => ExportFormat::BrandedMarkdown, // Use same handler, no branding
         ExportFormatArg::BrandedMarkdown => ExportFormat::BrandedMarkdown,
+        ExportFormatArg::Dbmv => ExportFormat::Dbmv,
     }
 }
 
@@ -755,6 +765,7 @@ fn main() {
                         ))
                     }
                 }
+                ImportFormat::Dbmv => handle_import_dbmv(&args),
             }
         }
         Commands::Export {
@@ -810,6 +821,7 @@ fn main() {
                         handle_export_branded_markdown(&args)
                     }
                 }
+                ExportFormat::Dbmv => handle_export_dbmv(&args),
             }
         }
         Commands::Validate { format, input } => {
@@ -827,6 +839,7 @@ fn main() {
                 ValidateFormatArg::Knowledge => "knowledge",
                 ValidateFormatArg::DecisionsIndex => "decisions-index",
                 ValidateFormatArg::KnowledgeIndex => "knowledge-index",
+                ValidateFormatArg::Dbmv => "dbmv",
             };
             handle_validate(validate_format, &input)
         }

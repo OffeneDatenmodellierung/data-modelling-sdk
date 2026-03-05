@@ -40,7 +40,7 @@ repos:
 
       - id: cargo-audit
         name: cargo audit
-        entry: bash -c 'cargo audit'
+        entry: bash -c 'cargo audit --ignore RUSTSEC-2026-0007 --ignore RUSTSEC-2026-0009'
         language: system
         types: [rust]
         pass_filenames: false

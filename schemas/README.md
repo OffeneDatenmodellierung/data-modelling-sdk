@@ -122,6 +122,20 @@ Workspace schema defines top-level containers that organize domains, systems, as
 - `environments`: Multi-environment connection details (production, staging, development)
 - Environment connection details include: owner, contactDetails, sla, authMethod, supportTeam, connectionString, secretLink, endpoint, port, region, status, notes
 
+### DBMV (Databricks Metric Views)
+
+**File**: `dbmv.schema.json`
+**Version**: v1.0
+**Source**: Internal specification (based on Databricks Metric Views)
+**Purpose**: Semantic layer metric definitions for Databricks
+**Status**: ✅ Fully Supported
+
+DBMV defines metric views for the Databricks semantic layer. The SDK wraps native Databricks metric view YAML in a document envelope. Key features:
+- Multi-view documents (one file per system)
+- Dimensions and measures with format/window support
+- Recursive joins for snowflake schema modeling
+- Materialization configuration
+
 ### MADR Decision Records
 
 **File**: `decision-schema.json`
@@ -242,6 +256,7 @@ schemas/
 ├── common-types-schema.json       # Shared types (ContactDetails, SlaProperty, ViewPosition)
 ├── domain-schema.json             # Domain reference schema
 ├── system-schema.json             # System reference with environments schema
+├── dbmv.schema.json               # DBMV Metric Views schema
 ├── decision-schema.json           # MADR Decision Record schema
 ├── knowledge-schema.json          # Knowledge Base Article schema
 ├── decisions-index-schema.json    # Decision index (decisions.yaml) schema

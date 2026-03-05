@@ -3,72 +3,137 @@
 //! These types are used across ODCSContract, SchemaObject, and Property
 //! to represent shared concepts like quality rules, custom properties, and relationships.
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Quality rule for data validation (ODCS v3.1.0)
 ///
 /// Quality rules can be defined at contract, schema, or property level.
+/// Field order matches the ODCS v3.1.0 JSON schema for stable serialization.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct QualityRule {
-    /// Type of quality rule (e.g., "sql", "custom", "library")
+    // === Identity ===
+    /// Stable identifier for the quality rule
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Type of quality rule (e.g., "sql", "custom", "library", "text")
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub rule_type: Option<String>,
+    /// Name of the data quality check
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Quality dimension (e.g., "accuracy", "completeness", "timeliness")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dimension: Option<String>,
-    /// Business impact description
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub business_impact: Option<String>,
-    /// Metric name for the rule
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metric: Option<String>,
     /// Description of the quality rule
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Condition that must be true
+    /// Consequences of rule failure (e.g., "operational", "regulatory")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub business_impact: Option<String>,
+    /// Severity of the quality rule (e.g., "info", "warning", "error")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// Method of validation (e.g., "reconciliation")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+    /// Unit the rule uses (e.g., "rows", "percent")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+
+    // === Library-type fields ===
+    /// Predefined metric name (e.g., "nullValues", "missingValues", "rowCount")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metric: Option<String>,
+    /// Deprecated: use metric instead
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    /// Additional arguments for the metric
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<serde_json::Value>,
+
+    // === Comparison operators (DataQualityOperators) ===
+    /// Condition that must be true (equals)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub must_be: Option<serde_json::Value>,
-    /// Condition that must be false
+    /// Condition that must be false (not equals)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub must_not_be: Option<serde_json::Value>,
     /// Greater than condition
     #[serde(skip_serializing_if = "Option::is_none")]
     pub must_be_greater_than: Option<serde_json::Value>,
+    /// Greater than or equal condition (ODCS: mustBeGreaterOrEqualTo)
+    #[serde(
+        rename = "mustBeGreaterOrEqualTo",
+        alias = "mustBeGreaterThanOrEqual",
+        alias = "mustBeGreaterThanOrEqualTo",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub must_be_greater_or_equal_to: Option<serde_json::Value>,
     /// Less than condition
     #[serde(skip_serializing_if = "Option::is_none")]
     pub must_be_less_than: Option<serde_json::Value>,
-    /// Greater than or equal condition
+    /// Less than or equal condition (ODCS: mustBeLessOrEqualTo)
+    #[serde(
+        rename = "mustBeLessOrEqualTo",
+        alias = "mustBeLessThanOrEqual",
+        alias = "mustBeLessThanOrEqualTo",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub must_be_less_or_equal_to: Option<serde_json::Value>,
+    /// Range: value must be between two numbers [min, max]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub must_be_greater_than_or_equal: Option<serde_json::Value>,
-    /// Less than or equal condition
+    pub must_be_between: Option<Vec<serde_json::Value>>,
+    /// Range: value must not be between two numbers [min, max]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub must_be_less_than_or_equal: Option<serde_json::Value>,
+    pub must_not_be_between: Option<Vec<serde_json::Value>>,
     /// Value must be in this set
     #[serde(skip_serializing_if = "Option::is_none")]
     pub must_be_in: Option<Vec<serde_json::Value>>,
     /// Value must not be in this set
     #[serde(skip_serializing_if = "Option::is_none")]
     pub must_not_be_in: Option<Vec<serde_json::Value>>,
+
+    // === SQL-type fields ===
     /// SQL query for validation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query: Option<String>,
-    /// Scheduler type for quality checks
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scheduler: Option<String>,
-    /// Schedule expression
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schedule: Option<String>,
-    /// Engine for running the quality check
+
+    // === Custom-type fields ===
+    /// Engine for running the quality check (e.g., "soda", "great-expectations")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub engine: Option<String>,
+    /// Engine-specific implementation details (string or object)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub implementation: Option<serde_json::Value>,
     /// URL to quality tool or dashboard
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    /// Additional properties not explicitly modeled
+
+    // === Scheduling ===
+    /// Scheduler type for quality checks (e.g., "cron")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduler: Option<String>,
+    /// Schedule expression (e.g., "0 20 * * *")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>,
+
+    // === References & Metadata ===
+    /// Links to authoritative definitions
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authoritative_definitions: Vec<AuthoritativeDefinition>,
+    /// Tags for categorization
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Additional properties for rule execution
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom_properties: Vec<CustomProperty>,
+
+    /// Additional properties not explicitly modeled (stable sorted order)
     #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    pub extra: IndexMap<String, serde_json::Value>,
 }
 
 /// Custom property for format-specific metadata (ODCS v3.1.0)
