@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/OffeneDatenmodellierung/data-modelling-sdk/schemas/dbmv.schema.json",
+  "title": "Databricks Metric Views (DBMV) Document",
+  "description": "Schema for Databricks Metric Views wrapper document format (.dbmv.yaml)",
+  "type": "object",
+  "required": ["apiVersion", "kind", "system", "metricViews"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "description": "API version of the DBMV format",
+      "examples": ["v1.0.0"]
+    },
+    "kind": {
+      "type": "string",
+      "const": "MetricViews",
+      "description": "Document kind — must be 'MetricViews'"
+    },
+    "system": {
+      "type": "string",
+      "minLength": 1,
+      "description": "System name this document belongs to"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional description of the metric views collection"
+    },
+    "metricViews": {
+      "type": "array",
+      "description": "Metric view definitions",
+      "items": {
+        "$ref": "#/definitions/MetricView"
+      }
+    }
+  },
+  "definitions": {
+    "MetricView": {
+      "type": "object",
+      "required": ["name", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Metric view name"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version of the metric view definition",
+          "default": "1.1"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Fully qualified source table (e.g., 'catalog.schema.table')"
+        },
+        "filter": {
+          "type": "string",
+          "description": "SQL filter expression applied to the source"
+        },
+        "comment": {
+          "type": "string",
+          "description": "Comment or description"
+        },
+        "dimensions": {
+          "type": "array",
+          "description": "Dimension definitions",
+          "items": {
+            "$ref": "#/definitions/Dimension"
+          }
+        },
+        "measures": {
+          "type": "array",
+          "description": "Measure definitions",
+          "items": {
+            "$ref": "#/definitions/Measure"
+          }
+        },
+        "joins": {
+          "type": "array",
+          "description": "Join definitions",
+          "items": {
+            "$ref": "#/definitions/Join"
+          }
+        },
+        "materialization": {
+          "$ref": "#/definitions/Materialization"
+        }
+      }
+    },
+    "Dimension": {
+      "type": "object",
+      "required": ["name", "expr"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Dimension name"
+        },
+        "expr": {
+          "type": "string",
+          "minLength": 1,
+          "description": "SQL expression for the dimension"
+        },
+        "display_name": {
+          "type": "string",
+          "description": "Human-readable display name"
+        },
+        "comment": {
+          "type": "string",
+          "description": "Comment or description"
+        }
+      }
+    },
+    "Measure": {
+      "type": "object",
+      "required": ["name", "expr"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Measure name"
+        },
+        "expr": {
+          "type": "string",
+          "minLength": 1,
+          "description": "SQL aggregation expression"
+        },
+        "display_name": {
+          "type": "string",
+          "description": "Human-readable display name"
+        },
+        "comment": {
+          "type": "string",
+          "description": "Comment or description"
+        },
+        "format": {
+          "$ref": "#/definitions/MeasureFormat"
+        },
+        "window": {
+          "type": "array",
+          "description": "Window function specifications",
+          "items": {
+            "$ref": "#/definitions/Window"
+          }
+        }
+      }
+    },
+    "MeasureFormat": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Format type (e.g., 'currency', 'percentage', 'number')"
+        }
+      }
+    },
+    "Window": {
+      "type": "object",
+      "required": ["order"],
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "type": "string",
+          "description": "Column to order by"
+        },
+        "range": {
+          "type": "string",
+          "description": "Window range (e.g., 'cumulative', 'unbounded')"
+        },
+        "semiadditive": {
+          "type": "string",
+          "description": "Semi-additive behaviour (e.g., 'last', 'first')"
+        }
+      }
+    },
+    "Join": {
+      "type": "object",
+      "required": ["name", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Join alias name"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Fully qualified source table for the join"
+        },
+        "on": {
+          "type": "string",
+          "description": "Join condition expression"
+        },
+        "using": {
+          "type": "array",
+          "description": "Column names for equi-join",
+          "items": {
+            "type": "string"
+          }
+        },
+        "joins": {
+          "type": "array",
+          "description": "Nested joins for snowflake schema patterns",
+          "items": {
+            "$ref": "#/definitions/Join"
+          }
+        }
+      }
+    },
+    "Materialization": {
+      "type": "object",
+      "required": ["schedule", "mode"],
+      "additionalProperties": false,
+      "properties": {
+        "schedule": {
+          "type": "string",
+          "description": "Refresh schedule (e.g., 'every 6 hours', 'daily')"
+        },
+        "mode": {
+          "type": "string",
+          "description": "Materialization mode (e.g., 'relaxed', 'strict')"
+        },
+        "materialized_views": {
+          "type": "array",
+          "description": "Pre-computed materialized view definitions",
+          "items": {
+            "$ref": "#/definitions/MaterializedView"
+          }
+        }
+      }
+    },
+    "MaterializedView": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Materialized view name"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["aggregated", "unaggregated"],
+          "description": "View type"
+        },
+        "dimensions": {
+          "type": "array",
+          "description": "Dimensions to include (for aggregated views)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "measures": {
+          "type": "array",
+          "description": "Measures to include (for aggregated views)",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

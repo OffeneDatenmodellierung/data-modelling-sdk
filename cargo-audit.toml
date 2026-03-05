@@ -15,6 +15,11 @@ allow = [
     "RUSTSEC-2024-0436",  # paste unmaintained (via datafusion and imageproc)
     "RUSTSEC-2021-0140",  # rusttype unmaintained (via imageproc)
     "RUSTSEC-2024-0320",  # yaml-rust unmaintained (direct dependency)
+    "RUSTSEC-2025-0119",  # number_prefix unmaintained (via indicatif)
+    "RUSTSEC-2026-0002",  # lru unsound (via aws-sdk-s3, not triggered in practice)
+    "RUSTSEC-2026-0007",  # bytes integer overflow - upgrade blocked by transitive deps (iceberg, reqwest)
+    "RUSTSEC-2026-0008",  # git2 unsound Buf deref (upgrade blocked by libgit2)
+    "RUSTSEC-2026-0009",  # time DoS via stack exhaustion - upgrade blocked by transitive deps
 ]
 
 # Only deny actual security vulnerabilities, not unmaintained warnings

@@ -7,7 +7,7 @@ The Data Modelling SDK is a Rust library that provides unified interfaces for da
 **Repository**: https://github.com/OffeneDatenmodellierung/data-modelling-sdk
 **License**: MIT
 **Rust Edition**: 2024
-**Version**: 2.3.0
+**Version**: 2.4.0
 
 ## Architecture
 
@@ -23,11 +23,12 @@ The SDK is designed with a modular architecture centered around:
 8. **Decision Records (DDL)**: Architecture Decision Records with MADR format support
 9. **Knowledge Base (KB)**: Domain documentation and knowledge articles
 10. **Sketches**: Excalidraw diagram support with thumbnail generation
-11. **Staging**: JSON data ingestion with DuckDB and Apache Iceberg support
-12. **Inference**: Automatic schema inference from JSON data with format detection
-13. **Mapping**: Schema-to-schema mapping with fuzzy matching and transformation generation
-14. **Pipeline**: End-to-end data pipeline orchestration with checkpointing
-15. **LLM**: LLM-enhanced schema refinement and matching (Ollama, llama.cpp)
+11. **Databricks Metric Views (DBMV)**: Semantic layer metric definitions with multi-view documents
+12. **Staging**: JSON data ingestion with DuckDB and Apache Iceberg support
+13. **Inference**: Automatic schema inference from JSON data with format detection
+14. **Mapping**: Schema-to-schema mapping with fuzzy matching and transformation generation
+15. **Pipeline**: End-to-end data pipeline orchestration with checkpointing
+16. **LLM**: LLM-enhanced schema refinement and matching (Ollama, llama.cpp)
 
 ## Directory Structure
 
@@ -42,6 +43,7 @@ data-modelling-sdk/
 │   │   ├── avro.rs            # AVRO format exporter
 │   │   ├── bpmn.rs            # BPMN 2.0 exporter (feature-gated)
 │   │   ├── cads.rs            # CADS format exporter
+│   │   ├── dbmv.rs            # DBMV Metric Views exporter
 │   │   ├── decision.rs        # Decision Markdown exporter
 │   │   ├── dmn.rs             # DMN 1.3 exporter (feature-gated)
 │   │   ├── sketch.rs          # Sketch YAML exporter
@@ -67,6 +69,7 @@ data-modelling-sdk/
 │   │   ├── avro.rs            # AVRO format importer
 │   │   ├── bpmn.rs            # BPMN 2.0 importer (feature-gated)
 │   │   ├── cads.rs            # CADS format importer
+│   │   ├── dbmv.rs            # DBMV Metric Views importer
 │   │   ├── decision.rs        # Decision YAML importer
 │   │   ├── dmn.rs             # DMN 1.3 importer (feature-gated)
 │   │   ├── sketch.rs          # Sketch YAML importer
@@ -89,6 +92,7 @@ data-modelling-sdk/
 │   │   ├── column.rs          # Column and ForeignKey models
 │   │   ├── cross_domain.rs    # Cross-domain relationship models
 │   │   ├── data_model.rs      # DataModel container (includes domain operations)
+│   │   ├── dbmv.rs            # DBMV model structs (DBMVDocument, DBMVMetricView, DBMVDimension, etc.)
 │   │   ├── decision.rs        # Decision model structs (Decision, DecisionStatus, DecisionCategory, DecisionOption)
 │   │   ├── dmn.rs             # DMN model structs (DMNModel, DMNModelFormat) (feature-gated)
 │   │   ├── domain.rs          # Business Domain schema models (Domain, System, CADSNode, ODCSNode, etc.)
@@ -180,6 +184,7 @@ data-modelling-sdk/
 ├── tests/                      # Test suite
 │   ├── auth_tests.rs
 │   ├── cads_tests.rs          # CADS import/export tests
+│   ├── dbmv_tests.rs          # DBMV import/export tests
 │   ├── domain_tests.rs        # Business Domain schema tests
 │   ├── export_tests.rs
 │   ├── git_tests.rs
@@ -262,6 +267,15 @@ Core data structures:
 - **`ArticleType`**: Article types (Guide, Reference, Concept, Tutorial, Troubleshooting, Runbook)
 - **`ArticleStatus`**: Article lifecycle states (Draft, Review, Published, Archived, Deprecated)
 - **`KnowledgeIndex`**: Index tracking article metadata and numbering
+- **`DBMVDocument`**: Databricks Metric Views wrapper document (apiVersion, kind, system, description, metricViews). Uses camelCase envelope with snake_case inner content.
+- **`DBMVMetricView`**: Individual metric view definition (name, version, source, filter, dimensions, measures, joins, materialization)
+- **`DBMVDimension`**: Metric view dimension (name, expr, display_name, comment)
+- **`DBMVMeasure`**: Metric view measure (name, expr, display_name, comment, format, window)
+- **`DBMVMeasureFormat`**: Measure format specification (type)
+- **`DBMVWindow`**: Window function specification (order, range, semiadditive)
+- **`DBMVJoin`**: Join definition with recursive nesting for snowflake schemas (name, source, on, using, joins)
+- **`DBMVMaterialization`**: Materialization configuration (schedule, mode, materialized_views)
+- **`DBMVMaterializedView`**: Materialized view definition (name, type, dimensions, measures)
 - **`Sketch`**: Excalidraw diagram with metadata, linked assets, and thumbnail support
 - **`SketchType`**: Sketch categories (Architecture, DataFlow, EntityRelationship, Sequence, Flowchart, Wireframe, Concept, Infrastructure, Other)
 - **`SketchStatus`**: Sketch lifecycle states (Draft, Review, Published, Archived)
@@ -317,6 +331,10 @@ Importers convert various formats to SDK models:
 - **`OpenAPIImporter`**: Importer for OpenAPI 3.1.1 YAML/JSON format - for API specifications (requires `openapi` feature)
 - **`DecisionImporter`**: Importer for Decision YAML files - for architecture decision records
 - **`KnowledgeImporter`**: Importer for Knowledge article YAML files - for domain documentation
+- **`DBMVImporter`**: Importer for Databricks Metric Views YAML files - for semantic layer metric definitions
+  - `import()` - Imports full DBMV document with validation
+  - `import_without_validation()` - Imports DBMV document without schema validation
+  - `import_single_view()` - Imports standalone Databricks metric view YAML (no envelope)
 - **`SketchImporter`**: Importer for Sketch YAML files - for Excalidraw diagrams with metadata
 - **`SQLImporter`**: SQL DDL parser (CREATE TABLE, CREATE VIEW, CREATE MATERIALIZED VIEW statements)
   - Supported SQL dialects: PostgreSQL, MySQL, SQLite, Generic (default), and Databricks
@@ -341,6 +359,9 @@ Exporters convert SDK models to various formats:
 - **`OpenAPIExporter`**: Exports OpenAPI specs with YAML ↔ JSON conversion support (requires `openapi` feature)
 - **`DecisionExporter`**: Exports decisions to MADR-compliant Markdown format
 - **`KnowledgeExporter`**: Exports knowledge articles to Markdown format
+- **`DBMVExporter`**: Exports Databricks Metric Views to YAML format
+  - `export_document()` - Exports full multi-view DBMV document with camelCase envelope
+  - `export_single_view()` - Exports standalone Databricks-native metric view YAML (no envelope)
 - **`SketchExporter`**: Exports sketches to YAML format
 - **`SQLExporter`**: Generates SQL DDL (CREATE TABLE statements)
   - Supports multiple SQL dialects: PostgreSQL, MySQL, SQLite, Generic, and Databricks
@@ -916,6 +937,7 @@ base_directory/
 ├── {workspace}_{domain}_{system}_{resource}.bpmn.xml    # BPMN process models
 ├── {workspace}_{domain}_{system}_{resource}.dmn.xml     # DMN decision models
 ├── {workspace}_{domain}_{system}_{resource}.openapi.yaml # OpenAPI specifications
+├── {workspace}_{domain}_{system}_{resource}.dbmv.yaml   # DBMV Metric Views files
 ├── decisions/                  # Architecture Decision Records
 │   ├── index.yaml             # Decision index with metadata
 │   ├── 0001-decision-title.yaml # Individual decision files
@@ -948,7 +970,7 @@ Files use the format: `{workspace}_{domain}_{system}_{resource}.{type}.yaml`
 - **domain**: The business domain (e.g., `sales`, `finance`)
 - **system**: The system or service (e.g., `orders`, `payments`)
 - **resource**: The specific resource name (e.g., `customers`, `transactions`)
-- **type**: The asset type (e.g., `odcs`, `odps`, `cads`, `bpmn`, `dmn`, `openapi`)
+- **type**: The asset type (e.g., `odcs`, `odps`, `cads`, `bpmn`, `dmn`, `openapi`, `dbmv`)
 
 ### Workspace Configuration (`workspace.yaml`)
 
@@ -1056,6 +1078,7 @@ The SDK maintains JSON Schema definitions for all supported formats in the `sche
 - **BPMN 2.0**: `schemas/bpmn-2.0.xsd` - Business Process Model and Notation (process models in native XML)
 - **DMN 1.3**: `schemas/dmn-1.3.xsd` - Decision Model and Notation (decision models in native XML)
 - **OpenAPI 3.1.1**: `schemas/openapi-3.1.1.json` - API specifications (stored in native YAML or JSON)
+- **DBMV**: `schemas/dbmv.schema.json` - Databricks Metric Views document format
 - **Sketch**: `schemas/sketch-schema.json` - Excalidraw sketch with metadata
 - **Sketch Index**: `schemas/sketch-index-schema.json` - Sketch index for tracking sketches
 

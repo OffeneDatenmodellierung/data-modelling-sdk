@@ -55,6 +55,7 @@ pub enum ImportFormat {
     Odcs,
     Odcl,
     Odps,
+    Dbmv,
 }
 
 /// Load input content from InputSource
@@ -1925,6 +1926,63 @@ pub fn handle_import_odcl(args: &ImportArgs) -> Result<(), CliError> {
             _ => None,
         };
         write_odcs_files(&result, base_path, args.uuid_override.as_deref())?;
+    }
+
+    Ok(())
+}
+
+/// Handle DBMV import command
+pub fn handle_import_dbmv(args: &ImportArgs) -> Result<(), CliError> {
+    use data_modelling_core::import::DBMVImporter;
+    use data_modelling_core::validation::schema::validate_dbmv_internal;
+
+    // Load DBMV input
+    let dbmv_content = load_input(&args.input)?;
+
+    // Validate if enabled
+    if args.validate {
+        validate_dbmv_internal(&dbmv_content).map_err(CliError::ValidationError)?;
+    }
+
+    // Import DBMV
+    let importer = DBMVImporter::new();
+    let document = importer
+        .import_without_validation(&dbmv_content)
+        .map_err(CliError::ImportError)?;
+
+    // Display results
+    if args.pretty {
+        println!("DBMV Metric Views Document");
+        println!("==========================");
+        println!("System:          {}", document.system);
+        println!("API Version:     {}", document.api_version);
+        if let Some(desc) = &document.description {
+            println!("Description:     {}", desc);
+        }
+        println!("\nMetric Views ({})", document.metric_views.len());
+        for view in &document.metric_views {
+            println!("  - {} (source: {})", view.name, view.source);
+            println!("    Version:    {}", view.version);
+            if let Some(comment) = &view.comment {
+                println!("    Comment:    {}", comment);
+            }
+            if let Some(filter) = &view.filter {
+                println!("    Filter:     {}", filter);
+            }
+            println!("    Dimensions: {}", view.dimensions.len());
+            println!("    Measures:   {}", view.measures.len());
+            if !view.joins.is_empty() {
+                println!("    Joins:      {}", view.joins.len());
+            }
+            if let Some(mat) = &view.materialization {
+                println!("    Materialization: {} ({})", mat.schedule, mat.mode);
+            }
+        }
+    } else {
+        // JSON output
+        let json = serde_json::to_string_pretty(&document)
+            .map_err(|e| CliError::InvalidArgument(format!("Failed to serialize: {}", e)))?;
+        println!("{}", json);
     }
 
     Ok(())

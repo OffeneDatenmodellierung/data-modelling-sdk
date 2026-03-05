@@ -585,3 +585,36 @@ pub fn validate_sketch_index_internal(_content: &str) -> Result<(), String> {
     // Validation disabled - feature not enabled
     Ok(())
 }
+
+/// Internal DBMV validation function that returns a string error (used by import/export modules)
+#[cfg(feature = "schema-validation")]
+pub fn validate_dbmv_internal(content: &str) -> Result<(), String> {
+    use jsonschema::Validator;
+    use serde_json::Value;
+
+    // Load DBMV JSON Schema
+    let schema_content = include_str!("../../../../schemas/dbmv.schema.json");
+    let schema: Value = serde_json::from_str(schema_content)
+        .map_err(|e| format!("Failed to load DBMV schema: {}", e))?;
+
+    let validator =
+        Validator::new(&schema).map_err(|e| format!("Failed to compile DBMV schema: {}", e))?;
+
+    // Parse YAML content
+    let data: Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
+
+    // Validate
+    if let Err(error) = validator.validate(&data) {
+        let error_msg = format_validation_error(&error, "DBMV");
+        return Err(error_msg);
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "schema-validation"))]
+pub fn validate_dbmv_internal(_content: &str) -> Result<(), String> {
+    // Validation disabled - feature not enabled
+    Ok(())
+}

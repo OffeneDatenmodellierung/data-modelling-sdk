@@ -1,6 +1,6 @@
 [package]
 name = "data-modelling-core"
-version = "2.3.0"
+version = "2.4.0"
 edition = "2024"
 authors = ["Mark Olliver"]
 license = "MIT"
@@ -49,6 +49,9 @@ yaml-rust = "0.4"
 
 # XML processing (for BPMN/DMN)
 quick-xml = { version = "0.36", features = ["serialize"], optional = true }
+
+# Ordered maps (for stable serialization)
+indexmap = { version = "2", features = ["serde"] }
 
 # Logging
 tracing = "0.1"

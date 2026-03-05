@@ -22,6 +22,8 @@ pub enum ExportFormat {
     Pdf,
     /// Branded Markdown export
     BrandedMarkdown,
+    /// Databricks Metric Views
+    Dbmv,
 }
 
 /// Arguments for export operations
@@ -682,6 +684,47 @@ pub fn handle_export_markdown(args: &ExportArgs) -> Result<(), CliError> {
     write_export_output(&args.output, &markdown)?;
 
     println!("✅ Exported Markdown: {}", args.output.display());
+
+    Ok(())
+}
+
+/// Handle DBMV export command
+///
+/// DBMV is a native format - it only accepts DBMV input files.
+pub fn handle_export_dbmv(args: &ExportArgs) -> Result<(), CliError> {
+    check_file_overwrite(&args.output, args.force)?;
+
+    // Read input file
+    let content = std::fs::read_to_string(&args.input)
+        .map_err(|e| CliError::FileReadError(args.input.clone(), e.to_string()))?;
+
+    // Verify input is DBMV format
+    if !content.contains("kind: MetricViews") {
+        return Err(CliError::InvalidArgument(
+            "Input file is not DBMV format. DBMV export only accepts DBMV input files (kind: MetricViews)."
+                .to_string(),
+        ));
+    }
+
+    // Import DBMV file
+    use data_modelling_core::export::DBMVExporter;
+    use data_modelling_core::import::DBMVImporter;
+
+    let importer = DBMVImporter::new();
+    let document = importer
+        .import_without_validation(&content)
+        .map_err(|e| CliError::InvalidArgument(format!("Failed to import DBMV file: {e}")))?;
+
+    // Export to DBMV YAML (validation happens inside exporter if feature enabled)
+    let exporter = DBMVExporter;
+    let yaml = exporter.export(&document).map_err(CliError::ExportError)?;
+
+    // Write output
+    write_export_output(&args.output, &yaml)?;
+    println!(
+        "✅ Exported DBMV metric views to: {}",
+        args.output.display()
+    );
 
     Ok(())
 }

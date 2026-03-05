@@ -16,6 +16,7 @@ pub mod avro;
 #[cfg(feature = "bpmn")]
 pub mod bpmn;
 pub mod cads;
+pub mod dbmv;
 pub mod decision;
 #[cfg(feature = "dmn")]
 pub mod dmn;
@@ -82,6 +83,7 @@ pub use avro::AvroExporter;
 #[cfg(feature = "bpmn")]
 pub use bpmn::BPMNExporter;
 pub use cads::CADSExporter;
+pub use dbmv::DBMVExporter;
 pub use decision::DecisionExporter;
 #[cfg(feature = "dmn")]
 pub use dmn::DMNExporter;

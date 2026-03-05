@@ -605,6 +605,59 @@ pub fn validate_odps(_yaml_content: &str) -> Result<(), JsValue> {
     Ok(())
 }
 
+/// Import DBMV YAML content and return a structured representation.
+///
+/// # Arguments
+///
+/// * `yaml_content` - DBMV YAML content as a string
+///
+/// # Returns
+///
+/// JSON string containing DBMV document, or JsValue error
+#[wasm_bindgen]
+pub fn import_from_dbmv(yaml_content: &str) -> Result<String, JsValue> {
+    let importer = data_modelling_core::import::DBMVImporter::new();
+    match importer.import_without_validation(yaml_content) {
+        Ok(document) => serde_json::to_string(&document).map_err(serialization_error),
+        Err(err) => Err(import_error_to_js(err)),
+    }
+}
+
+/// Export a DBMV document to YAML format.
+///
+/// # Arguments
+///
+/// * `document_json` - JSON string containing DBMV document
+///
+/// # Returns
+///
+/// DBMV YAML format string, or JsValue error
+#[wasm_bindgen]
+pub fn export_to_dbmv(document_json: &str) -> Result<String, JsValue> {
+    let document: data_modelling_core::models::dbmv::DBMVDocument =
+        serde_json::from_str(document_json).map_err(deserialization_error)?;
+    let exporter = data_modelling_core::export::DBMVExporter;
+    match exporter.export(&document) {
+        Ok(yaml) => Ok(yaml),
+        Err(err) => Err(export_error_to_js(err)),
+    }
+}
+
+/// Validate DBMV YAML content against the DBMV JSON Schema.
+///
+/// # Arguments
+///
+/// * `yaml_content` - DBMV YAML content as a string
+///
+/// # Returns
+///
+/// Empty on success, or error message string
+#[wasm_bindgen]
+pub fn validate_dbmv(yaml_content: &str) -> Result<(), JsValue> {
+    use data_modelling_core::validation::schema::validate_dbmv_internal;
+    validate_dbmv_internal(yaml_content).map_err(validation_error)
+}
+
 /// Create a new business domain.
 ///
 /// # Arguments

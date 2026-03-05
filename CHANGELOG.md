@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-03-05
+
+### Added
+
+- **feat(dbmv)**: Databricks Metric Views support (`.dbmv.yaml`)
+  - New `DBMVDocument` wrapper format: one YAML file per system containing multiple metric view definitions
+  - Envelope uses camelCase (`apiVersion`, `kind`, `metricViews`), inner content uses snake_case (Databricks-native)
+  - 9 model structs: `DBMVDocument`, `DBMVMetricView`, `DBMVDimension`, `DBMVMeasure`, `DBMVMeasureFormat`, `DBMVWindow`, `DBMVJoin`, `DBMVMaterialization`, `DBMVMaterializedView`
+  - Recursive `DBMVJoin` for snowflake schema support (nested joins)
+  - `DBMVImporter` with `import()`, `import_without_validation()`, and `import_single_view()` methods
+  - `DBMVExporter` with `export_document()` and `export_single_view()` methods
+  - JSON Schema validation (`schemas/dbmv.schema.json`)
+  - CLI support: `odm import dbmv`, `odm export dbmv`, `odm validate dbmv`
+  - WASM bindings: `import_from_dbmv()`, `export_to_dbmv()`, `validate_dbmv()`
+  - `AssetType::Dbmv` variant for workspace asset tracking
+  - Example file: `examples/sales-metrics.dbmv.yaml`
+  - Comprehensive test suite (26 tests across model, importer, exporter, and integration)
+
+### Changed
+
+- **fix(odcs)**: Extended `QualityRule` struct with all ODCS v3.1.0 fields for stable serialization
+  - Added missing fields: `id`, `name`, `severity`, `method`, `unit`, `rule`, `arguments`, `implementation`, `authoritative_definitions`, `tags`, `custom_properties`
+  - Added range operators: `mustBeBetween`, `mustNotBeBetween`
+  - Fixed field naming: `mustBeGreaterThanOrEqual` renamed to `mustBeGreaterOrEqualTo` (matching ODCS spec), `mustBeLessThanOrEqual` renamed to `mustBeLessOrEqualTo`
+  - Added serde aliases for backwards compatibility with previous field names
+  - Changed `extra` field from `HashMap` to `IndexMap` for deterministic key ordering
+  - Changed `Property::from_flat_paths()` to use `IndexMap` for stable output ordering
+
 ## [2.3.0] - 2026-02-04
 
 ### Added
