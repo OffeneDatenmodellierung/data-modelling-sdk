@@ -742,7 +742,7 @@ The SDK uses Cargo features to enable optional functionality:
 - `duckdb`: DuckDB embedded database (for `duckdb-backend` feature)
 - `tokio-postgres`: PostgreSQL client (for `postgres-backend` feature)
 - `sqlparser`: SQL parsing
-- `yaml-rust`: YAML processing
+- `serde_yaml`: YAML processing
 
 ## Usage Examples
 
