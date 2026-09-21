@@ -14,7 +14,6 @@ allow = [
     "RUSTSEC-2025-0058",  # custom_derive unmaintained
     "RUSTSEC-2024-0436",  # paste unmaintained (via datafusion and imageproc)
     "RUSTSEC-2021-0140",  # rusttype unmaintained (via imageproc)
-    "RUSTSEC-2024-0320",  # yaml-rust unmaintained (direct dependency)
     "RUSTSEC-2025-0119",  # number_prefix unmaintained (via indicatif)
     "RUSTSEC-2026-0002",  # lru unsound (via aws-sdk-s3, not triggered in practice)
     "RUSTSEC-2026-0007",  # bytes integer overflow - upgrade blocked by transitive deps (iceberg, reqwest)

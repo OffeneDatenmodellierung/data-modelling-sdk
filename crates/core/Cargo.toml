@@ -44,9 +44,6 @@ datafusion = { version = "45", default-features = false, features = [], optional
 # Graph operations (for validation)
 petgraph = "0.6"
 
-# YAML processing
-yaml-rust = "0.4"
-
 # XML processing (for BPMN/DMN)
 quick-xml = { version = "0.36", features = ["serialize"], optional = true }
 
